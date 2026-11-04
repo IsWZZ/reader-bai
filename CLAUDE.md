@@ -66,10 +66,12 @@ This Electron app follows the standard three-process architecture:
 ### IPC Communication
 
 The preload script exposes two global objects to the renderer:
+
 - `window.electron` - Standard electron API from @electron-toolkit/preload
 - `window.api` - Custom APIs (extend in `src/preload/index.ts`)
 
 Current IPC handlers:
+
 - `ping` → logs `pong` (example handler in `src/main/index.ts`)
 
 ### TypeScript Configuration
