@@ -4,8 +4,9 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  main: {},
-  preload: {},
+  main: {}, //主进程
+  preload: {}, //预加载
+  //渲染进程
   renderer: {
     resolve: {
       alias: {
