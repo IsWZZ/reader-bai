@@ -1,4 +1,5 @@
 <template>
+  <br />
   <div>
     <p class="text-lg font-bold">Home</p>
     <Button>Click me</Button>

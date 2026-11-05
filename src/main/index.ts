@@ -9,6 +9,9 @@ function createWindow(): void {
     //默认的页面宽高
     width: 900,
     height: 670,
+    // 控制红绿黄灯
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 12, y: 12 },
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
