@@ -1,6 +1,6 @@
 <template>
-  <div class="flex items-center justify-center gap-2 px-4 py-1.5 bg-background border-b">
-    <div class="flex items-center gap-1">
+  <div class="flex items-center justify-center gap-2 px-4 py-1.5 bg-background border-b draggable">
+    <div class="flex items-center gap-1 no-drag">
       <Button variant="ghost" size="icon-sm">
         <Home class="size-4" />
       </Button>
@@ -8,7 +8,7 @@
         <BookOpen class="size-4" />
       </Button>
     </div>
-    <div class="flex-1 max-w-md">
+    <div class="flex-1 max-w-md no-drag">
       <Input v-model="searchQuery" placeholder="Search..." class="w-full" />
     </div>
     <!-- <div class="flex items-center gap-1">
@@ -27,3 +27,13 @@ import { Home, BookOpen } from 'lucide-vue-next'
 
 const searchQuery = ref('')
 </script>
+
+<style scoped>
+.draggable {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+</style>
