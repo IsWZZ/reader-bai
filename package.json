@@ -24,8 +24,9 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@lucide/vue": "^1.68.0",
+    "@lucide/vue": "^1.70.0",
     "@tailwindcss/vite": "^4.3.4",
+    "@vueuse/core": "^15.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.5.2",
