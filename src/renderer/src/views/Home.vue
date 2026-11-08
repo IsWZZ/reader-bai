@@ -3,9 +3,6 @@
     <Toolbar />
     <div class="flex flex-1">
       <ActivityBar />
-      <main class="p-4">
-        <p class="text-lg font-bold">Home</p>
-      </main>
     </div>
   </div>
 </template>
