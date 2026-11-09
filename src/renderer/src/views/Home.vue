@@ -1,10 +1,10 @@
 <template>
-  <div class="flex flex-col min-h-screen bg-background">
+  <div class="flex flex-col h-screen bg-background overflow-hidden">
     <Toolbar />
-    <div class="flex flex-1">
+    <div class="flex flex-1 overflow-hidden">
       <ActivityBar />
       <LibraryPanel />
-      <main class="flex-1 p-4">
+      <main class="flex-1 overflow-y-auto p-4">
         <p class="text-muted-foreground">阅读区</p>
       </main>
     </div>
