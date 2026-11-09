@@ -10,9 +10,9 @@
             size="icon-sm"
             :class="[
               'rounded-lg transition-colors',
-              activeItem === 'library' ? 'bg-accent text-accent-foreground' : ''
+              $props.isLibraryOpen ? 'bg-accent text-accent-foreground' : ''
             ]"
-            @click="activeItem = 'library'"
+            @click="toggleLibrary"
           >
             <LibraryBig class="size-5" />
           </Button>
@@ -53,5 +53,17 @@ import {
 } from '@renderer/components/ui/tooltip'
 import { LibraryBig, Settings } from 'lucide-vue-next'
 
-const activeItem = ref<'library' | 'settings'>('library')
+defineProps<{
+  isLibraryOpen: boolean
+}>()
+
+const activeItem = ref<'library' | 'settings'>('settings')
+
+const emit = defineEmits<{
+  toggleLibrary: []
+}>()
+
+const toggleLibrary = (): void => {
+  emit('toggleLibrary')
+}
 </script>

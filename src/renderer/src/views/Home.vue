@@ -2,10 +2,11 @@
   <div class="flex flex-col h-screen bg-background overflow-hidden p-2 gap-1">
     <Toolbar />
     <div class="flex flex-1 overflow-hidden gap-0.5">
-      <ActivityBar />
-      <LibraryPanel v-model:width="libraryWidth" />
+      <ActivityBar :is-library-open="isLibraryOpen" @toggle-library="toggleLibrary" />
+      <LibraryPanel v-if="isLibraryOpen" v-model:width="libraryWidth" />
       <!-- 拖拽分隔符 -->
       <div
+        v-if="isLibraryOpen"
         class="w-0.5 cursor-col-resize hover:bg-primary/50 transition-colors rounded-full"
         @mousedown="startResize"
       />
@@ -22,9 +23,14 @@ import Toolbar from '@renderer/components/Toolbar.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 
+const isLibraryOpen = ref(true)
 const libraryWidth = ref(256)
 const minWidth = 200
 const maxWidth = 500
+
+const toggleLibrary = (): void => {
+  isLibraryOpen.value = !isLibraryOpen.value
+}
 
 const startResize = (e: MouseEvent): void => {
   const startX = e.clientX
