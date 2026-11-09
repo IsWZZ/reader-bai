@@ -1,7 +1,14 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { readFile, writeFile } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+
+interface PaperInfo {
+  id: string
+  title: string
+  path: string
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -18,9 +25,12 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      devTools: process.env['ELECTRON_ RENDERER_URL'] ? true : false
+      contextIsolation: true,
+      devTools: is.dev ? true : false
     }
   })
+
+  console.log('Preload path:', join(__dirname, '../preload/index.js'))
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -40,7 +50,7 @@ function createWindow(): void {
   }
 
   // 打开开发者工具
-  // mainWindow.webContents.openDevTools()
+  mainWindow.webContents.openDevTools()
 }
 
 // This method will be called when Electron has finished
@@ -59,6 +69,63 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+
+  // 论文库持久化文件
+  const libraryFile = join(app.getPath('userData'), 'library.json')
+
+  const readLibrary = async (): Promise<PaperInfo[]> => {
+    try {
+      const raw = await readFile(libraryFile, 'utf-8')
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      // 文件不存在或内容损坏时返回空列表
+      return []
+    }
+  }
+
+  const writeLibrary = async (papers: PaperInfo[]): Promise<void> => {
+    await writeFile(libraryFile, JSON.stringify(papers, null, 2), 'utf-8')
+  }
+
+  // 读取论文库
+  ipcMain.handle('library:list', () => readLibrary())
+
+  // 导入论文文件对话框
+  ipcMain.handle('dialog:importPaper', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+
+    const filePath = result.filePaths[0]
+    const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'Unknown'
+
+    // 已导入过同一路径的论文时直接返回，避免重复
+    const papers = await readLibrary()
+    const existing = papers.find((paper) => paper.path === filePath)
+    if (existing) {
+      return existing
+    }
+
+    const paper: PaperInfo = {
+      id: Date.now().toString(),
+      title: fileName.replace(/\.pdf$/i, ''),
+      path: filePath
+    }
+
+    papers.push(paper)
+    await writeLibrary(papers)
+
+    return paper
+  })
 
   createWindow()
 

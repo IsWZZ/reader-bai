@@ -3,7 +3,11 @@
     <Toolbar />
     <div class="flex flex-1 overflow-hidden gap-0.5">
       <ActivityBar :is-library-open="isLibraryOpen" @toggle-library="toggleLibrary" />
-      <LibraryPanel v-if="isLibraryOpen" v-model:width="libraryWidth" />
+      <LibraryPanel
+        v-if="isLibraryOpen"
+        v-model:width="libraryWidth"
+        @select-paper="handleSelectPaper"
+      />
       <!-- 拖拽分隔符 -->
       <div
         v-if="isLibraryOpen"
@@ -11,7 +15,14 @@
         @mousedown="startResize"
       />
       <main class="flex-1 overflow-y-auto rounded-lg border bg-card p-4">
-        <p class="text-muted-foreground">阅读区</p>
+        <div v-if="currentPaper" class="h-full">
+          <h1 class="text-lg font-semibold mb-4">{{ currentPaper.title }}</h1>
+          <p class="text-sm text-muted-foreground">文件路径: {{ currentPaper.path }}</p>
+          <!-- TODO: 这里后续添加 PDF 阅读器 -->
+        </div>
+        <div v-else class="flex items-center justify-center h-full">
+          <p class="text-muted-foreground">选择论文开始阅读</p>
+        </div>
       </main>
     </div>
   </div>
@@ -23,13 +34,24 @@ import Toolbar from '@renderer/components/Toolbar.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 
+interface Paper {
+  id: string
+  title: string
+  path?: string
+}
+
 const isLibraryOpen = ref(true)
 const libraryWidth = ref(256)
 const minWidth = 200
 const maxWidth = 500
+const currentPaper = ref<Paper | null>(null)
 
 const toggleLibrary = (): void => {
   isLibraryOpen.value = !isLibraryOpen.value
+}
+
+const handleSelectPaper = (paper: Paper): void => {
+  currentPaper.value = paper
 }
 
 const startResize = (e: MouseEvent): void => {

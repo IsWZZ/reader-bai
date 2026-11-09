@@ -11,7 +11,7 @@
               </h2>
               <Tooltip>
                 <TooltipTrigger as-child>
-                  <Button variant="ghost" size="icon-sm" class="rounded-lg">
+                  <Button variant="ghost" size="icon-sm" class="rounded-lg" @click="importPaper">
                     <Plus class="size-4" />
                   </Button>
                 </TooltipTrigger>
@@ -37,7 +37,7 @@
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem v-for="paper in papers" :key="paper.id">
-                    <SidebarMenuButton>
+                    <SidebarMenuButton @click="selectPaper(paper)">
                       <FileText class="size-4" />
                       <span class="truncate">{{ paper.title }}</span>
                     </SidebarMenuButton>
@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import {
   Sidebar,
   SidebarContent,
@@ -72,13 +72,53 @@ import { LibraryBig, FileText, Plus } from 'lucide-vue-next'
 interface Paper {
   id: string
   title: string
+  path?: string
 }
-
-// 模拟数据，后续接入真实数据
-const papers = ref<Paper[]>([])
 
 // 从父组件接收宽度
 defineProps<{
   width: number
 }>()
+
+const emit = defineEmits<{
+  selectPaper: [paper: Paper]
+}>()
+
+// 论文列表
+const papers = ref<Paper[]>([])
+
+// 启动时从主进程加载已保存的论文库
+onMounted(async () => {
+  if (!window.api) {
+    console.error('window.api is not available')
+    return
+  }
+  try {
+    papers.value = await window.api.listPapers()
+  } catch (error) {
+    console.error('加载论文库失败:', error)
+  }
+})
+
+// 导入论文
+const importPaper = async (): Promise<void> => {
+  if (!window.api) {
+    console.error('window.api is not available')
+    return
+  }
+  try {
+    const paper = await window.api.importPaper()
+    // 重复导入同一篇论文时主进程会返回已有记录，这里避免列表重复
+    if (paper && !papers.value.some((p) => p.id === paper.id)) {
+      papers.value.push(paper)
+    }
+  } catch (error) {
+    console.error('导入论文失败:', error)
+  }
+}
+
+// 选择论文
+const selectPaper = (paper: Paper): void => {
+  emit('selectPaper', paper)
+}
 </script>
