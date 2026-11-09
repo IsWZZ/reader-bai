@@ -1,7 +1,7 @@
 <template>
   <TooltipProvider>
     <div
-      class="flex flex-col items-center w-12 shrink-0 bg-background border-r py-2 gap-2 overflow-y-auto"
+      class="flex flex-col items-center w-12 shrink-0 bg-background border rounded-lg py-2 gap-2 overflow-y-auto"
     >
       <Tooltip>
         <TooltipTrigger as-child>
