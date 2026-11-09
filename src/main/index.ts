@@ -91,6 +91,15 @@ app.whenReady().then(() => {
   // 读取论文库
   ipcMain.handle('library:list', () => readLibrary())
 
+  // 读取论文文件内容（仅允许读取论文库中已导入的文件）
+  ipcMain.handle('paper:read', async (_event, filePath: string) => {
+    const papers = await readLibrary()
+    if (!papers.some((paper) => paper.path === filePath)) {
+      throw new Error('Paper not found in library')
+    }
+    return readFile(filePath)
+  })
+
   // 导入论文文件对话框
   ipcMain.handle('dialog:importPaper', async () => {
     const result = await dialog.showOpenDialog({

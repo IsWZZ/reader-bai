@@ -14,11 +14,9 @@
         class="w-0.5 cursor-col-resize hover:bg-primary/50 transition-colors rounded-full"
         @mousedown="startResize"
       />
-      <main class="flex-1 overflow-y-auto rounded-lg border bg-card p-4">
+      <main class="flex-1 overflow-hidden rounded-lg border bg-card p-4">
         <div v-if="currentPaper" class="h-full">
-          <h1 class="text-lg font-semibold mb-4">{{ currentPaper.title }}</h1>
-          <p class="text-sm text-muted-foreground">文件路径: {{ currentPaper.path }}</p>
-          <!-- TODO: 这里后续添加 PDF 阅读器 -->
+          <PdfViewer v-if="currentPaper.path" :src="currentPaper.path" class="h-full" />
         </div>
         <div v-else class="flex items-center justify-center h-full">
           <p class="text-muted-foreground">选择论文开始阅读</p>
@@ -33,6 +31,7 @@ import { ref } from 'vue'
 import Toolbar from '@renderer/components/Toolbar.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
+import PdfViewer from '@renderer/components/PdfViewer.vue'
 
 interface Paper {
   id: string

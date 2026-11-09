@@ -9,6 +9,7 @@ interface PaperInfo {
 interface Api {
   importPaper: () => Promise<PaperInfo | null>
   listPapers: () => Promise<PaperInfo[]>
+  readPaper: (filePath: string) => Promise<Uint8Array>
 }
 
 declare global {

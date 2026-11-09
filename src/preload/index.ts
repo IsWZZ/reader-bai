@@ -4,7 +4,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 // Custom APIs for renderer
 const api = {
   importPaper: () => ipcRenderer.invoke('dialog:importPaper'),
-  listPapers: () => ipcRenderer.invoke('library:list')
+  listPapers: () => ipcRenderer.invoke('library:list'),
+  readPaper: (filePath: string) => ipcRenderer.invoke('paper:read', filePath)
 }
 
 console.log('preload script running, contextIsolated:', process.contextIsolated)
