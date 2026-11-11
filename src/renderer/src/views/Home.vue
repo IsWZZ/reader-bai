@@ -6,6 +6,7 @@
       <LibraryPanel
         v-if="isLibraryOpen"
         v-model:width="libraryWidth"
+        :current-paper-id="currentPaper?.id"
         @select-paper="handleSelectPaper"
       />
       <!-- 拖拽分隔符 -->
@@ -32,12 +33,7 @@ import Toolbar from '@renderer/components/Toolbar.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
-
-interface Paper {
-  id: string
-  title: string
-  path?: string
-}
+import type { Paper } from '@renderer/types'
 
 const isLibraryOpen = ref(true)
 const libraryWidth = ref(256)

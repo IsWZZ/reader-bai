@@ -137,9 +137,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as pdfjsLib from 'pdfjs-dist'
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from 'pdfjs-dist'
+import { pdfjsLib } from '@renderer/lib/pdf'
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import {
@@ -149,9 +148,6 @@ import {
   TooltipTrigger
 } from '@renderer/components/ui/tooltip'
 import { Eraser, Highlighter, Scan, Underline, ZoomIn, ZoomOut } from 'lucide-vue-next'
-
-// 用内联 worker，避免打包后 file:// 协议下按 URL 加载 worker 失败
-pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker()
 
 const MIN_ZOOM = 0.5
 const MAX_ZOOM = 3

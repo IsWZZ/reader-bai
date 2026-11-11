@@ -13,8 +13,16 @@ interface PaperAnnotation {
 
 // Custom APIs for renderer
 const api = {
-  importPaper: () => ipcRenderer.invoke('dialog:importPaper'),
+  importPaper: (spaceId: string | null = null) => ipcRenderer.invoke('dialog:importPaper', spaceId),
   listPapers: () => ipcRenderer.invoke('library:list'),
+  createSpace: (name: string) => ipcRenderer.invoke('library:createSpace', name),
+  renameSpace: (id: string, name: string) => ipcRenderer.invoke('library:renameSpace', id, name),
+  deleteSpace: (id: string) => ipcRenderer.invoke('library:deleteSpace', id),
+  renamePaper: (id: string, title: string, source: 'metadata' | 'user') =>
+    ipcRenderer.invoke('library:renamePaper', id, title, source),
+  movePaper: (id: string, spaceId: string | null) =>
+    ipcRenderer.invoke('library:movePaper', id, spaceId),
+  removePaper: (id: string) => ipcRenderer.invoke('library:removePaper', id),
   readPaper: (filePath: string) => ipcRenderer.invoke('paper:read', filePath),
   listAnnotations: (filePath: string) => ipcRenderer.invoke('annotations:list', filePath),
   addAnnotation: (filePath: string, annotation: PaperAnnotation) =>
