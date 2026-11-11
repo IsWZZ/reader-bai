@@ -689,9 +689,429 @@ const getSelectionOnPage = (): {
   return { pageNumber, rects, text }
 }
 
+// ---------- 单击选词 / 双击选句 ----------
+
+interface TextSegment {
+  node: Text
+  start: number
+  end: number
+}
+
+// 记录按下位置，用来区分单击和拖拽划选
+let pointerDownAt: { x: number; y: number } | null = null
+
+// 鼠标位置对应的文本光标（Chromium 用 caretPositionFromPoint，旧内核用 caretRangeFromPoint）
+const getCaretFromPoint = (x: number, y: number): { node: Node; offset: number } | null => {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  const position = doc.caretPositionFromPoint?.(x, y)
+  if (position) return { node: position.offsetNode, offset: position.offset }
+  const range = doc.caretRangeFromPoint?.(x, y)
+  if (range) return { node: range.startContainer, offset: range.startOffset }
+  return null
+}
+
+// 只有点在 PDF 文字层上时才返回对应的文本节点
+const textNodeAt = (x: number, y: number): { node: Text; offset: number } | null => {
+  const caret = getCaretFromPoint(x, y)
+  if (!caret || !(caret.node instanceof Text)) return null
+  if (!caret.node.parentElement?.closest('.pdf-text-layer')) return null
+  return { node: caret.node, offset: caret.offset }
+}
+
+const WORD_CHAR = /[\p{L}\p{N}'’_-]/u
+
+// 选中鼠标下的单词；点在空白或标点上时取最近的单词
+const selectWordAtPoint = (x: number, y: number): boolean => {
+  const target = textNodeAt(x, y)
+  if (!target) return false
+
+  const content = target.node.nodeValue ?? ''
+  const isWordChar = (index: number): boolean =>
+    index >= 0 && index < content.length && WORD_CHAR.test(content[index])
+
+  let index = -1
+  if (isWordChar(target.offset)) {
+    index = target.offset
+  } else if (isWordChar(target.offset - 1)) {
+    index = target.offset - 1
+  } else {
+    // 光标落在标点或空白上，先向右、再向左找最近的单词
+    for (let i = target.offset; i < content.length; i += 1) {
+      if (isWordChar(i)) {
+        index = i
+        break
+      }
+    }
+    if (index === -1) {
+      for (let i = target.offset - 1; i >= 0; i -= 1) {
+        if (isWordChar(i)) {
+          index = i
+          break
+        }
+      }
+    }
+  }
+  if (index === -1) return false
+
+  let start = index
+  let end = index + 1
+  while (isWordChar(start - 1)) start -= 1
+  while (isWordChar(end)) end += 1
+
+  const range = document.createRange()
+  range.setStart(target.node, start)
+  range.setEnd(target.node, end)
+  const selection = window.getSelection()
+  if (!selection) return false
+  selection.removeAllRanges()
+  selection.addRange(range)
+  return true
+}
+
+// 句号后常见的缩写，遇到时不当作句子结束
+const SENTENCE_ABBREVIATIONS = new Set([
+  'e.g',
+  'i.e',
+  'et al',
+  'al',
+  'fig',
+  'figs',
+  'eq',
+  'eqs',
+  'sec',
+  'secs',
+  'ref',
+  'refs',
+  'no',
+  'nos',
+  'vs',
+  'dr',
+  'mr',
+  'mrs',
+  'ms',
+  'prof',
+  'etc',
+  'approx'
+])
+
+const isSentenceEnd = (text: string, index: number): boolean => {
+  const char = text[index]
+  if (char === '!' || char === '?' || char === '。' || char === '！' || char === '？') return true
+  if (char !== '.') return false
+
+  const prev = text[index - 1] ?? ''
+  const next = text[index + 1] ?? ''
+  // 小数与编号：3.14、1.2.3
+  if (/\d/.test(prev) && /[\d.]/.test(next)) return false
+  // 句号后面通常是空白、行尾或收尾符号；紧贴字母数字的更像邮箱、网址或编号
+  if (next && !/[\s"'”’）)\]]/.test(next)) return false
+
+  // 缩写：e.g. / i.e. / et al. / Fig. / Eq.
+  const rawWord = text.slice(0, index).match(/[A-Za-z.]+$/)?.[0] ?? ''
+  if (SENTENCE_ABBREVIATIONS.has(rawWord.toLowerCase())) return false
+  // 人名首字母：J. Smith；字母前必须是空白，避免把 51.6°S. 当成缩写
+  if (/^\p{Lu}$/u.test(rawWord)) {
+    const before = text[index - 2] ?? ''
+    const after = text.slice(index + 1).match(/^\s*(\S)/)?.[1] ?? ''
+    if ((before === '' || /\s/.test(before)) && after && /^\p{Lu}/u.test(after)) return false
+  }
+  return true
+}
+
+// 以光标位置所在句子为界，向前后找最近的句末符号；
+// 文字块里用空行标记段落开头和标签分界，句子不会越过这些边界。
+const sentenceRangeAt = (text: string, offset: number): [number, number] => {
+  let start = 0
+  for (let i = Math.min(offset, text.length) - 1; i >= 0; i -= 1) {
+    if (text[i] === '\n' && text[i - 1] === '\n') {
+      start = i + 1
+      break
+    }
+    if (isSentenceEnd(text, i)) {
+      start = i + 1
+      break
+    }
+  }
+  while (start < text.length && /\s/.test(text[start])) start += 1
+
+  let end = text.length
+  for (let i = Math.max(offset, 0); i < text.length; i += 1) {
+    if (text[i] === '\n' && text[i + 1] === '\n') {
+      end = i
+      break
+    }
+    if (isSentenceEnd(text, i)) {
+      end = i + 1
+      break
+    }
+  }
+  // 把句末的引号、括号也包含进来
+  while (end < text.length && /["'”’）)\]]/.test(text[end])) end += 1
+  return [start, end]
+}
+
+const positionInSegments = (
+  segments: TextSegment[],
+  position: number
+): { node: Text; offset: number } | null => {
+  if (segments.length === 0) return null
+  for (const segment of segments) {
+    if (position <= segment.end) {
+      return { node: segment.node, offset: Math.max(0, position - segment.start) }
+    }
+  }
+  const last = segments[segments.length - 1]
+  return { node: last.node, offset: (last.node.nodeValue ?? '').length }
+}
+
+const applyRange = (range: Range): boolean => {
+  const selection = window.getSelection()
+  if (!selection) return false
+  selection.removeAllRanges()
+  selection.addRange(range)
+  return true
+}
+
+const getSpanFontSize = (span: HTMLElement): number => {
+  const size = Number.parseFloat(getComputedStyle(span).fontSize)
+  return Number.isFinite(size) ? size : 0
+}
+
+interface LineBox {
+  top: number
+  bottom: number
+  left: number
+  right: number
+  // 行内最大的字号，上标、脚注编号等小字不影响整行样式
+  size: number
+  spans: HTMLElement[]
+}
+
+// 把文字层里的 span 按视觉行聚合。
+// 同一行内的文字垂直重叠、水平间距很小；两栏或不同块之间的间距更大，会拆成不同的行。
+const buildLines = (layer: HTMLElement): LineBox[] => {
+  const spans = Array.from(layer.querySelectorAll<HTMLElement>('span')).filter(
+    (item) => !!item.textContent?.trim()
+  )
+  const lines: LineBox[] = []
+  for (const span of spans) {
+    const rect = span.getBoundingClientRect()
+    const size = getSpanFontSize(span)
+    const line = lines.find((item) => {
+      const overlap = Math.min(item.bottom, rect.bottom) - Math.max(item.top, rect.top)
+      if (overlap <= Math.min(item.bottom - item.top, rect.height) * 0.5) return false
+      const gap = Math.max(item.left, rect.left) - Math.min(item.right, rect.right)
+      return gap <= Math.max(rect.height, size) * 1.5
+    })
+    if (line) {
+      line.top = Math.min(line.top, rect.top)
+      line.bottom = Math.max(line.bottom, rect.bottom)
+      line.left = Math.min(line.left, rect.left)
+      line.right = Math.max(line.right, rect.right)
+      line.size = Math.max(line.size, size)
+      line.spans.push(span)
+    } else {
+      lines.push({
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        size,
+        spans: [span]
+      })
+    }
+  }
+  return lines
+}
+
+const sameTextStyle = (a: number, b: number): boolean => Math.abs(a - b) <= Math.max(a, b) * 0.08
+
+const horizontallyOverlaps = (a: LineBox, b: LineBox): boolean =>
+  Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0
+
+const verticallyAdjacent = (a: LineBox, b: LineBox): boolean => {
+  const gap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom)
+  return gap <= Math.max(a.bottom - a.top, b.bottom - b.top) * 1.8
+}
+
+const medianLineSize = (lines: LineBox[]): number => {
+  const sizes = lines.map((line) => line.size).sort((a, b) => a - b)
+  return sizes[Math.floor(sizes.length / 2)] ?? 0
+}
+
+// 字号相同的行属于同一类文字；上标、脚注、标题的字号不同，会被排除在外
+const linesOfStyle = (lines: LineBox[], anchor: LineBox): LineBox[] =>
+  lines.filter((line) => sameTextStyle(line.size, anchor.size))
+
+// 点击位置所在的连续同字号文字块。
+// 遇到标题、作者、脚注等不同字号的内容就断开，避免选区跨过它们。
+const collectBlockLines = (lines: LineBox[], index: number): LineBox[] => {
+  const anchor = lines[index]
+  let first = index
+  let last = index
+  while (first > 0 && sameTextStyle(lines[first - 1].size, anchor.size)) first -= 1
+  while (last < lines.length - 1 && sameTextStyle(lines[last + 1].size, anchor.size)) last += 1
+  return lines.slice(first, last + 1)
+}
+
+// 标题按垂直相邻的同字号行整块选中
+const headingBlockLines = (lines: LineBox[], index: number): LineBox[] => {
+  const anchor = lines[index]
+  const styleLines = linesOfStyle(lines, anchor)
+  const position = styleLines.indexOf(anchor)
+  if (position === -1) return [anchor]
+
+  let first = position
+  let last = position
+  while (
+    first > 0 &&
+    horizontallyOverlaps(styleLines[first - 1], styleLines[first]) &&
+    verticallyAdjacent(styleLines[first - 1], styleLines[first])
+  ) {
+    first -= 1
+  }
+  while (
+    last < styleLines.length - 1 &&
+    horizontallyOverlaps(styleLines[last], styleLines[last + 1]) &&
+    verticallyAdjacent(styleLines[last], styleLines[last + 1])
+  ) {
+    last += 1
+  }
+  return styleLines.slice(first, last + 1)
+}
+
+// 同一栏文字的左边界，用来判断段落首行缩进
+const columnLeft = (lines: LineBox[], line: LineBox): number => {
+  let left = line.left
+  for (const item of lines) {
+    if (horizontallyOverlaps(item, line)) left = Math.min(left, item.left)
+  }
+  return left
+}
+
+// 段落首行通常有缩进或上方留白；换栏时句子可能继续，不能算段落开头
+const isParagraphStart = (lines: LineBox[], index: number): boolean => {
+  if (index === 0) return false
+  const line = lines[index]
+  const prev = lines[index - 1]
+  if (!horizontallyOverlaps(prev, line)) return false
+  if (line.top - prev.bottom > line.size * 0.9) return true
+  return line.left - columnLeft(lines, line) > line.size * 0.5
+}
+
+// 同行内的大间距通常是标签和正文的分界（如 Abstract、Keywords）
+const labelGap = 0.75
+
+// 把文字块内的行按阅读顺序拼成一段文本：行与行之间换行，
+// 段落开头和标签之后用空行隔开，作为句子扫描的硬边界。
+const buildBlockText = (lines: LineBox[]): { text: string; segments: TextSegment[] } => {
+  const segments: TextSegment[] = []
+  const parts: string[] = []
+  let length = 0
+  const push = (value: string): void => {
+    if (!value) return
+    parts.push(value)
+    length += value.length
+  }
+
+  lines.forEach((line, lineIndex) => {
+    if (lineIndex > 0) push(isParagraphStart(lines, lineIndex) ? '\n\n' : '\n')
+    const ordered = [...line.spans].sort(
+      (a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left
+    )
+    ordered.forEach((span, spanIndex) => {
+      if (spanIndex > 0) {
+        const prev = ordered[spanIndex - 1]
+        const gap = span.getBoundingClientRect().left - prev.getBoundingClientRect().right
+        // 只把短的引导词（Abstract、Keywords 等）当作标签，避免拆散正常行
+        if (gap > line.size * labelGap && (prev.textContent ?? '').trim().length <= 20) {
+          push('\n\n')
+        } else if (gap > line.size * 0.15) {
+          // pdf.js 按文字块切分 span，词间空格可能被切掉，按间距补回来
+          push(' ')
+        }
+      }
+      const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT)
+      let node = walker.nextNode()
+      while (node) {
+        const value = node.nodeValue ?? ''
+        if (value) {
+          segments.push({ node: node as Text, start: length, end: length + value.length })
+          push(value)
+        }
+        node = walker.nextNode()
+      }
+    })
+  })
+  return { text: parts.join(''), segments }
+}
+
+// 选中鼠标下的单词所在的句子。
+// 句子只在点击所在的文字块内查找，避免越过标题、作者、图表等区域。
+const selectSentenceAtPoint = (x: number, y: number): boolean => {
+  const target = textNodeAt(x, y)
+  if (!target) return false
+  const span = target.node.parentElement?.closest<HTMLElement>('span')
+  const layer = target.node.parentElement?.closest<HTMLElement>('.pdf-text-layer')
+  if (!span || !layer) return false
+
+  const lines = buildLines(layer)
+  const lineIndex = lines.findIndex((line) => line.spans.includes(span))
+  if (lineIndex === -1) return false
+
+  // 标题字号明显大于正文时整块选中；正文则在同一个文字块内查找句子
+  const clickedLine = lines[lineIndex]
+  const isHeading = clickedLine.size >= medianLineSize(lines) * 1.4
+  const block = isHeading
+    ? headingBlockLines(lines, lineIndex)
+    : collectBlockLines(lines, lineIndex)
+  const { text, segments } = buildBlockText(block)
+  const segment = segments.find((item) => item.node === target.node)
+  if (!segment) return false
+
+  const offset = segment.start + Math.min(target.offset, (target.node.nodeValue ?? '').length)
+  const [start, end] = isHeading ? [0, text.length] : sentenceRangeAt(text, offset)
+  if (end <= start) return false
+
+  const startPosition = positionInSegments(segments, start)
+  const endPosition = positionInSegments(segments, end)
+  if (!startPosition || !endPosition) return false
+
+  const range = document.createRange()
+  range.setStart(startPosition.node, startPosition.offset)
+  range.setEnd(endPosition.node, endPosition.offset)
+  return applyRange(range)
+}
+
+const handleMouseDown = (event: MouseEvent): void => {
+  if (event.button !== 0) {
+    pointerDownAt = null
+    return
+  }
+  pointerDownAt = { x: event.clientX, y: event.clientY }
+}
+
 const handleMouseUp = (event: MouseEvent): void => {
   // 点击工具栏按钮时保留之前捕获的选区，否则按钮的 mouseup 会把选区清空
+  if (event.target instanceof Element && event.target.closest('button')) {
+    pointerDownAt = null
+    return
+  }
+  const down = pointerDownAt
+  pointerDownAt = null
+  const dragged = down ? Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4 : false
+  // 单击（没有拖动）选中鼠标下的单词；双击、三击交给对应的处理器
+  if (!dragged && event.detail === 1) selectWordAtPoint(event.clientX, event.clientY)
+  pendingSelection.value = getSelectionOnPage()
+}
+
+const handleDoubleClick = (event: MouseEvent): void => {
   if (event.target instanceof Element && event.target.closest('button')) return
+  // 双击时把选中的单词扩展为所在句子
+  if (!selectSentenceAtPoint(event.clientX, event.clientY)) return
   pendingSelection.value = getSelectionOnPage()
 }
 
@@ -818,7 +1238,9 @@ onMounted(() => {
   if (containerRef.value) {
     resizeObserver.observe(containerRef.value)
   }
+  document.addEventListener('mousedown', handleMouseDown)
   document.addEventListener('mouseup', handleMouseUp)
+  document.addEventListener('dblclick', handleDoubleClick)
   void loadDocument()
   void loadAnnotations()
 })
@@ -835,7 +1257,9 @@ onBeforeUnmount(() => {
   generation += 1
   resizeObserver.disconnect()
   intersectionObserver?.disconnect()
+  document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('mouseup', handleMouseUp)
+  document.removeEventListener('dblclick', handleDoubleClick)
   if (resizeTimer) clearTimeout(resizeTimer)
   void cancelAllRenders()
   clearTextLayers()
