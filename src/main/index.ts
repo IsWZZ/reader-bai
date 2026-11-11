@@ -10,6 +10,24 @@ interface PaperInfo {
   path: string
 }
 
+interface AnnotationRect {
+  // 相对页面宽高的归一化坐标（0~1），缩放后依然对齐
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface PaperAnnotation {
+  id: string
+  type: 'highlight' | 'underline'
+  color: string
+  page: number
+  rects: AnnotationRect[]
+  text: string
+  createdAt: number
+}
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -50,7 +68,7 @@ function createWindow(): void {
   }
 
   // 打开开发者工具
-  mainWindow.webContents.openDevTools()
+  // mainWindow.webContents.openDevTools()
 }
 
 // This method will be called when Electron has finished
@@ -90,6 +108,65 @@ app.whenReady().then(() => {
 
   // 读取论文库
   ipcMain.handle('library:list', () => readLibrary())
+
+  // 论文注释（高亮/下划线）持久化文件
+  const annotationsFile = join(app.getPath('userData'), 'annotations.json')
+
+  const readAnnotations = async (): Promise<Record<string, PaperAnnotation[]>> => {
+    try {
+      const raw = await readFile(annotationsFile, 'utf-8')
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+
+  const writeAnnotations = async (store: Record<string, PaperAnnotation[]>): Promise<void> => {
+    await writeFile(annotationsFile, JSON.stringify(store, null, 2), 'utf-8')
+  }
+
+  const isLibraryPaper = async (filePath: string): Promise<boolean> => {
+    const papers = await readLibrary()
+    return papers.some((paper) => paper.path === filePath)
+  }
+
+  // 读取某篇论文的注释
+  ipcMain.handle('annotations:list', async (_event, filePath: string) => {
+    const store = await readAnnotations()
+    return store[filePath] ?? []
+  })
+
+  // 新增一条注释
+  ipcMain.handle(
+    'annotations:add',
+    async (_event, filePath: string, annotation: PaperAnnotation) => {
+      if (!(await isLibraryPaper(filePath))) {
+        throw new Error('Paper not found in library')
+      }
+      const store = await readAnnotations()
+      const list = store[filePath] ?? []
+      list.push(annotation)
+      store[filePath] = list
+      await writeAnnotations(store)
+      return annotation
+    }
+  )
+
+  // 删除某篇论文的多条注释，返回实际删除的 id
+  ipcMain.handle('annotations:remove', async (_event, filePath: string, ids: string[]) => {
+    if (!(await isLibraryPaper(filePath))) {
+      throw new Error('Paper not found in library')
+    }
+    const store = await readAnnotations()
+    const list = store[filePath] ?? []
+    const idSet = new Set(ids)
+    const removed = list.filter((annotation) => idSet.has(annotation.id)).map((a) => a.id)
+    if (removed.length === 0) return []
+    store[filePath] = list.filter((annotation) => !idSet.has(annotation.id))
+    await writeAnnotations(store)
+    return removed
+  })
 
   // 读取论文文件内容（仅允许读取论文库中已导入的文件）
   ipcMain.handle('paper:read', async (_event, filePath: string) => {
