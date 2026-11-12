@@ -1,13 +1,20 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { writeFile } from 'node:fs/promises'
+import { access, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
   launchReader,
   readJsonFile,
   removeUserDataDir,
+  stubOpenDialog,
+  stubOpenDirectoryDialog,
+  writeSamplePdf,
   type ReaderInstance
 } from './helpers'
+
+interface StoredLibrary {
+  papers: { path: string }[]
+}
 
 interface StoredAiProfile {
   id: string
@@ -27,6 +34,7 @@ interface StoredSettings {
     apiKeyEncrypted?: boolean
     model?: string
   }
+  library?: { directory?: string }
 }
 
 let userDataDir: string
@@ -52,6 +60,7 @@ test('applies the selected theme and restores it after relaunch', async () => {
   let reader = await launchReader(userDataDir)
   const dialog = await openSettings(reader.page)
 
+  await dialog.getByRole('button', { name: '外观' }).click()
   await dialog.getByRole('button', { name: '深色' }).click()
   await expect(reader.page.locator('html')).toHaveClass(/dark/)
   await expect
@@ -62,6 +71,43 @@ test('applies the selected theme and restores it after relaunch', async () => {
 
   reader = await launchReader(userDataDir)
   await expect(reader.page.locator('html')).toHaveClass(/dark/)
+  await reader.app.close()
+})
+
+test('copies imported PDFs into the configured library directory', async () => {
+  const customDirectory = join(userDataDir, 'custom-papers')
+  const pdfPath = join(userDataDir, 'sample.pdf')
+  await writeSamplePdf(pdfPath)
+
+  const reader = await launchReader(userDataDir)
+  // 设置默认打开论文库分区
+  const dialog = await openSettings(reader.page)
+
+  // 未配置时显示应用数据目录下的默认位置
+  await expect(dialog.locator('#library-directory')).toHaveValue(join(userDataDir, 'papers'))
+
+  await stubOpenDirectoryDialog(reader.app, customDirectory)
+  await dialog.getByRole('button', { name: '选择文件夹' }).click()
+  await expect(dialog.locator('#library-directory')).toHaveValue(customDirectory)
+  await expect
+    .poll(async () => (await readJsonFile<StoredSettings>(settingsFile()))?.library?.directory)
+    .toBe(customDirectory)
+
+  await dialog.getByRole('button', { name: '关闭' }).click()
+  await stubOpenDialog(reader.app, pdfPath)
+  await reader.page.getByRole('button', { name: '导入论文' }).click()
+  await expect(reader.page.getByRole('button', { name: 'sample', exact: true })).toBeVisible()
+
+  const storedPath = join(customDirectory, 'sample.pdf')
+  await expect
+    .poll(
+      async () =>
+        (await readJsonFile<StoredLibrary>(join(userDataDir, 'library.json')))?.papers[0]?.path
+    )
+    .toBe(storedPath)
+  await expect(access(storedPath)).resolves.toBeUndefined()
+  // 原文件不受影响
+  await expect(access(pdfPath)).resolves.toBeUndefined()
   await reader.app.close()
 })
 
@@ -162,7 +208,7 @@ test('rewrites legacy AI settings into profiles when saved', async () => {
     settingsFile(),
     JSON.stringify(
       {
-        theme: 'system',
+        theme: 'light',
         ai: {
           baseUrl: 'https://legacy.example/v1',
           apiKey: 'sk-legacy',

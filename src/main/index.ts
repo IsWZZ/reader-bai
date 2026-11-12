@@ -26,9 +26,9 @@ app.whenReady().then(() => {
   const userData = app.getPath('userData')
   const library = createLibraryStore(join(userData, 'library.json'))
   const annotations = createAnnotationStore(join(userData, 'annotations.json'))
-  const settings = createSettingsStore(join(userData, 'settings.json'))
+  const settings = createSettingsStore(join(userData, 'settings.json'), join(userData, 'papers'))
 
-  registerLibraryIpc(library)
+  registerLibraryIpc(library, settings)
   registerAnnotationsIpc(annotations, library)
   registerSettingsIpc(settings)
   registerAiIpc(settings)

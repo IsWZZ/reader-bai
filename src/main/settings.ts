@@ -1,7 +1,9 @@
 // 设置文件的纯逻辑：清洗、旧格式迁移与 patch 合并。
 // 刻意不依赖 electron，方便在 Vitest 中直接测试。
 
-export type AppTheme = 'light' | 'dark' | 'system'
+import { isAbsolute } from 'node:path'
+
+export type AppTheme = 'light' | 'dark'
 
 export interface AiProfile {
   id: string
@@ -15,9 +17,15 @@ export interface AiSettings {
   activeId: string
 }
 
+export interface LibrarySettings {
+  /** 论文库目录；空字符串表示使用主进程提供的默认目录 */
+  directory: string
+}
+
 export interface AppSettings {
   theme: AppTheme
   ai: AiSettings
+  library: LibrarySettings
 }
 
 export interface SettingsPatch {
@@ -25,6 +33,10 @@ export interface SettingsPatch {
   ai?: {
     profiles?: AiProfile[]
     activeId?: string
+  }
+  library?: {
+    /** 空字符串表示恢复默认目录 */
+    directory?: string
   }
 }
 
@@ -45,6 +57,7 @@ export interface StoredAiSettings {
 export interface StoredSettings {
   theme: AppTheme
   ai: StoredAiSettings
+  library: LibrarySettings
 }
 
 export interface EncodedKey {
@@ -58,15 +71,23 @@ const MAX_PROFILES = 20
 const MAX_ID = 100
 const MAX_BASE_URL = 500
 const MAX_API_KEY = 500
+const MAX_DIRECTORY = 2000
 // safeStorage 的密文是 base64，长度会明显超过明文
 const MAX_STORED_KEY = 4096
 const MAX_MODEL = 120
 
+// 旧版本的 'system' 等已移除，读取时按浅色处理
 const normalizeTheme = (value: unknown): AppTheme =>
-  value === 'light' || value === 'dark' || value === 'system' ? value : 'system'
+  value === 'light' || value === 'dark' ? value : 'light'
 
 const asString = (value: unknown, max: number): string =>
   typeof value === 'string' ? value.trim().slice(0, max) : ''
+
+/** 只接受绝对路径；空路径表示使用默认目录 */
+const normalizeDirectory = (value: unknown): string => {
+  const directory = asString(value, MAX_DIRECTORY)
+  return directory && isAbsolute(directory) ? directory : ''
+}
 
 /**
  * id 必须跨启动保持稳定，否则 activeId 会失效。
@@ -147,9 +168,12 @@ export const normalizeStoredSettings = (raw: unknown): StoredSettings => {
     profiles = legacy ? [legacy] : []
   }
 
+  const library = objectOf(source.library) ?? {}
+
   return {
     theme: normalizeTheme(source.theme),
-    ai: { profiles, activeId: normalizeActiveId(ai.activeId, profiles) }
+    ai: { profiles, activeId: normalizeActiveId(ai.activeId, profiles) },
+    library: { directory: normalizeDirectory(library.directory) }
   }
 }
 
@@ -185,13 +209,23 @@ export const applySettingsPatch = (
     ai: {
       profiles: stored.ai.profiles.map((profile) => ({ ...profile })),
       activeId: stored.ai.activeId
-    }
+    },
+    library: { directory: stored.library.directory }
   }
 
   const source = objectOf(patch)
   if (!source) return next
 
   if (source.theme !== undefined) next.theme = normalizeTheme(source.theme)
+
+  const libraryPatch = objectOf(source.library)
+  if (libraryPatch && typeof libraryPatch.directory === 'string') {
+    const directory = asString(libraryPatch.directory, MAX_DIRECTORY)
+    if (directory && !isAbsolute(directory)) {
+      throw new Error('论文库存储位置需要是绝对路径')
+    }
+    next.library.directory = directory
+  }
 
   const aiPatch = objectOf(source.ai)
   if (aiPatch) {

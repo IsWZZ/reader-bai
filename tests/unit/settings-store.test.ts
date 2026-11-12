@@ -17,10 +17,17 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const BASE_SETTINGS: AppSettings = {
-  theme: 'system',
+const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
+
+const makeSettings = (
+  settings: Omit<AppSettings, 'library'>,
+  directory = DEFAULT_LIBRARY_DIRECTORY
+): AppSettings => ({ ...settings, library: { directory } })
+
+const BASE_SETTINGS = makeSettings({
+  theme: 'light',
   ai: { profiles: [], activeId: '' }
-}
+})
 
 const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
@@ -34,12 +41,18 @@ const installSettings = (settings: AppSettings): void => {
   getSettings.mockResolvedValue(clone(current))
 }
 
-// 模拟主进程：未提供的字段保持不变
+// 模拟主进程：未提供的字段保持不变；空目录表示恢复默认
 const mergePatch = (patch: SettingsPatch): AppSettings => ({
   theme: patch.theme ?? current.theme,
   ai: {
     profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
     activeId: patch.ai?.activeId ?? current.ai.activeId
+  },
+  library: {
+    directory:
+      patch.library?.directory === undefined
+        ? current.library.directory
+        : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
   }
 })
 
@@ -61,10 +74,12 @@ describe('settings store', () => {
   })
 
   it('loads settings on initialize and exposes the active AI profile', async () => {
-    installSettings({
-      theme: 'dark',
-      ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' }
-    })
+    installSettings(
+      makeSettings({
+        theme: 'dark',
+        ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' }
+      })
+    )
     const store = useSettingsStore()
 
     await store.initialize()
@@ -78,7 +93,9 @@ describe('settings store', () => {
   })
 
   it('falls back to the first profile when activeId is stale', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A], activeId: 'missing' } })
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'missing' } })
+    )
     const store = useSettingsStore()
 
     await store.initialize()
@@ -87,10 +104,12 @@ describe('settings store', () => {
   })
 
   it('reports an incomplete profile and an empty list', async () => {
-    installSettings({
-      theme: 'system',
-      ai: { profiles: [{ ...PROFILE_A, apiKey: '' }], activeId: 'a' }
-    })
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: { profiles: [{ ...PROFILE_A, apiKey: '' }], activeId: 'a' }
+      })
+    )
     const store = useSettingsStore()
     await store.initialize()
 
@@ -117,32 +136,16 @@ describe('settings store', () => {
     expect(store.theme).toBe('dark')
   })
 
-  it('follows the system theme while theme is "system"', async () => {
-    let dark = false
-    const listeners = new Set<() => void>()
-    vi.spyOn(window, 'matchMedia').mockImplementation(
-      (query: string) =>
-        ({
-          matches: dark,
-          media: query,
-          onchange: null,
-          addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
-          removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
-          addListener: (listener: () => void) => listeners.add(listener),
-          removeListener: (listener: () => void) => listeners.delete(listener),
-          dispatchEvent: () => false
-        }) as unknown as MediaQueryList
-    )
+  it('switches back to light and removes the dark class', async () => {
     const store = useSettingsStore()
     await store.initialize()
-    expect(document.documentElement.classList.contains('dark')).toBe(false)
-
-    dark = true
-    listeners.forEach((listener) => listener())
+    await store.setTheme('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
 
-    dark = false
-    listeners.forEach((listener) => listener())
+    const saved = await store.setTheme('light')
+
+    expect(saved).toBe(true)
+    expect(store.theme).toBe('light')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 
@@ -172,7 +175,9 @@ describe('settings store', () => {
   })
 
   it('switches only activeId without dropping the profile list', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'a' } })
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'a' } })
+    )
     let resolveUpdate: (value: AppSettings) => void = () => undefined
     updateSettings.mockImplementation(
       () =>
@@ -190,13 +195,55 @@ describe('settings store', () => {
     expect(store.aiProfiles).toEqual([PROFILE_A, PROFILE_B])
     expect(store.activeAiProfile?.id).toBe('b')
 
-    resolveUpdate({ theme: 'system', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
+    resolveUpdate(
+      makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
+    )
     await expect(pending).resolves.toBe(true)
     expect(store.activeAiProfile?.id).toBe('b')
   })
 
+  it('loads the effective library directory and saves a custom one', async () => {
+    const store = useSettingsStore()
+    await store.initialize()
+
+    expect(store.libraryDirectory).toBe(DEFAULT_LIBRARY_DIRECTORY)
+
+    const saved = await store.setLibraryDirectory('  /tmp/custom-papers  ')
+
+    expect(saved).toBe(true)
+    expect(updateSettings).toHaveBeenCalledWith({ library: { directory: '/tmp/custom-papers' } })
+    expect(store.libraryDirectory).toBe('/tmp/custom-papers')
+  })
+
+  it('restores the default library directory with an empty patch value', async () => {
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }, '/tmp/custom-papers')
+    )
+    const store = useSettingsStore()
+    await store.initialize()
+    expect(store.libraryDirectory).toBe('/tmp/custom-papers')
+
+    const saved = await store.setLibraryDirectory('')
+
+    expect(saved).toBe(true)
+    expect(updateSettings).toHaveBeenCalledWith({ library: { directory: '' } })
+    expect(store.libraryDirectory).toBe(DEFAULT_LIBRARY_DIRECTORY)
+  })
+
+  it('rolls back the library directory when saving fails', async () => {
+    updateSettings.mockRejectedValue(new Error('目录不可写'))
+    const store = useSettingsStore()
+    await store.initialize()
+
+    const saved = await store.setLibraryDirectory('/tmp/custom-papers')
+
+    expect(saved).toBe(false)
+    expect(store.libraryDirectory).toBe(DEFAULT_LIBRARY_DIRECTORY)
+    expect(store.error).toBe('目录不可写')
+  })
+
   it('rolls back the theme when saving fails', async () => {
-    installSettings({ theme: 'dark', ai: { profiles: [], activeId: '' } })
+    installSettings(makeSettings({ theme: 'dark', ai: { profiles: [], activeId: '' } }))
     updateSettings.mockRejectedValue(new Error('磁盘写入失败'))
     const store = useSettingsStore()
     await store.initialize()
@@ -217,7 +264,7 @@ describe('settings store', () => {
     await store.initialize()
 
     expect(store.loaded).toBe(true)
-    expect(store.theme).toBe('system')
+    expect(store.theme).toBe('light')
     expect(store.error).toBe('配置文件损坏')
     expect(store.aiProfiles).toEqual([])
     expect(document.documentElement.classList.contains('dark')).toBe(false)
@@ -263,7 +310,7 @@ describe('settings store', () => {
     expect(updateSettings).toHaveBeenCalledTimes(1)
     expect(store.saving).toBe(true)
 
-    resolveUpdate({ theme: 'dark', ai: { profiles: [], activeId: '' } })
+    resolveUpdate(makeSettings({ theme: 'dark', ai: { profiles: [], activeId: '' } }))
 
     await expect(first).resolves.toBe(true)
     expect(store.theme).toBe('dark')
@@ -290,7 +337,7 @@ describe('settings store', () => {
     const saved = await store.setTheme('dark')
 
     expect(saved).toBe(false)
-    expect(store.theme).toBe('system')
+    expect(store.theme).toBe('light')
     expect(store.error).toBe('当前环境无法访问设置存储')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
   })

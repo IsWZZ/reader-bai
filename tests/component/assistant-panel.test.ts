@@ -20,10 +20,15 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const BASE_SETTINGS: AppSettings = {
-  theme: 'system',
+const makeSettings = (settings: Omit<AppSettings, 'library'>): AppSettings => ({
+  ...settings,
+  library: { directory: '' }
+})
+
+const BASE_SETTINGS = makeSettings({
+  theme: 'light',
   ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'a' }
-}
+})
 
 let current: AppSettings
 
@@ -69,7 +74,8 @@ describe('AssistantPanel', () => {
         ai: {
           profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
           activeId: patch.ai?.activeId ?? current.ai.activeId
-        }
+        },
+        library: current.library
       }
       return structuredClone(current)
     })
@@ -78,7 +84,7 @@ describe('AssistantPanel', () => {
   })
 
   it('shows the add-profile hint when no AI profile exists', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [], activeId: '' } })
+    installSettings(makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }))
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -90,10 +96,12 @@ describe('AssistantPanel', () => {
   })
 
   it('shows the incomplete-profile hint for a partially filled profile', async () => {
-    installSettings({
-      theme: 'system',
-      ai: { profiles: [{ ...PROFILE_A, model: '' }], activeId: 'a' }
-    })
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: { profiles: [{ ...PROFILE_A, model: '' }], activeId: 'a' }
+      })
+    )
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -105,16 +113,18 @@ describe('AssistantPanel', () => {
   })
 
   it('lists every profile and falls back to the base URL for a missing model', async () => {
-    installSettings({
-      theme: 'system',
-      ai: {
-        profiles: [
-          PROFILE_A,
-          { id: 'c', baseUrl: 'https://api3.example.com/v1', apiKey: 'sk-c', model: '' }
-        ],
-        activeId: 'a'
-      }
-    })
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: {
+          profiles: [
+            PROFILE_A,
+            { id: 'c', baseUrl: 'https://api3.example.com/v1', apiKey: 'sk-c', model: '' }
+          ],
+          activeId: 'a'
+        }
+      })
+    )
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 

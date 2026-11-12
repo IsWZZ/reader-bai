@@ -18,10 +18,15 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const CONFIGURED: AppSettings = {
-  theme: 'system',
+const makeSettings = (settings: Omit<AppSettings, 'library'>): AppSettings => ({
+  ...settings,
+  library: { directory: '' }
+})
+
+const CONFIGURED = makeSettings({
+  theme: 'light',
   ai: { profiles: [PROFILE_A], activeId: 'a' }
-}
+})
 
 const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
@@ -79,7 +84,8 @@ describe('assistant store', () => {
       ai: {
         profiles: patch.ai?.profiles ?? CONFIGURED.ai.profiles,
         activeId: patch.ai?.activeId ?? CONFIGURED.ai.activeId
-      }
+      },
+      library: { directory: '' }
     }))
 
     installApi()
@@ -167,10 +173,12 @@ describe('assistant store', () => {
   })
 
   it('does not call the API without a complete configuration', async () => {
-    getSettings.mockResolvedValue({
-      theme: 'system',
-      ai: { profiles: [{ ...PROFILE_A, model: '' }], activeId: 'a' }
-    })
+    getSettings.mockResolvedValue(
+      makeSettings({
+        theme: 'light',
+        ai: { profiles: [{ ...PROFILE_A, model: '' }], activeId: 'a' }
+      })
+    )
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -188,7 +196,9 @@ describe('assistant store', () => {
   })
 
   it('does not call the API when no profile is configured', async () => {
-    getSettings.mockResolvedValue({ theme: 'system', ai: { profiles: [], activeId: '' } })
+    getSettings.mockResolvedValue(
+      makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } })
+    )
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -201,17 +211,18 @@ describe('assistant store', () => {
   })
 
   it('uses the profile selected before the debounce fires', async () => {
-    const settings: AppSettings = {
-      theme: 'system',
+    const settings = makeSettings({
+      theme: 'light',
       ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'a' }
-    }
+    })
     getSettings.mockResolvedValue(structuredClone(settings))
     updateSettings.mockImplementation(async (patch) => ({
       theme: patch.theme ?? settings.theme,
       ai: {
         profiles: patch.ai?.profiles ?? settings.ai.profiles,
         activeId: patch.ai?.activeId ?? settings.ai.activeId
-      }
+      },
+      library: settings.library
     }))
     setActivePinia(createPinia())
     await useSettingsStore().initialize()

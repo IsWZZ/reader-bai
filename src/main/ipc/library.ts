@@ -2,15 +2,17 @@ import { dialog, ipcMain } from 'electron'
 import { readFile } from 'fs/promises'
 import {
   baseName,
+  copyIntoLibraryDirectory,
   createLibraryId,
   fileStem,
   type LibraryStore,
   type PaperInfo,
   type PaperTitleSource
 } from '../library'
+import type { SettingsStore } from '../settings-store'
 
 /** 论文库与 PDF 文件相关的 IPC */
-export const registerLibraryIpc = (library: LibraryStore): void => {
+export const registerLibraryIpc = (library: LibraryStore, settings: SettingsStore): void => {
   ipcMain.handle('library:list', () => library.read())
 
   ipcMain.handle('library:createSpace', async (_event, name: unknown) => {
@@ -100,6 +102,15 @@ export const registerLibraryIpc = (library: LibraryStore): void => {
     return readFile(filePath)
   })
 
+  // 选择论文库存储目录
+  ipcMain.handle('dialog:chooseDirectory', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择论文库存储位置',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+  })
+
   // 导入论文文件对话框，可指定导入到某个空间
   ipcMain.handle('dialog:importPaper', async (_event, spaceId: string | null = null) => {
     const result = await dialog.showOpenDialog({
@@ -120,9 +131,11 @@ export const registerLibraryIpc = (library: LibraryStore): void => {
     const targetSpaceId =
       spaceId && state.spaces.some((space) => space.id === spaceId) ? spaceId : null
 
-    // 已导入过同一路径的论文时直接返回，避免重复；
+    // 已导入过同一来源的论文时直接返回，避免重复；
     // 如果是通过某个空间的导入按钮触发的，则把论文移动进该空间
-    const existing = state.papers.find((paper) => paper.path === filePath)
+    const existing = state.papers.find(
+      (paper) => paper.sourcePath === filePath || paper.path === filePath
+    )
     if (existing) {
       if (targetSpaceId && existing.spaceId !== targetSpaceId) {
         existing.spaceId = targetSpaceId
@@ -131,11 +144,22 @@ export const registerLibraryIpc = (library: LibraryStore): void => {
       return existing
     }
 
+    // 复制进论文库目录；已有论文不迁移，原文件始终保留
+    const directory = await settings.libraryDirectory()
+    let storedPath: string
+    try {
+      storedPath = await copyIntoLibraryDirectory(filePath, directory)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`无法把论文复制到论文库目录：${message}`, { cause: error })
+    }
+
     // 初始名称先取文件名，渲染进程解析 PDF 元数据后会更新为论文真实标题
     const paper: PaperInfo = {
       id: createLibraryId(),
       title: fileStem(filePath),
-      path: filePath,
+      path: storedPath,
+      sourcePath: filePath,
       fileName: baseName(filePath),
       spaceId: targetSpaceId,
       titleSource: 'file',

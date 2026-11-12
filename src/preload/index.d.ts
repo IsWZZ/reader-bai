@@ -11,8 +11,10 @@ declare global {
     id: string
     /** 展示名称，用户可重命名 */
     title: string
-    /** 论文在磁盘上的绝对路径 */
+    /** 论文库中保存的绝对路径（可能是导入时复制出的副本） */
     path: string
+    /** 导入时的原始路径，用于重复导入去重 */
+    sourcePath?: string
     /** 原始文件名（含扩展名） */
     fileName: string
     /** 所属空间，null 表示未分类 */
@@ -45,7 +47,7 @@ declare global {
     createdAt: number
   }
 
-  type AppTheme = 'light' | 'dark' | 'system'
+  type AppTheme = 'light' | 'dark'
 
   interface AiProfile {
     id: string
@@ -74,9 +76,15 @@ declare global {
     delta: string
   }
 
+  interface LibrarySettings {
+    /** 当前生效的论文库目录 */
+    directory: string
+  }
+
   interface AppSettings {
     theme: AppTheme
     ai: AiSettings
+    library: LibrarySettings
   }
 
   interface SettingsPatch {
@@ -87,10 +95,16 @@ declare global {
       /** 只切换当前配置 */
       activeId?: string
     }
+    library?: {
+      /** 空字符串表示恢复默认目录 */
+      directory?: string
+    }
   }
 
   interface Api {
     importPaper: (spaceId?: string | null) => Promise<PaperInfo | null>
+    /** 选择论文库存储目录；取消时返回 null */
+    chooseDirectory: () => Promise<string | null>
     listPapers: () => Promise<LibraryState>
     createSpace: (name: string) => Promise<LibraryState>
     renameSpace: (id: string, name: string) => Promise<LibraryState>

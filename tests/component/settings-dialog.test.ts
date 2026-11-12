@@ -19,15 +19,23 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const BASE_SETTINGS: AppSettings = {
-  theme: 'system',
+const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
+
+const makeSettings = (
+  settings: Omit<AppSettings, 'library'>,
+  directory = DEFAULT_LIBRARY_DIRECTORY
+): AppSettings => ({ ...settings, library: { directory } })
+
+const BASE_SETTINGS = makeSettings({
+  theme: 'light',
   ai: { profiles: [], activeId: '' }
-}
+})
 
 let current: AppSettings
 
 const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
+const chooseDirectory = vi.fn<() => Promise<string | null>>()
 
 const installSettings = (settings: AppSettings): void => {
   current = structuredClone(settings)
@@ -69,6 +77,12 @@ const openAiSection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
   return button
 }
 
+const openLibrarySection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
+  const button = findButton('论文库')
+  await button.trigger('click')
+  return button
+}
+
 const fillProfile = async (profile: AiProfile): Promise<void> => {
   await findInput('#ai-base-url').setValue(profile.baseUrl)
   await findInput('#ai-model').setValue(profile.model)
@@ -80,6 +94,8 @@ describe('SettingsDialog', () => {
     setActivePinia(createPinia())
     getSettings.mockReset()
     updateSettings.mockReset()
+    chooseDirectory.mockReset()
+    chooseDirectory.mockResolvedValue(null)
     installSettings(BASE_SETTINGS)
     updateSettings.mockImplementation(async (patch) => {
       current = {
@@ -87,11 +103,17 @@ describe('SettingsDialog', () => {
         ai: {
           profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
           activeId: patch.ai?.activeId ?? current.ai.activeId
+        },
+        library: {
+          directory:
+            patch.library?.directory === undefined
+              ? current.library.directory
+              : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
         }
       }
       return structuredClone(current)
     })
-    window.api = { getSettings, updateSettings } as unknown as Api
+    window.api = { getSettings, updateSettings, chooseDirectory } as unknown as Api
 
     const store = useSettingsStore()
     await store.initialize()
@@ -100,12 +122,24 @@ describe('SettingsDialog', () => {
   it('switches the theme from the appearance section', async () => {
     const wrapper = await mountDialog()
 
+    await findButton('外观').trigger('click')
     await findButton('深色').trigger('click')
     await flushPromises()
 
     expect(updateSettings).toHaveBeenCalledWith({ theme: 'dark' })
     expect(document.documentElement.classList.contains('dark')).toBe(true)
     expect(useSettingsStore().theme).toBe('dark')
+    wrapper.unmount()
+  })
+
+  it('offers only light and dark themes', async () => {
+    const wrapper = await mountDialog()
+    await findButton('外观').trigger('click')
+
+    expect(findButton('浅色')).toBeDefined()
+    expect(findButton('深色')).toBeDefined()
+    expect(() => findButton('跟随系统')).toThrow()
+    expect(() => findButton('黑白')).toThrow()
     wrapper.unmount()
   })
 
@@ -157,7 +191,7 @@ describe('SettingsDialog', () => {
   })
 
   it('keeps the existing profile when adding a second one', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A], activeId: 'a' } })
+    installSettings(makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'a' } }))
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -182,7 +216,9 @@ describe('SettingsDialog', () => {
   })
 
   it('opens the edit form with the stored values', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
+    )
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -200,7 +236,7 @@ describe('SettingsDialog', () => {
   })
 
   it('updates an existing profile in place', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A], activeId: 'a' } })
+    installSettings(makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'a' } }))
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -235,7 +271,9 @@ describe('SettingsDialog', () => {
   })
 
   it('deletes the active profile and moves the active id to the remaining one', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
+    )
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -256,7 +294,7 @@ describe('SettingsDialog', () => {
   })
 
   it('shows the empty state after deleting the last profile', async () => {
-    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A], activeId: 'a' } })
+    installSettings(makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'a' } }))
     setActivePinia(createPinia())
     await useSettingsStore().initialize()
 
@@ -270,6 +308,74 @@ describe('SettingsDialog', () => {
     expect(document.body.textContent).toContain('还没有配置，点击「新增模型」开始。')
     expect(hasInput('#ai-base-url')).toBe(false)
     expect(findButton('新增模型')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('opens on the library section and shows the current directory', async () => {
+    const wrapper = await mountDialog()
+
+    expect(findInput('#library-directory').element.value).toBe(DEFAULT_LIBRARY_DIRECTORY)
+    expect(document.body.textContent).toContain('新导入的 PDF 会复制到此目录')
+    wrapper.unmount()
+  })
+
+  it('saves the directory picked from the native dialog', async () => {
+    chooseDirectory.mockResolvedValue('/tmp/custom-papers')
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+
+    await findButton('选择文件夹').trigger('click')
+    await flushPromises()
+
+    expect(chooseDirectory).toHaveBeenCalledTimes(1)
+    expect(updateSettings).toHaveBeenCalledWith({ library: { directory: '/tmp/custom-papers' } })
+    expect(findInput('#library-directory').element.value).toBe('/tmp/custom-papers')
+    expect(document.body.textContent).toContain('已保存')
+    wrapper.unmount()
+  })
+
+  it('keeps the directory when the folder dialog is cancelled', async () => {
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+
+    await findButton('选择文件夹').trigger('click')
+    await flushPromises()
+
+    expect(chooseDirectory).toHaveBeenCalledTimes(1)
+    expect(updateSettings).not.toHaveBeenCalled()
+    expect(findInput('#library-directory').element.value).toBe(DEFAULT_LIBRARY_DIRECTORY)
+    wrapper.unmount()
+  })
+
+  it('restores the default library directory', async () => {
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }, '/tmp/custom-papers')
+    )
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+    expect(findInput('#library-directory').element.value).toBe('/tmp/custom-papers')
+
+    await findButton('恢复默认').trigger('click')
+    await flushPromises()
+
+    expect(updateSettings).toHaveBeenCalledWith({ library: { directory: '' } })
+    expect(findInput('#library-directory').element.value).toBe(DEFAULT_LIBRARY_DIRECTORY)
+    wrapper.unmount()
+  })
+
+  it('reports an error when the folder picker is unavailable', async () => {
+    window.api = { getSettings, updateSettings } as unknown as Api
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+
+    await findButton('选择文件夹').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('当前环境无法选择文件夹')
+    expect(updateSettings).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

@@ -51,11 +51,15 @@ test('imports a PDF and backfills the metadata title', async () => {
     reader.page.getByRole('button', { name: 'Metadata Title', exact: true })
   ).toBeVisible()
   await expect.poll(async () => (await readLibrary())?.papers[0]?.titleSource).toBe('metadata')
+  // 导入时把 PDF 复制到默认论文库目录，原文件保留
+  const storedPath = join(userDataDir, 'papers', 'sample.pdf')
   expect((await readLibrary())?.papers[0]).toMatchObject({
     title: 'Metadata Title',
-    path: pdfPath,
+    path: storedPath,
     spaceId: null
   })
+  await expect(access(storedPath)).resolves.toBeUndefined()
+  await expect(access(pdfPath)).resolves.toBeUndefined()
 
   await reader.app.close()
 })
@@ -109,6 +113,7 @@ test('imports a paper directly into the requested space', async () => {
 
   await expect(reader.page.getByRole('button', { name: 'sample', exact: true })).toBeVisible()
   await expect.poll(async () => (await readLibrary())?.papers[0]?.spaceId).toBe('space-ml')
+  await expect(access(join(userDataDir, 'papers', 'sample.pdf'))).resolves.toBeUndefined()
   await expect(access(pdfPath)).resolves.toBeUndefined()
 
   await reader.app.close()

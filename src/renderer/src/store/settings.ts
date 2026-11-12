@@ -3,11 +3,10 @@ import { computed, ref } from 'vue'
 import type { AiProfile, AppSettings, AppTheme, SettingsPatch } from '@renderer/types'
 
 const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'system',
-  ai: { profiles: [], activeId: '' }
+  theme: 'light',
+  ai: { profiles: [], activeId: '' },
+  library: { directory: '' }
 }
-
-const systemPrefersDark = (): boolean => window.matchMedia('(prefers-color-scheme: dark)').matches
 
 /**
  * 全局设置：主题与多份 AI 配置。
@@ -16,13 +15,15 @@ const systemPrefersDark = (): boolean => window.matchMedia('(prefers-color-schem
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({
     theme: DEFAULT_SETTINGS.theme,
-    ai: { profiles: [], activeId: '' }
+    ai: { profiles: [], activeId: '' },
+    library: { directory: '' }
   })
   const loaded = ref(false)
   const saving = ref(false)
   const error = ref('')
 
   const aiProfiles = computed<AiProfile[]>(() => settings.value.ai.profiles)
+  const libraryDirectory = computed<string>(() => settings.value.library.directory)
   const activeAiProfile = computed<AiProfile | null>(() => {
     const { profiles, activeId } = settings.value.ai
     return profiles.find((profile) => profile.id === activeId) ?? profiles[0] ?? null
@@ -33,26 +34,14 @@ export const useSettingsStore = defineStore('settings', () => {
   })
   const theme = computed<AppTheme>(() => settings.value.theme)
 
-  let mediaQuery: MediaQueryList | null = null
-
   const applyTheme = (value: AppTheme): void => {
-    const dark = value === 'dark' || (value === 'system' && systemPrefersDark())
+    const dark = value === 'dark'
     document.documentElement.classList.toggle('dark', dark)
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   }
 
-  // 跟随系统时监听系统主题切换，只注册一次
-  const watchSystemTheme = (): void => {
-    if (mediaQuery) return
-    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    mediaQuery.addEventListener('change', () => {
-      if (settings.value.theme === 'system') applyTheme('system')
-    })
-  }
-
   const adopt = (next: AppSettings): void => {
     settings.value = next
-    watchSystemTheme()
     applyTheme(next.theme)
   }
 
@@ -60,7 +49,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const initialize = async (): Promise<void> => {
     if (loaded.value) return
     loaded.value = true
-    watchSystemTheme()
     applyTheme(settings.value.theme)
 
     const api = window.api
@@ -83,6 +71,9 @@ export const useSettingsStore = defineStore('settings', () => {
         // 只切换 activeId 时也要保留完整列表
         profiles: (aiPatch?.profiles ?? previous.ai.profiles).map((profile) => ({ ...profile })),
         activeId: aiPatch?.activeId ?? previous.ai.activeId
+      },
+      library: {
+        directory: patch.library?.directory ?? previous.library.directory
       }
     }
     // 主题需要即时生效，失败时再回滚
@@ -128,6 +119,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const setActiveAiProfile = (id: string): Promise<boolean> => persist({ ai: { activeId: id } })
 
+  const setLibraryDirectory = (directory: string): Promise<boolean> =>
+    persist({ library: { directory: directory.trim() } })
+
   const clearError = (): void => {
     error.value = ''
   }
@@ -141,10 +135,12 @@ export const useSettingsStore = defineStore('settings', () => {
     aiProfiles,
     activeAiProfile,
     isAiConfigured,
+    libraryDirectory,
     initialize,
     setTheme,
     saveAiProfiles,
     setActiveAiProfile,
+    setLibraryDirectory,
     clearError
   }
 })

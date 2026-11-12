@@ -10,8 +10,10 @@ export interface Paper {
   id: string
   /** 展示名称，用户可重命名 */
   title: string
-  /** 论文在磁盘上的绝对路径 */
+  /** 论文库中保存的绝对路径（可能是导入时复制出的副本） */
   path: string
+  /** 导入时的原始路径，用于重复导入去重 */
+  sourcePath?: string
   /** 原始文件名（含扩展名） */
   fileName: string
   /** 所属空间，null 表示未分类 */
@@ -26,7 +28,7 @@ export interface LibraryData {
   papers: Paper[]
 }
 
-export type AppTheme = 'light' | 'dark' | 'system'
+export type AppTheme = 'light' | 'dark'
 
 export interface AiProfile {
   id: string
@@ -55,9 +57,15 @@ export interface AiChunk {
   delta: string
 }
 
+export interface LibrarySettings {
+  /** 当前生效的论文库目录 */
+  directory: string
+}
+
 export interface AppSettings {
   theme: AppTheme
   ai: AiSettings
+  library: LibrarySettings
 }
 
 export interface SettingsPatch {
@@ -67,5 +75,9 @@ export interface SettingsPatch {
     profiles?: AiProfile[]
     /** 只切换当前配置 */
     activeId?: string
+  }
+  library?: {
+    /** 空字符串表示恢复默认目录 */
+    directory?: string
   }
 }

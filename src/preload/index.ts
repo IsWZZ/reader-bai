@@ -11,7 +11,7 @@ interface PaperAnnotation {
   createdAt: number
 }
 
-type AppTheme = 'light' | 'dark' | 'system'
+type AppTheme = 'light' | 'dark'
 
 interface AiProfile {
   id: string
@@ -37,9 +37,14 @@ interface AiChunk {
   delta: string
 }
 
+interface LibrarySettings {
+  directory: string
+}
+
 interface AppSettings {
   theme: AppTheme
   ai: AiSettings
+  library: LibrarySettings
 }
 
 interface SettingsPatch {
@@ -48,11 +53,15 @@ interface SettingsPatch {
     profiles?: AiProfile[]
     activeId?: string
   }
+  library?: {
+    directory?: string
+  }
 }
 
 // Custom APIs for renderer
 const api = {
   importPaper: (spaceId: string | null = null) => ipcRenderer.invoke('dialog:importPaper', spaceId),
+  chooseDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:chooseDirectory'),
   listPapers: () => ipcRenderer.invoke('library:list'),
   createSpace: (name: string) => ipcRenderer.invoke('library:createSpace', name),
   renameSpace: (id: string, name: string) => ipcRenderer.invoke('library:renameSpace', id, name),

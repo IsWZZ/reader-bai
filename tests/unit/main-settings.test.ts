@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   applySettingsPatch,
@@ -5,6 +7,8 @@ import {
   type EncodeApiKey,
   type StoredSettings
 } from '../../src/main/settings'
+
+const LIBRARY_DIRECTORY = join(tmpdir(), 'reader-bai-papers')
 
 const plainEncode: EncodeApiKey = (apiKey) => ({ apiKey, apiKeyEncrypted: false })
 
@@ -56,8 +60,29 @@ describe('normalizeStoredSettings', () => {
           }
         ],
         activeId: 'a'
-      }
+      },
+      library: { directory: '' }
     })
+  })
+
+  it('migrates removed themes to light', () => {
+    expect(normalizeStoredSettings({ theme: 'system' }).theme).toBe('light')
+    expect(normalizeStoredSettings({ theme: 'mono' }).theme).toBe('light')
+    expect(normalizeStoredSettings({ theme: 'unknown' }).theme).toBe('light')
+    expect(normalizeStoredSettings({}).theme).toBe('light')
+  })
+
+  it('keeps an absolute library directory and drops invalid ones', () => {
+    expect(
+      normalizeStoredSettings({ library: { directory: ` ${LIBRARY_DIRECTORY} ` } }).library
+    ).toEqual({ directory: LIBRARY_DIRECTORY })
+    expect(normalizeStoredSettings({ library: { directory: 'relative/papers' } }).library).toEqual({
+      directory: ''
+    })
+    expect(normalizeStoredSettings({ library: { directory: 42 } }).library).toEqual({
+      directory: ''
+    })
+    expect(normalizeStoredSettings({}).library).toEqual({ directory: '' })
   })
 
   it('migrates a legacy single config into a default profile', () => {
@@ -245,5 +270,31 @@ describe('applySettingsPatch', () => {
 
     expect(next.theme).toBe('light')
     expect(next.ai).toEqual(base.ai)
+  })
+
+  it('sets and resets the library directory', () => {
+    const base = withProfiles()
+
+    const moved = applySettingsPatch(
+      base,
+      { library: { directory: ` ${LIBRARY_DIRECTORY} ` } },
+      plainEncode
+    )
+    expect(moved.library).toEqual({ directory: LIBRARY_DIRECTORY })
+    expect(moved.ai).toEqual(base.ai)
+
+    const reset = applySettingsPatch(moved, { library: { directory: '' } }, plainEncode)
+    expect(reset.library).toEqual({ directory: '' })
+
+    // 只给 theme 时不动目录
+    expect(applySettingsPatch(moved, { theme: 'dark' }, plainEncode).library).toEqual(moved.library)
+  })
+
+  it('rejects a relative library directory', () => {
+    const base = withProfiles()
+
+    expect(() =>
+      applySettingsPatch(base, { library: { directory: 'relative/papers' } }, plainEncode)
+    ).toThrow('论文库存储位置需要是绝对路径')
   })
 })

@@ -5,7 +5,7 @@
     >
       <DialogHeader class="border-b px-5 py-4 pr-12">
         <DialogTitle>设置</DialogTitle>
-        <DialogDescription>调整应用外观与 AI 服务</DialogDescription>
+        <DialogDescription>调整应用外观、AI 服务与论文库</DialogDescription>
       </DialogHeader>
 
       <div class="flex min-h-0 flex-1">
@@ -28,7 +28,54 @@
         </nav>
 
         <div class="min-w-0 flex-1 overflow-y-auto p-5">
-          <section v-if="activeSection === 'appearance'" class="space-y-4">
+          <section v-if="activeSection === 'library'" class="space-y-4">
+            <div>
+              <h3 class="text-sm font-medium">论文库存储位置</h3>
+              <p class="text-muted-foreground mt-1 text-xs">
+                新导入的 PDF 会复制到此目录，原文件保留；已有论文保持原路径。
+              </p>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium" for="library-directory">存储目录</label>
+              <Input
+                id="library-directory"
+                :model-value="settingsStore.libraryDirectory"
+                readonly
+                class="font-mono text-xs"
+                placeholder="加载中…"
+              />
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                :disabled="settingsStore.saving"
+                @click="chooseLibraryDirectory"
+              >
+                {{ settingsStore.saving ? '保存中…' : '选择文件夹' }}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                :disabled="settingsStore.saving"
+                @click="resetLibraryDirectory"
+              >
+                恢复默认
+              </Button>
+              <span v-if="status === 'saved'" class="text-muted-foreground text-xs">已保存</span>
+              <span v-else-if="formError" class="text-destructive text-xs">{{ formError }}</span>
+            </div>
+
+            <p class="text-muted-foreground text-xs">
+              从书库移除论文只会删除记录，不会删除此目录中的文件。
+            </p>
+          </section>
+
+          <section v-else-if="activeSection === 'appearance'" class="space-y-4">
             <div>
               <h3 class="text-sm font-medium">主题</h3>
               <p class="text-muted-foreground mt-1 text-xs">选择界面的明暗风格。</p>
@@ -207,27 +254,27 @@ import {
 import { Input } from '@renderer/components/ui/input'
 import { useSettingsStore } from '@renderer/store/settings'
 import { aiProfileLabel } from '@renderer/lib/ai'
-import { Eye, EyeOff, Monitor, Moon, Palette, Sparkles, Sun } from 'lucide-vue-next'
+import { Eye, EyeOff, FolderOpen, Moon, Palette, Sparkles, Sun } from 'lucide-vue-next'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const settingsStore = useSettingsStore()
 
-type SectionId = 'appearance' | 'ai'
+type SectionId = 'appearance' | 'ai' | 'library'
 
 const sections: { id: SectionId; label: string; icon: typeof Palette }[] = [
+  { id: 'library', label: '论文库', icon: FolderOpen },
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'ai', label: 'AI 服务', icon: Sparkles }
 ]
 
 const themeOptions: { value: AppTheme; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: '浅色', icon: Sun },
-  { value: 'dark', label: '深色', icon: Moon },
-  { value: 'system', label: '跟随系统', icon: Monitor }
+  { value: 'dark', label: '深色', icon: Moon }
 ]
 
-const activeSection = ref<SectionId>('appearance')
+const activeSection = ref<SectionId>('library')
 const profiles = computed(() => settingsStore.aiProfiles)
 // 默认只展示已保存的配置，点「新增模型」或「编辑」才展开表单
 const editingId = ref<string | null>(null)
@@ -281,6 +328,38 @@ watch(
     resetForm()
   }
 )
+
+watch(activeSection, () => {
+  status.value = 'idle'
+  formError.value = ''
+})
+
+const saveLibraryDirectory = async (directory: string): Promise<void> => {
+  formError.value = ''
+  const saved = await settingsStore.setLibraryDirectory(directory)
+  if (!saved) {
+    formError.value = settingsStore.error || '保存失败'
+    return
+  }
+  status.value = 'saved'
+}
+
+const chooseLibraryDirectory = async (): Promise<void> => {
+  formError.value = ''
+  const api = window.api
+  if (!api?.chooseDirectory) {
+    formError.value = '当前环境无法选择文件夹'
+    return
+  }
+  try {
+    const directory = await api.chooseDirectory()
+    if (directory) await saveLibraryDirectory(directory)
+  } catch (e) {
+    formError.value = e instanceof Error ? e.message : '选择文件夹失败'
+  }
+}
+
+const resetLibraryDirectory = (): Promise<void> => saveLibraryDirectory('')
 
 const normalizeBaseUrl = (value: string): string | null => {
   const trimmed = value.trim()

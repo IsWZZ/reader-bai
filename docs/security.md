@@ -31,6 +31,7 @@
 - [index.html](../src/renderer/index.html) 通过 CSP 限制资源：`default-src 'self'`、`script-src 'self'`、`worker-src 'self' blob:`，渲染进程无法连接外部地址。
 - 新窗口请求被拒绝，改用系统浏览器打开，避免在应用内加载任意页面。
 - `paper:read` 校验路径属于论文库；`dialog:importPaper` 只接受文件对话框的结果，不接受渲染进程指定任意路径。
+- 导入时把文件复制到论文库目录（默认 `userData/papers`），目录只能通过 `dialog:chooseDirectory` 的原生对话框选择；`library.directory` 在主进程校验为绝对路径，非法值拒绝写入。
 - 标注的新增和删除同样校验论文库归属。
 - AI 请求只在主进程发起（[ai.ts](../src/main/ai.ts)、[ipc/ai.ts](../src/main/ipc/ai.ts)），Key 不经过 `ai:chat` 参数；消息在进入主进程时校验角色、条数和总长度。
 - Key 优先用 Electron `safeStorage` 加密后落盘，见 [settings-store.ts](../src/main/settings-store.ts)。

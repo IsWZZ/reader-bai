@@ -1,4 +1,6 @@
-import { readFile, writeFile } from 'fs/promises'
+import { constants } from 'fs'
+import { copyFile, mkdir, readFile, writeFile } from 'fs/promises'
+import { isAbsolute, join, relative, sep } from 'path'
 
 export interface SpaceInfo {
   id: string
@@ -12,7 +14,10 @@ export interface PaperInfo {
   id: string
   // 展示名称，用户可重命名
   title: string
+  // 论文库中保存的绝对路径（可能是导入时复制出的副本）
   path: string
+  // 导入时的原始路径，用于重复导入去重；旧数据没有该字段时回退到 path
+  sourcePath?: string
   // 原始文件名（含扩展名）
   fileName: string
   // 所属空间，null 表示未分类
@@ -41,7 +46,7 @@ const normalizePaper = (raw: unknown): PaperInfo | null => {
   if (!raw || typeof raw !== 'object') return null
   const item = raw as Partial<PaperInfo>
   if (typeof item.path !== 'string' || !item.path) return null
-  return {
+  const paper: PaperInfo = {
     id: typeof item.id === 'string' && item.id ? item.id : createLibraryId(),
     title: typeof item.title === 'string' && item.title.trim() ? item.title : fileStem(item.path),
     path: item.path,
@@ -52,6 +57,10 @@ const normalizePaper = (raw: unknown): PaperInfo | null => {
       item.titleSource === 'metadata' || item.titleSource === 'user' ? item.titleSource : 'file',
     createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now()
   }
+  if (typeof item.sourcePath === 'string' && item.sourcePath) {
+    paper.sourcePath = item.sourcePath
+  }
+  return paper
 }
 
 // 兼容旧版 library.json（纯论文数组），并补齐新增字段
@@ -74,6 +83,45 @@ export const normalizeLibrary = (parsed: unknown): LibraryState => {
     if (paper.spaceId && !spaceIds.has(paper.spaceId)) paper.spaceId = null
   }
   return { spaces, papers }
+}
+
+/** 判断文件是否已经位于目标目录内（同目录或子目录） */
+export const isInsideDirectory = (directory: string, filePath: string): boolean => {
+  const relativePath = relative(directory, filePath)
+  return (
+    relativePath !== '' &&
+    relativePath !== '..' &&
+    !relativePath.startsWith(`..${sep}`) &&
+    !isAbsolute(relativePath)
+  )
+}
+
+/**
+ * 把导入的 PDF 复制进论文库目录，保留原文件。
+ * 文件已在目录内时直接返回原路径；重名时自动追加 (2)、(3)。
+ */
+export const copyIntoLibraryDirectory = async (
+  sourcePath: string,
+  directory: string
+): Promise<string> => {
+  await mkdir(directory, { recursive: true })
+  if (isInsideDirectory(directory, sourcePath)) return sourcePath
+
+  const name = baseName(sourcePath)
+  const dot = name.lastIndexOf('.')
+  const stem = dot > 0 ? name.slice(0, dot) : name
+  const extension = dot > 0 ? name.slice(dot) : ''
+
+  for (let index = 1; ; index += 1) {
+    const destination = join(directory, index === 1 ? name : `${stem} (${index})${extension}`)
+    try {
+      await copyFile(sourcePath, destination, constants.COPYFILE_EXCL)
+      return destination
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue
+      throw error
+    }
+  }
 }
 
 export interface LibraryStore {

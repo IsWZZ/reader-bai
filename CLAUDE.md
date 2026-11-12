@@ -41,16 +41,17 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 ### 关键位置
 
 - `views/Home.vue` 外壳；`LibraryPanel.vue` 书库；`PdfViewer.vue` 渲染/选词/标注（改动前读 [docs/pdf-viewer.md](docs/pdf-viewer.md)）。
-- `AssistantPanel.vue` + `store/assistant.ts` 翻译与 AI 对话；`SettingsDialog.vue` + `store/settings.ts` 主题与多 AI 配置。
+- `AssistantPanel.vue` + `store/assistant.ts` 翻译与 AI 对话；`SettingsDialog.vue` + `store/settings.ts` 主题、多 AI 配置与论文库存储位置。
 - `components/ui/**` 为 shadcn-vue 生成代码；`lib/pdf.ts` 管 worker 与元数据；`types.ts` 是渲染侧类型副本。
 - 测试：`tests/unit|component`（Vitest，mock `window.api`）、`tests/e2e`（Playwright，独立 `--user-data-dir`）；约定见 [docs/testing.md](docs/testing.md)。
 
 ### IPC 与数据
 
-通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId）、`ai:abort`、`ai:chunk`。
+通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`dialog:chooseDirectory`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId）、`ai:abort`、`ai:chunk`。
 
-- `settings.json` 为 `{ theme, ai: { profiles: [{ id, baseUrl, apiKey, apiKeyEncrypted, model }], activeId } }`；旧单配置读取时迁移为 `id: 'default'`（不回写）；`settings:update` 接受部分补丁。
+- `settings.json` 为 `{ theme, ai: { profiles: [{ id, baseUrl, apiKey, apiKeyEncrypted, model }], activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`（不回写）；`settings:update` 接受部分补丁；`library.directory` 只接受绝对路径，空字符串表示默认的 `userData/papers`。
 - `library.json` 为 `{ spaces, papers }`，保持 `normalizeLibrary` 旧格式迁移；`annotations.json` 以论文路径为键；移除论文/空间不删 PDF。
+- 导入 PDF 时复制到论文库目录（同名自动加 ` (2)` 等后缀），库中 `path` 指向副本、`sourcePath` 记录原文件用于去重；已在目录内的文件不重复复制；已有论文保持原路径。
 - `titleSource`（`file` | `metadata` | `user`）防止元数据回填覆盖用户重命名。
 - AI 只在主进程（`src/main/ai.ts`）按 `profileId` 解密 Key 并调 OpenAI 兼容 `/chat/completions`；Key 不经过聊天参数。
 - 新增 IPC 要同步 main handler、preload 方法、`index.d.ts`（应用数据还要改 `renderer/types.ts`），发送前剥离 Vue 代理，并补成功/失败 E2E。

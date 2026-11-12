@@ -4,7 +4,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -15,8 +15,12 @@ export interface ReaderInstance {
 
 const mainEntry = join(process.cwd(), 'out/main/index.js')
 
-/** 每个测试使用独立的 userData 目录，避免污染真实用户数据和相互串扰 */
-export const createUserDataDir = (): Promise<string> => mkdtemp(join(tmpdir(), 'reader-bai-e2e-'))
+/**
+ * 每个测试使用独立的 userData 目录，避免污染真实用户数据和相互串扰。
+ * macOS 的 /var 是 /private/var 的符号链接，Electron 返回真实路径，先统一掉。
+ */
+export const createUserDataDir = async (): Promise<string> =>
+  realpath(await mkdtemp(join(tmpdir(), 'reader-bai-e2e-')))
 
 export const removeUserDataDir = (dir: string): Promise<void> =>
   rm(dir, { recursive: true, force: true })
@@ -143,4 +147,15 @@ export async function stubOpenDialog(
     dialog.showOpenDialog = async () =>
       target ? { canceled: false, filePaths: [target] } : { canceled: true, filePaths: [] }
   }, filePath)
+}
+
+/** 替换主进程的原生目录选择对话框；传入 null 表示用户取消。 */
+export async function stubOpenDirectoryDialog(
+  app: ElectronApplication,
+  directory: string | null
+): Promise<void> {
+  await app.evaluate(({ dialog }, target) => {
+    dialog.showOpenDialog = async () =>
+      target ? { canceled: false, filePaths: [target] } : { canceled: true, filePaths: [] }
+  }, directory)
 }

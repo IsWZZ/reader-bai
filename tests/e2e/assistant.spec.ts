@@ -134,7 +134,7 @@ const settingsFile = (): string => join(userDataDir, 'settings.json')
 const seedAiProfiles = async (profiles: StoredAiProfile[], activeId: string): Promise<void> => {
   await writeFile(
     settingsFile(),
-    JSON.stringify({ theme: 'system', ai: { profiles, activeId } }, null, 2),
+    JSON.stringify({ theme: 'light', ai: { profiles, activeId } }, null, 2),
     'utf8'
   )
 }
@@ -153,7 +153,7 @@ const seedLegacyAiSettings = async (url: string, model?: string): Promise<void> 
     apiKeyEncrypted: false
   }
   if (model) ai.model = model
-  await writeFile(settingsFile(), JSON.stringify({ theme: 'system', ai }, null, 2), 'utf8')
+  await writeFile(settingsFile(), JSON.stringify({ theme: 'light', ai }, null, 2), 'utf8')
 }
 
 const seedPaper = async (): Promise<void> => {

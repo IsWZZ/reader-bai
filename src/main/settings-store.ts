@@ -1,5 +1,5 @@
 import { safeStorage } from 'electron'
-import { readFile, writeFile } from 'fs/promises'
+import { mkdir, readFile, writeFile } from 'fs/promises'
 import {
   applySettingsPatch,
   normalizeStoredSettings,
@@ -14,9 +14,17 @@ export interface SettingsStore {
   update: (patch: SettingsPatch) => Promise<AppSettings>
   toPublic: (stored: StoredSettings) => AppSettings
   decodeApiKey: (profile: StoredAiProfile) => string
+  /** 当前生效的论文库目录（未自定义时返回默认目录） */
+  libraryDirectory: () => Promise<string>
 }
 
-export const createSettingsStore = (settingsFile: string): SettingsStore => {
+export const createSettingsStore = (
+  settingsFile: string,
+  defaultLibraryDirectory: string
+): SettingsStore => {
+  const resolveLibraryDirectory = (stored: StoredSettings): string =>
+    stored.library.directory || defaultLibraryDirectory
+
   // API Key 优先用系统钥匙串加密；系统不支持时退化为明文存储
   const encodeApiKey = (apiKey: string): { apiKey: string; apiKeyEncrypted: boolean } => {
     if (!apiKey) return { apiKey: '', apiKeyEncrypted: false }
@@ -59,14 +67,21 @@ export const createSettingsStore = (settingsFile: string): SettingsStore => {
         apiKey: decodeApiKey(profile),
         model: profile.model
       }))
-    }
+    },
+    library: { directory: resolveLibraryDirectory(stored) }
   })
 
   const update = async (patch: SettingsPatch): Promise<AppSettings> => {
     const stored = applySettingsPatch(await read(), patch, encodeApiKey)
+    // 自定义目录在保存时就创建，权限问题能尽早反馈；空字符串表示使用默认目录
+    if (stored.library.directory) {
+      await mkdir(stored.library.directory, { recursive: true })
+    }
     await writeFile(settingsFile, JSON.stringify(stored, null, 2), 'utf-8')
     return toPublic(stored)
   }
 
-  return { read, update, toPublic, decodeApiKey }
+  const libraryDirectory = async (): Promise<string> => resolveLibraryDirectory(await read())
+
+  return { read, update, toPublic, decodeApiKey, libraryDirectory }
 }
