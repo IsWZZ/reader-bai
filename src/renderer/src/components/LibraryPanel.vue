@@ -16,6 +16,7 @@
                       variant="ghost"
                       size="icon-sm"
                       class="rounded-lg"
+                      aria-label="新建空间"
                       @click="startCreateSpace"
                     >
                       <FolderPlus class="size-4" />
@@ -29,6 +30,7 @@
                       variant="ghost"
                       size="icon-sm"
                       class="rounded-lg"
+                      aria-label="导入论文"
                       @click="importPaper()"
                     >
                       <Plus class="size-4" />
@@ -112,6 +114,7 @@
                       <button
                         type="button"
                         class="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                        :aria-label="`导入到${group.name}`"
                         @click.stop="importPaper(group.space.id)"
                       >
                         <FilePlus class="size-3.5" />
@@ -124,6 +127,7 @@
                       <button
                         type="button"
                         class="flex size-6 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:opacity-100 group-hover/space:opacity-100 data-[state=open]:opacity-100"
+                        :aria-label="`${group.name} 操作`"
                         @click.stop
                       >
                         <MoreHorizontal class="size-4" />
@@ -181,6 +185,7 @@
                         <DropdownMenuTrigger as-child>
                           <SidebarMenuAction
                             show-on-hover
+                            :aria-label="`${paper.title} 操作`"
                             @click.stop
                             @mousedown.stop
                             @dblclick.stop

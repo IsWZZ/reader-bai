@@ -78,6 +78,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const api = window.api
     if (!api) {
+      settings.value = previous
+      applyTheme(previous.theme)
       error.value = '当前环境无法访问设置存储'
       return false
     }

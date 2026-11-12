@@ -8,6 +8,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="缩小"
               :disabled="zoom <= MIN_ZOOM"
               @click="stepZoom(-1)"
             >
@@ -24,6 +25,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="放大"
               :disabled="zoom >= MAX_ZOOM"
               @click="stepZoom(1)"
             >
@@ -34,7 +36,7 @@
         </Tooltip>
         <Tooltip>
           <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon-sm" @click="resetZoom">
+            <Button variant="ghost" size="icon-sm" aria-label="适应宽度" @click="resetZoom">
               <Scan class="size-4" />
             </Button>
           </TooltipTrigger>
@@ -48,6 +50,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="高亮"
               :disabled="!pendingSelection"
               @mousedown.prevent
               @click="applyAnnotation('highlight')"
@@ -62,6 +65,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="下划线"
               :disabled="!pendingSelection"
               @mousedown.prevent
               @click="applyAnnotation('underline')"
@@ -76,6 +80,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="取消标记"
               :disabled="removableAnnotations.length === 0"
               @mousedown.prevent
               @click="removeSelectedAnnotations"
@@ -125,6 +130,8 @@
                 v-for="(rect, index) in annotation.rects"
                 :key="`${annotation.id}-${index}`"
                 class="absolute"
+                :data-annotation-id="annotation.id"
+                :data-annotation-type="annotation.type"
                 :style="annotationRectStyle(annotation, rect)"
               />
             </template>

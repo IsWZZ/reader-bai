@@ -8,6 +8,8 @@
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label="论文库"
+            :aria-pressed="$props.isLibraryOpen"
             :class="[
               'rounded-lg transition-colors',
               $props.isLibraryOpen ? 'bg-accent text-accent-foreground' : ''
@@ -27,6 +29,8 @@
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label="设置"
+            :aria-pressed="settingsOpen"
             :class="[
               'rounded-lg transition-colors',
               settingsOpen ? 'bg-accent text-accent-foreground' : ''

@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, typecheck & build
+    name: Lint, typecheck, build & test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,3 +50,10 @@ jobs:
 
       - name: Build
         run: npx electron-vite build
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      # Electron 需要虚拟显示；xvfb 在 ubuntu-latest 上已预装
+      - name: E2E tests
+        run: xvfb-run -a npx playwright test
