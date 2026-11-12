@@ -28,9 +28,31 @@ export interface LibraryData {
 
 export type AppTheme = 'light' | 'dark' | 'system'
 
-export interface AiSettings {
+export interface AiProfile {
+  id: string
   baseUrl: string
   apiKey: string
+  /** 调用 OpenAI 兼容接口时使用的模型名 */
+  model: string
+}
+
+export interface AiSettings {
+  profiles: AiProfile[]
+  /** 当前选中的配置 id，翻译和对话共用 */
+  activeId: string
+}
+
+export type ChatRole = 'system' | 'user' | 'assistant'
+
+export interface ChatMessage {
+  role: ChatRole
+  content: string
+}
+
+/** 主进程流式返回的增量片段 */
+export interface AiChunk {
+  requestId: string
+  delta: string
 }
 
 export interface AppSettings {
@@ -40,5 +62,10 @@ export interface AppSettings {
 
 export interface SettingsPatch {
   theme?: AppTheme
-  ai?: AiSettings
+  ai?: {
+    /** 传入时整体替换配置列表 */
+    profiles?: AiProfile[]
+    /** 只切换当前配置 */
+    activeId?: string
+  }
 }

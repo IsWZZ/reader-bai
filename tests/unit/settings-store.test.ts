@@ -1,15 +1,47 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSettingsStore } from '@renderer/store/settings'
-import type { AppSettings, SettingsPatch } from '@renderer/types'
+import type { AiProfile, AppSettings, SettingsPatch } from '@renderer/types'
+
+const PROFILE_A: AiProfile = {
+  id: 'a',
+  baseUrl: 'https://api.example.com/v1',
+  apiKey: 'sk-a',
+  model: 'model-a'
+}
+
+const PROFILE_B: AiProfile = {
+  id: 'b',
+  baseUrl: 'https://api2.example.com/v1',
+  apiKey: 'sk-b',
+  model: 'model-b'
+}
 
 const BASE_SETTINGS: AppSettings = {
   theme: 'system',
-  ai: { baseUrl: '', apiKey: '' }
+  ai: { profiles: [], activeId: '' }
 }
 
 const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
+
+let current: AppSettings
+
+const clone = (value: AppSettings): AppSettings => structuredClone(value)
+
+const installSettings = (settings: AppSettings): void => {
+  current = clone(settings)
+  getSettings.mockResolvedValue(clone(current))
+}
+
+// 模拟主进程：未提供的字段保持不变
+const mergePatch = (patch: SettingsPatch): AppSettings => ({
+  theme: patch.theme ?? current.theme,
+  ai: {
+    profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
+    activeId: patch.ai?.activeId ?? current.ai.activeId
+  }
+})
 
 const installApi = (): void => {
   window.api = { getSettings, updateSettings } as unknown as Api
@@ -20,18 +52,18 @@ describe('settings store', () => {
     setActivePinia(createPinia())
     getSettings.mockReset()
     updateSettings.mockReset()
-    getSettings.mockResolvedValue({ ...BASE_SETTINGS, ai: { ...BASE_SETTINGS.ai } })
-    updateSettings.mockImplementation(async (patch) => ({
-      theme: patch.theme ?? BASE_SETTINGS.theme,
-      ai: patch.ai ?? { ...BASE_SETTINGS.ai }
-    }))
+    installSettings(BASE_SETTINGS)
+    updateSettings.mockImplementation(async (patch) => {
+      current = mergePatch(patch)
+      return clone(current)
+    })
     installApi()
   })
 
-  it('loads settings on initialize and applies the stored theme', async () => {
-    getSettings.mockResolvedValue({
+  it('loads settings on initialize and exposes the active AI profile', async () => {
+    installSettings({
       theme: 'dark',
-      ai: { baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test' }
+      ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' }
     })
     const store = useSettingsStore()
 
@@ -39,11 +71,38 @@ describe('settings store', () => {
 
     expect(store.loaded).toBe(true)
     expect(store.theme).toBe('dark')
-    expect(store.aiConfig).toEqual({
-      baseUrl: 'https://api.example.com/v1',
-      apiKey: 'sk-test'
-    })
+    expect(store.aiProfiles).toEqual([PROFILE_A, PROFILE_B])
+    expect(store.activeAiProfile).toEqual(PROFILE_B)
+    expect(store.isAiConfigured).toBe(true)
     expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+
+  it('falls back to the first profile when activeId is stale', async () => {
+    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A], activeId: 'missing' } })
+    const store = useSettingsStore()
+
+    await store.initialize()
+
+    expect(store.activeAiProfile).toEqual(PROFILE_A)
+  })
+
+  it('reports an incomplete profile and an empty list', async () => {
+    installSettings({
+      theme: 'system',
+      ai: { profiles: [{ ...PROFILE_A, apiKey: '' }], activeId: 'a' }
+    })
+    const store = useSettingsStore()
+    await store.initialize()
+
+    expect(store.isAiConfigured).toBe(false)
+
+    installSettings(BASE_SETTINGS)
+    setActivePinia(createPinia())
+    const emptyStore = useSettingsStore()
+    await emptyStore.initialize()
+
+    expect(emptyStore.activeAiProfile).toBeNull()
+    expect(emptyStore.isAiConfigured).toBe(false)
   })
 
   it('persists theme changes and updates the document class', async () => {
@@ -87,27 +146,57 @@ describe('settings store', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 
-  it('trims AI settings before saving', async () => {
+  it('trims AI profiles and submits profiles with activeId in one patch', async () => {
     const store = useSettingsStore()
     await store.initialize()
 
-    const saved = await store.saveAi({
-      baseUrl: '  https://api.example.com/v1/  ',
-      apiKey: '  sk-secret  '
-    })
+    const saved = await store.saveAiProfiles(
+      [{ id: 'a', baseUrl: '  https://api.example.com/v1/  ', apiKey: '  sk-a  ', model: '  m  ' }],
+      'a'
+    )
 
     expect(saved).toBe(true)
     expect(updateSettings).toHaveBeenCalledWith({
-      ai: { baseUrl: 'https://api.example.com/v1/', apiKey: 'sk-secret' }
+      ai: {
+        profiles: [{ id: 'a', baseUrl: 'https://api.example.com/v1/', apiKey: 'sk-a', model: 'm' }],
+        activeId: 'a'
+      }
     })
-    expect(store.aiConfig).toEqual({
+    expect(store.aiProfiles[0]).toEqual({
+      id: 'a',
       baseUrl: 'https://api.example.com/v1/',
-      apiKey: 'sk-secret'
+      apiKey: 'sk-a',
+      model: 'm'
     })
+    expect(store.activeAiProfile?.id).toBe('a')
+  })
+
+  it('switches only activeId without dropping the profile list', async () => {
+    installSettings({ theme: 'system', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'a' } })
+    let resolveUpdate: (value: AppSettings) => void = () => undefined
+    updateSettings.mockImplementation(
+      () =>
+        new Promise<AppSettings>((resolve) => {
+          resolveUpdate = resolve
+        })
+    )
+    const store = useSettingsStore()
+    await store.initialize()
+
+    const pending = store.setActiveAiProfile('b')
+
+    expect(updateSettings).toHaveBeenCalledWith({ ai: { activeId: 'b' } })
+    // 请求进行中也要保留完整列表
+    expect(store.aiProfiles).toEqual([PROFILE_A, PROFILE_B])
+    expect(store.activeAiProfile?.id).toBe('b')
+
+    resolveUpdate({ theme: 'system', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
+    await expect(pending).resolves.toBe(true)
+    expect(store.activeAiProfile?.id).toBe('b')
   })
 
   it('rolls back the theme when saving fails', async () => {
-    getSettings.mockResolvedValue({ ...BASE_SETTINGS, theme: 'dark' })
+    installSettings({ theme: 'dark', ai: { profiles: [], activeId: '' } })
     updateSettings.mockRejectedValue(new Error('磁盘写入失败'))
     const store = useSettingsStore()
     await store.initialize()
@@ -130,6 +219,7 @@ describe('settings store', () => {
     expect(store.loaded).toBe(true)
     expect(store.theme).toBe('system')
     expect(store.error).toBe('配置文件损坏')
+    expect(store.aiProfiles).toEqual([])
     expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 
@@ -142,15 +232,16 @@ describe('settings store', () => {
     expect(getSettings).toHaveBeenCalledTimes(1)
   })
 
-  it('rolls back AI settings when saving fails', async () => {
+  it('rolls back AI profiles when saving fails', async () => {
     updateSettings.mockRejectedValue(new Error('写入失败'))
     const store = useSettingsStore()
     await store.initialize()
 
-    const saved = await store.saveAi({ baseUrl: 'https://api.example.com', apiKey: 'sk-test' })
+    const saved = await store.saveAiProfiles([PROFILE_A], 'a')
 
     expect(saved).toBe(false)
-    expect(store.aiConfig).toEqual({ baseUrl: '', apiKey: '' })
+    expect(store.aiProfiles).toEqual([])
+    expect(store.activeAiProfile).toBeNull()
     expect(store.error).toBe('写入失败')
   })
 
@@ -172,7 +263,7 @@ describe('settings store', () => {
     expect(updateSettings).toHaveBeenCalledTimes(1)
     expect(store.saving).toBe(true)
 
-    resolveUpdate({ theme: 'dark', ai: { baseUrl: '', apiKey: '' } })
+    resolveUpdate({ theme: 'dark', ai: { profiles: [], activeId: '' } })
 
     await expect(first).resolves.toBe(true)
     expect(store.theme).toBe('dark')

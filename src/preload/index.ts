@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 interface PaperAnnotation {
@@ -13,9 +13,28 @@ interface PaperAnnotation {
 
 type AppTheme = 'light' | 'dark' | 'system'
 
-interface AiSettings {
+interface AiProfile {
+  id: string
   baseUrl: string
   apiKey: string
+  model: string
+}
+
+interface AiSettings {
+  profiles: AiProfile[]
+  activeId: string
+}
+
+type ChatRole = 'system' | 'user' | 'assistant'
+
+interface ChatMessage {
+  role: ChatRole
+  content: string
+}
+
+interface AiChunk {
+  requestId: string
+  delta: string
 }
 
 interface AppSettings {
@@ -25,7 +44,10 @@ interface AppSettings {
 
 interface SettingsPatch {
   theme?: AppTheme
-  ai?: AiSettings
+  ai?: {
+    profiles?: AiProfile[]
+    activeId?: string
+  }
 }
 
 // Custom APIs for renderer
@@ -48,7 +70,21 @@ const api = {
     ipcRenderer.invoke('annotations:remove', filePath, ids),
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch: SettingsPatch): Promise<AppSettings> =>
-    ipcRenderer.invoke('settings:update', patch)
+    ipcRenderer.invoke('settings:update', patch),
+  chat: (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> =>
+    ipcRenderer.invoke('ai:chat', requestId, messages, profileId),
+  abortChat: (requestId: string): void => {
+    ipcRenderer.send('ai:abort', requestId)
+  },
+  onAiChunk: (callback: (payload: AiChunk) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, payload: AiChunk): void => {
+      callback(payload)
+    }
+    ipcRenderer.on('ai:chunk', listener)
+    return () => {
+      ipcRenderer.removeListener('ai:chunk', listener)
+    }
+  }
 }
 
 console.log('preload script running, contextIsolated:', process.contextIsolated)

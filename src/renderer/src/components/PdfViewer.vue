@@ -183,6 +183,11 @@ const props = defineProps<{
   src: string
 }>()
 
+const emit = defineEmits<{
+  /** 用户在正文中选出非空文本时触发（单击选词 / 双击选句 / 拖拽） */
+  'selection-change': [payload: { text: string; page: number }]
+}>()
+
 const containerRef = ref<HTMLDivElement | null>(null)
 const pageCount = ref(0)
 const loading = ref(false)
@@ -696,6 +701,16 @@ const getSelectionOnPage = (): {
   return { pageNumber, rects, text }
 }
 
+// 更新待标注选区，并在选到文本时通知外部（右侧辅助面板据此翻译）。
+// 空选区不触发事件，避免点击空白处清空已有译文。
+const syncPendingSelection = (): void => {
+  const selection = getSelectionOnPage()
+  pendingSelection.value = selection
+  if (selection) {
+    emit('selection-change', { text: selection.text, page: selection.pageNumber })
+  }
+}
+
 // ---------- 单击选词 / 双击选句 ----------
 
 interface TextSegment {
@@ -1112,14 +1127,14 @@ const handleMouseUp = (event: MouseEvent): void => {
   const dragged = down ? Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4 : false
   // 单击（没有拖动）选中鼠标下的单词；双击、三击交给对应的处理器
   if (!dragged && event.detail === 1) selectWordAtPoint(event.clientX, event.clientY)
-  pendingSelection.value = getSelectionOnPage()
+  syncPendingSelection()
 }
 
 const handleDoubleClick = (event: MouseEvent): void => {
   if (event.target instanceof Element && event.target.closest('button')) return
   // 双击时把选中的单词扩展为所在句子
   if (!selectSentenceAtPoint(event.clientX, event.clientY)) return
-  pendingSelection.value = getSelectionOnPage()
+  syncPendingSelection()
 }
 
 const rectsOverlap = (a: AnnotationRect, b: AnnotationRect): boolean =>

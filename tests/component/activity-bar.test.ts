@@ -10,9 +10,9 @@ const SettingsDialogStub = defineComponent({
   template: '<div data-test="settings-dialog" />'
 })
 
-const mountBar = (isLibraryOpen = false): VueWrapper =>
+const mountBar = (isLibraryOpen = false, isAssistantOpen = false): VueWrapper =>
   mount(ActivityBar, {
-    props: { isLibraryOpen },
+    props: { isLibraryOpen, isAssistantOpen },
     global: {
       stubs: { SettingsDialog: SettingsDialogStub }
     }
@@ -26,6 +26,17 @@ describe('ActivityBar', () => {
 
     expect(wrapper.emitted('toggleLibrary')).toHaveLength(1)
     expect(wrapper.get('button[aria-label="论文库"]').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('emits toggleAssistant and reflects the open state', async () => {
+    const wrapper = mountBar(false, true)
+
+    const button = wrapper.get('button[aria-label="辅助面板"]')
+    expect(button.attributes('aria-pressed')).toBe('true')
+
+    await button.trigger('click')
+
+    expect(wrapper.emitted('toggleAssistant')).toHaveLength(1)
   })
 
   it('opens the settings dialog from the settings button', async () => {

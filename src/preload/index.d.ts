@@ -47,9 +47,31 @@ declare global {
 
   type AppTheme = 'light' | 'dark' | 'system'
 
-  interface AiSettings {
+  interface AiProfile {
+    id: string
     baseUrl: string
     apiKey: string
+    /** 调用 OpenAI 兼容接口时使用的模型名 */
+    model: string
+  }
+
+  interface AiSettings {
+    profiles: AiProfile[]
+    /** 当前选中的配置 id，翻译和对话共用 */
+    activeId: string
+  }
+
+  type ChatRole = 'system' | 'user' | 'assistant'
+
+  interface ChatMessage {
+    role: ChatRole
+    content: string
+  }
+
+  /** 主进程流式返回的增量片段 */
+  interface AiChunk {
+    requestId: string
+    delta: string
   }
 
   interface AppSettings {
@@ -59,7 +81,12 @@ declare global {
 
   interface SettingsPatch {
     theme?: AppTheme
-    ai?: AiSettings
+    ai?: {
+      /** 传入时整体替换配置列表 */
+      profiles?: AiProfile[]
+      /** 只切换当前配置 */
+      activeId?: string
+    }
   }
 
   interface Api {
@@ -77,6 +104,12 @@ declare global {
     removeAnnotations: (filePath: string, ids: string[]) => Promise<string[]>
     getSettings: () => Promise<AppSettings>
     updateSettings: (patch: SettingsPatch) => Promise<AppSettings>
+    /** 使用指定 AI 配置发起流式对话，返回完整回复文本；增量通过 onAiChunk 推送 */
+    chat: (requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>
+    /** 中止指定请求 */
+    abortChat: (requestId: string) => void
+    /** 订阅流式增量，返回取消订阅函数 */
+    onAiChunk: (callback: (payload: AiChunk) => void) => () => void
   }
 
   interface Window {

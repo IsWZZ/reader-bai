@@ -28,6 +28,7 @@
 
 - 监听器挂在 `document` 上（`mousedown` / `mouseup` / `dblclick`），在 `onMounted` 注册、`onBeforeUnmount` 移除。工具栏按钮的 `mousedown` 需要 `@mousedown.prevent`，否则点击按钮会清空选区。
 - `handleMouseUp` 在拖动超过 4px 或 `event.detail !== 1` 时不做选词，把拖拽交给浏览器原生选区。
+- 每次解析出非空选区（单击/双击）都会 `emit('selection-change', { text, page })`，供右侧辅助面板自动翻译。选区为空时不 emit，所以点击空白处不会清空译文；不要为了翻译把监听器从 `document` 移走。
 - 单击选词：`textNodeAt` + `WORD_CHAR`（Unicode 字母/数字/`'`/`’`/`_`/`-`），坐标来自 `caretPositionFromPoint`（回退 `caretRangeFromPoint`）。
 - 双击选句（`selectSentenceAtPoint`）依赖文字层的排版信息，不要退化成整页字符串扫描：
   1. `buildLines`：按垂直重叠 > 50% 且水平间距不超过 1.5 倍行高把 span 聚成视觉行，行字号取行内最大值（上标不干扰）。

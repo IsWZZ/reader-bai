@@ -29,6 +29,25 @@
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label="辅助面板"
+            :aria-pressed="$props.isAssistantOpen"
+            :class="[
+              'rounded-lg transition-colors',
+              $props.isAssistantOpen ? 'bg-accent text-accent-foreground' : ''
+            ]"
+            @click="toggleAssistant"
+          >
+            <Sparkles class="size-5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">翻译与 AI</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label="设置"
             :aria-pressed="settingsOpen"
             :class="[
@@ -58,19 +77,25 @@ import {
   TooltipProvider
 } from '@renderer/components/ui/tooltip'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
-import { LibraryBig, Settings } from 'lucide-vue-next'
+import { LibraryBig, Settings, Sparkles } from 'lucide-vue-next'
 
 defineProps<{
   isLibraryOpen: boolean
+  isAssistantOpen: boolean
 }>()
 
 const settingsOpen = ref(false)
 
 const emit = defineEmits<{
   toggleLibrary: []
+  toggleAssistant: []
 }>()
 
 const toggleLibrary = (): void => {
   emit('toggleLibrary')
+}
+
+const toggleAssistant = (): void => {
+  emit('toggleAssistant')
 }
 </script>

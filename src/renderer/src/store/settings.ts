@@ -1,28 +1,36 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { AiSettings, AppSettings, AppTheme, SettingsPatch } from '@renderer/types'
+import type { AiProfile, AppSettings, AppTheme, SettingsPatch } from '@renderer/types'
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
-  ai: { baseUrl: '', apiKey: '' }
+  ai: { profiles: [], activeId: '' }
 }
 
 const systemPrefersDark = (): boolean => window.matchMedia('(prefers-color-scheme: dark)').matches
 
 /**
- * 全局设置：主题与 AI 服务配置。
- * 其他模块通过 useSettingsStore().aiConfig 读取 Base URL / API Key。
+ * 全局设置：主题与多份 AI 配置。
+ * 其他模块通过 aiProfiles / activeAiProfile 读取当前选中的模型配置。
  */
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({
     theme: DEFAULT_SETTINGS.theme,
-    ai: { ...DEFAULT_SETTINGS.ai }
+    ai: { profiles: [], activeId: '' }
   })
   const loaded = ref(false)
   const saving = ref(false)
   const error = ref('')
 
-  const aiConfig = computed<AiSettings>(() => settings.value.ai)
+  const aiProfiles = computed<AiProfile[]>(() => settings.value.ai.profiles)
+  const activeAiProfile = computed<AiProfile | null>(() => {
+    const { profiles, activeId } = settings.value.ai
+    return profiles.find((profile) => profile.id === activeId) ?? profiles[0] ?? null
+  })
+  const isAiConfigured = computed(() => {
+    const profile = activeAiProfile.value
+    return Boolean(profile?.baseUrl.trim() && profile.apiKey.trim() && profile.model.trim())
+  })
   const theme = computed<AppTheme>(() => settings.value.theme)
 
   let mediaQuery: MediaQueryList | null = null
@@ -68,9 +76,14 @@ export const useSettingsStore = defineStore('settings', () => {
     if (saving.value) return false
 
     const previous = settings.value
+    const aiPatch = patch.ai
     const optimistic: AppSettings = {
       theme: patch.theme ?? previous.theme,
-      ai: patch.ai ? { ...patch.ai } : { ...previous.ai }
+      ai: {
+        // 只切换 activeId 时也要保留完整列表
+        profiles: (aiPatch?.profiles ?? previous.ai.profiles).map((profile) => ({ ...profile })),
+        activeId: aiPatch?.activeId ?? previous.ai.activeId
+      }
     }
     // 主题需要即时生效，失败时再回滚
     settings.value = optimistic
@@ -101,8 +114,19 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const setTheme = (next: AppTheme): Promise<boolean> => persist({ theme: next })
 
-  const saveAi = (ai: AiSettings): Promise<boolean> =>
-    persist({ ai: { baseUrl: ai.baseUrl.trim(), apiKey: ai.apiKey.trim() } })
+  const saveAiProfiles = (profiles: AiProfile[], activeId?: string): Promise<boolean> => {
+    const next = profiles.map(({ id, baseUrl, apiKey, model }) => ({
+      id,
+      baseUrl: baseUrl.trim(),
+      apiKey: apiKey.trim(),
+      model: model.trim()
+    }))
+    return persist({
+      ai: activeId === undefined ? { profiles: next } : { profiles: next, activeId }
+    })
+  }
+
+  const setActiveAiProfile = (id: string): Promise<boolean> => persist({ ai: { activeId: id } })
 
   const clearError = (): void => {
     error.value = ''
@@ -114,10 +138,13 @@ export const useSettingsStore = defineStore('settings', () => {
     saving,
     error,
     theme,
-    aiConfig,
+    aiProfiles,
+    activeAiProfile,
+    isAiConfigured,
     initialize,
     setTheme,
-    saveAi,
+    saveAiProfiles,
+    setActiveAiProfile,
     clearError
   }
 })
