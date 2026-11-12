@@ -24,7 +24,7 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 
 ### 三个进程
 
-1. **Main**（`src/main/index.ts`）—— 窗口、持久化、文件访问；在 `userData` 下写 `library.json`、`annotations.json`、`settings.json`，读论文/写标注前先校验书库。
+1. **Main**（`src/main/index.ts`）—— 只做启动装配；窗口在 `window.ts`，各领域持久化在 `library.ts` / `annotations.ts` / `settings-store.ts`，IPC 注册在 `ipc/*`。在 `userData` 下写 `library.json`、`annotations.json`、`settings.json`，读论文/写标注前先校验书库。
 2. **Preload**（`src/preload/index.ts`、`index.d.ts`）—— 暴露 `window.api`，声明 `Api` 与共享类型。
 3. **Renderer**（`src/renderer/src/`）—— Vue 应用，不碰 Node 或文件系统；`window.api` 要当作可能为 `undefined`。
 
@@ -61,6 +61,14 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 - 渲染保留 generation 守卫和任务取消。
 - 选择与标注仅单页；标注坐标用归一化 `0..1`。
 - 不移动 `document` 上的选择监听，也不改单击/双击语义（除非先读阅读器文档）。
+
+### 安全
+
+- 渲染进程不可信；所有 IPC 参数在主进程校验，preload 只暴露最小 `window.api`，不暴露 `electronAPI`、Node 或文件系统。
+- API Key 只在主进程解密和使用；新增能力不得让明文 Key 进入渲染进程（`settings:get` 当前仍回传明文，是待修复项）。
+- 文件读取只允许书库中已登记的路径，导入只走系统对话框；渲染进程不直接请求外部服务。
+- 外链与导航默认拒绝，只放行 `http(s)`；权限请求默认拒绝。C 层插件按 manifest 权限和沙箱处理。
+- 威胁模型、现有防护、已知风险和新增 IPC 检查清单见 [docs/security.md](docs/security.md)。
 
 ## 技术栈与工具偏好
 
