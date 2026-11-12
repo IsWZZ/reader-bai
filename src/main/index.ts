@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
 import { join } from 'path'
 import { readFile, writeFile } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -47,6 +47,35 @@ interface PaperAnnotation {
   rects: AnnotationRect[]
   text: string
   createdAt: number
+}
+
+type AppTheme = 'light' | 'dark' | 'system'
+
+interface AiSettings {
+  baseUrl: string
+  apiKey: string
+}
+
+interface AppSettings {
+  theme: AppTheme
+  ai: AiSettings
+}
+
+interface SettingsPatch {
+  theme?: AppTheme
+  ai?: AiSettings
+}
+
+// 磁盘上的形式：API Key 优先用系统钥匙串加密
+interface StoredAiSettings {
+  baseUrl: string
+  apiKey: string
+  apiKeyEncrypted: boolean
+}
+
+interface StoredSettings {
+  theme: AppTheme
+  ai: StoredAiSettings
 }
 
 function createWindow(): void {
@@ -319,6 +348,81 @@ app.whenReady().then(() => {
     store[filePath] = list.filter((annotation) => !idSet.has(annotation.id))
     await writeAnnotations(store)
     return removed
+  })
+
+  // 应用设置持久化文件
+  const settingsFile = join(app.getPath('userData'), 'settings.json')
+
+  const normalizeTheme = (value: unknown): AppTheme =>
+    value === 'light' || value === 'dark' || value === 'system' ? value : 'system'
+
+  // API Key 优先用系统钥匙串加密；系统不支持时退化为明文存储
+  const encodeApiKey = (apiKey: string): { apiKey: string; apiKeyEncrypted: boolean } => {
+    if (!apiKey) return { apiKey: '', apiKeyEncrypted: false }
+    if (safeStorage.isEncryptionAvailable()) {
+      return {
+        apiKey: safeStorage.encryptString(apiKey).toString('base64'),
+        apiKeyEncrypted: true
+      }
+    }
+    return { apiKey, apiKeyEncrypted: false }
+  }
+
+  const decodeApiKey = (ai: StoredAiSettings): string => {
+    if (!ai.apiKey) return ''
+    if (!ai.apiKeyEncrypted) return ai.apiKey
+    try {
+      return safeStorage.decryptString(Buffer.from(ai.apiKey, 'base64'))
+    } catch {
+      // 换了机器或钥匙串不可用时解密会失败，按空 Key 处理
+      return ''
+    }
+  }
+
+  const readStoredSettings = async (): Promise<StoredSettings> => {
+    try {
+      const raw = await readFile(settingsFile, 'utf-8')
+      const parsed = JSON.parse(raw) as Partial<StoredSettings>
+      const ai = (
+        parsed && typeof parsed === 'object' && parsed.ai ? parsed.ai : {}
+      ) as Partial<StoredAiSettings>
+      return {
+        theme: normalizeTheme(parsed?.theme),
+        ai: {
+          baseUrl: typeof ai.baseUrl === 'string' ? ai.baseUrl : '',
+          apiKey: typeof ai.apiKey === 'string' ? ai.apiKey : '',
+          apiKeyEncrypted: ai.apiKeyEncrypted === true
+        }
+      }
+    } catch {
+      return { theme: 'system', ai: { baseUrl: '', apiKey: '', apiKeyEncrypted: false } }
+    }
+  }
+
+  const toPublicSettings = (stored: StoredSettings): AppSettings => ({
+    theme: stored.theme,
+    ai: { baseUrl: stored.ai.baseUrl, apiKey: decodeApiKey(stored.ai) }
+  })
+
+  // 读取应用设置
+  ipcMain.handle('settings:get', async () => toPublicSettings(await readStoredSettings()))
+
+  // 更新应用设置，未提供的字段保持不变
+  ipcMain.handle('settings:update', async (_event, patch: SettingsPatch) => {
+    const stored = await readStoredSettings()
+    if (patch && typeof patch === 'object') {
+      if (patch.theme !== undefined) stored.theme = normalizeTheme(patch.theme)
+      if (patch.ai && typeof patch.ai === 'object') {
+        stored.ai.baseUrl =
+          typeof patch.ai.baseUrl === 'string' ? patch.ai.baseUrl.trim().slice(0, 500) : ''
+        const apiKey =
+          typeof patch.ai.apiKey === 'string' ? patch.ai.apiKey.trim().slice(0, 500) : ''
+        const encoded = encodeApiKey(apiKey)
+        stored.ai = { baseUrl: stored.ai.baseUrl, ...encoded }
+      }
+    }
+    await writeFile(settingsFile, JSON.stringify(stored, null, 2), 'utf-8')
+    return toPublicSettings(stored)
   })
 
   // 读取论文文件内容（仅允许读取论文库中已导入的文件）

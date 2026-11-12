@@ -25,3 +25,20 @@ export interface LibraryData {
   spaces: Space[]
   papers: Paper[]
 }
+
+export type AppTheme = 'light' | 'dark' | 'system'
+
+export interface AiSettings {
+  baseUrl: string
+  apiKey: string
+}
+
+export interface AppSettings {
+  theme: AppTheme
+  ai: AiSettings
+}
+
+export interface SettingsPatch {
+  theme?: AppTheme
+  ai?: AiSettings
+}

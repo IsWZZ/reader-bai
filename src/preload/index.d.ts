@@ -45,6 +45,23 @@ declare global {
     createdAt: number
   }
 
+  type AppTheme = 'light' | 'dark' | 'system'
+
+  interface AiSettings {
+    baseUrl: string
+    apiKey: string
+  }
+
+  interface AppSettings {
+    theme: AppTheme
+    ai: AiSettings
+  }
+
+  interface SettingsPatch {
+    theme?: AppTheme
+    ai?: AiSettings
+  }
+
   interface Api {
     importPaper: (spaceId?: string | null) => Promise<PaperInfo | null>
     listPapers: () => Promise<LibraryState>
@@ -58,6 +75,8 @@ declare global {
     listAnnotations: (filePath: string) => Promise<PaperAnnotation[]>
     addAnnotation: (filePath: string, annotation: PaperAnnotation) => Promise<PaperAnnotation>
     removeAnnotations: (filePath: string, ids: string[]) => Promise<string[]>
+    getSettings: () => Promise<AppSettings>
+    updateSettings: (patch: SettingsPatch) => Promise<AppSettings>
   }
 
   interface Window {

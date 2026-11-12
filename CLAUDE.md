@@ -47,7 +47,7 @@ There is no test suite; verify changes with typecheck, lint and a manual run.
 
 ### Three Processes
 
-1. **Main** (`src/main/index.ts`) — window creation and all persistence/file access. Writes `library.json` and `annotations.json` under `app.getPath('userData')`. Paper reads and annotation writes are checked against library records.
+1. **Main** (`src/main/index.ts`) — window creation and all persistence/file access. Writes `library.json`, `annotations.json` and `settings.json` under `app.getPath('userData')`. Paper reads and annotation writes are checked against library records.
 2. **Preload** (`src/preload/index.ts`, `index.d.ts`) — context isolation bridge. Exposes `window.electron` (electron-toolkit) and `window.api`; `index.d.ts` declares the `Api` interface and shared data shapes.
 3. **Renderer** (`src/renderer/src/`) — Vue app. It never touches Node APIs or the filesystem directly; everything goes through `window.api` (treat it as possibly `undefined`).
 
@@ -57,9 +57,11 @@ There is no test suite; verify changes with typecheck, lint and a manual run.
 - `components/LibraryPanel.vue` — spaces and paper list: import, rename, delete, drag-and-drop between spaces, PDF-metadata title backfill.
 - `components/PdfViewer.vue` — pdf.js rendering, zoom, text layer, click/double-click selection and the annotation overlay. See [docs/pdf-viewer.md](docs/pdf-viewer.md) before changing it.
 - `components/ActivityBar.vue`, `components/Toolbar.vue` — window chrome.
+- `components/SettingsDialog.vue` — centered settings dialog opened from the activity bar (appearance and AI service).
+- `store/settings.ts` — Pinia store for app settings. Applies the theme to `<html class="dark">` and exposes `aiConfig` (Base URL / API Key) for other features to consume. Pinia is installed in `main.ts`, and settings load before mount to avoid a theme flash.
 - `components/ui/**` — shadcn-vue (reka-ui) components; treat as generated code and keep local edits minimal.
 - `lib/pdf.ts` — shared pdf.js worker setup and PDF metadata title parsing.
-- `types.ts` — renderer-side copies of library data types.
+- `types.ts` — renderer-side copies of library, annotation and settings data types.
 
 ### IPC and Persistence
 
@@ -68,11 +70,13 @@ Renderer APIs live in `src/preload/index.ts` and map 1:1 to `ipcMain.handle` cha
 - Library: `library:list`, `library:createSpace`, `library:renameSpace`, `library:deleteSpace`, `library:renamePaper`, `library:movePaper`, `library:removePaper`
 - Files: `dialog:importPaper`, `paper:read`
 - Annotations: `annotations:list`, `annotations:add`, `annotations:remove`
+- Settings: `settings:get`, `settings:update`
 
 Data rules:
 
 - `library.json` is `{ spaces, papers }`. `normalizeLibrary` migrates the old array-only format and fills missing fields; keep this path working.
 - `annotations.json` is keyed by paper path: `{ [paperPath]: PaperAnnotation[] }`.
+- `settings.json` is `{ theme, ai: { baseUrl, apiKey, apiKeyEncrypted } }`. Theme is `light` | `dark` | `system`; the API key is encrypted with Electron `safeStorage` when available and stored as plaintext otherwise. `settings:update` accepts a partial patch and leaves omitted fields unchanged.
 - Removing a paper or a space never deletes PDFs from disk; deleting a space moves its papers to uncategorized.
 - `titleSource` (`file` | `metadata` | `user`) prevents metadata backfill from overwriting user renames.
 

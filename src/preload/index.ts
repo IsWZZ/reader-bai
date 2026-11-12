@@ -11,6 +11,23 @@ interface PaperAnnotation {
   createdAt: number
 }
 
+type AppTheme = 'light' | 'dark' | 'system'
+
+interface AiSettings {
+  baseUrl: string
+  apiKey: string
+}
+
+interface AppSettings {
+  theme: AppTheme
+  ai: AiSettings
+}
+
+interface SettingsPatch {
+  theme?: AppTheme
+  ai?: AiSettings
+}
+
 // Custom APIs for renderer
 const api = {
   importPaper: (spaceId: string | null = null) => ipcRenderer.invoke('dialog:importPaper', spaceId),
@@ -28,7 +45,10 @@ const api = {
   addAnnotation: (filePath: string, annotation: PaperAnnotation) =>
     ipcRenderer.invoke('annotations:add', filePath, annotation),
   removeAnnotations: (filePath: string, ids: string[]) =>
-    ipcRenderer.invoke('annotations:remove', filePath, ids)
+    ipcRenderer.invoke('annotations:remove', filePath, ids),
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
+  updateSettings: (patch: SettingsPatch): Promise<AppSettings> =>
+    ipcRenderer.invoke('settings:update', patch)
 }
 
 console.log('preload script running, contextIsolated:', process.contextIsolated)
