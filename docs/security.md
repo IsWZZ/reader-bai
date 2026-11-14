@@ -39,6 +39,7 @@
 - AI Base URL 只允许 HTTPS；仅 `localhost` / `127.0.0.1` / `[::1]` 可使用 HTTP，保存和发起请求时都会校验。
 - Key 优先用 Electron `safeStorage` 加密后落盘，见 [settings-store.ts](../src/main/settings-store.ts)。
 - `settings:get` 只返回 `hasApiKey`，不返回明文或密文 Key；`settings:update` 中未带 `apiKey` 的配置保留原有 Key，新增配置必须填写。
+- 已有 Key 的配置一旦更改 origin（协议、主机、端口），`settings:update` 会先弹出主进程原生确认；取消则整体拒绝保存。
 - 设置、书库和 AI 消息都有规范化逻辑，异常文件按空数据降级，不会导致启动失败。
 - 未发现 `v-html`、`innerHTML`、`eval` 等直接注入点。
 - 插件代码只在 `utilityProcess` 扩展宿主中执行，不进入渲染进程或主进程；宿主消息经过协议校验，API 方法限定为 `tools.list` / `tools.execute`，字段和参数有长度上限。插件调用工具时按 manifest 的 `requiredPermissions` 校验，写操作仍由主进程弹出确认。
@@ -55,19 +56,19 @@
 5. **`shell.openExternal` 已加协议白名单。** 只放行 `https:` / `http:`。
 6. **默认权限请求已拒绝。**
 7. **AI Base URL 已要求 HTTPS。** 只有本机回环地址可以使用 HTTP。
+8. **更改已有 Key 的配置地址需要原生确认。** 渲染进程无法绕过主进程的确认框把 Key 引到新主机；路径变化不触发确认。
+9. **`annotations:list` 已补上论文库归属校验。** 与 `add` / `remove` 一致，非书库路径一律拒绝。
+10. **标注写入与读取都已逐字段校验。** id、类型、颜色、页码、文本长度和归一化坐标在主进程校验；读盘时坏条目被跳过，不会拖垮整个标注库。
 
 ### P1：待处理
 
 1. **`safeStorage` 不可用时退化为明文存储。** 这是可接受的降级，但必须让用户可见：设置页提示“系统安全存储不可用，Key 将以明文保存”，并避免把该文件纳入任何同步。
-2. **被攻破的渲染进程仍可改 Base URL 后发起请求。** `ai:chat` 由主进程校验地址格式，但 HTTPS 地址本身可以是攻击者主机；渲染进程只要把某个已保存 Key 的配置指向新地址，就能让主进程把 Key 发出去。后续应为主要配置的 Base URL 变更（尤其是已有 Key 的配置）增加主进程原生确认，或把主机变更与 Key 保存拆成两个需要确认的动作。
-3. **扩展宿主不是安全沙箱。** [host-process.ts](../src/main/plugins/host-process.ts) 运行在 `utilityProcess` 中，只能隔离崩溃和主进程状态，插件 JS 仍可 `require('fs')`、`require('net')` 或读取 `process.env`；manifest 权限只约束平台工具调用。在引入 Node 权限模型、能力进程或 OS 级沙箱之前，应只安装可信插件，并优先补上安装来源校验与签名。不要因为插件声明了权限就把它当成已隔离。
+2. **扩展宿主不是安全沙箱。** [host-process.ts](../src/main/plugins/host-process.ts) 运行在 `utilityProcess` 中，只能隔离崩溃和主进程状态，插件 JS 仍可 `require('fs')`、`require('net')` 或读取 `process.env`；manifest 权限只约束平台工具调用。在引入 Node 权限模型、能力进程或 OS 级沙箱之前，应只安装可信插件，并优先补上安装来源校验与签名。不要因为插件声明了权限就把它当成已隔离。
 
 ### P2：持续清理
 
-4. `annotations:list` 未校验论文库归属，与 `add` / `remove` 不一致；统一走同一个归属检查。
-5. 标注对象目前只依赖结构化克隆，未逐字段校验 `type`、`color`、`page`、`rects` 范围和文本长度；补上后再写入。
-6. CSP 的 `style-src` 含 `'unsafe-inline'`。当前由 Vue/Tailwind 运行时样式需要；引入自定义样式时优先使用 class，逐步收紧。
-7. 依赖与更新链路：保持锁文件提交，定期跑 `npm audit`，跟 Electron 安全版本；C 层插件必须有签名或哈希校验，安装前展示权限。
+4. CSP 的 `style-src` 含 `'unsafe-inline'`。当前由 Vue/Tailwind 运行时样式需要；引入自定义样式时优先使用 class，逐步收紧。
+5. 依赖与更新链路：保持锁文件提交，定期跑 `npm audit`，跟 Electron 安全版本；C 层插件必须有签名或哈希校验，安装前展示权限。
 
 ## 新增 IPC 检查清单
 

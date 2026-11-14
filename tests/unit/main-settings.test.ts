@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   AI_BASE_URL_ERROR,
   applySettingsPatch,
+  findBaseUrlChanges,
   isAllowedAiBaseUrl,
   normalizeStoredSettings,
   type EncodeApiKey,
@@ -354,6 +355,60 @@ describe('applySettingsPatch', () => {
     expect(isAllowedAiBaseUrl('file:///etc/passwd')).toBe(false)
     expect(isAllowedAiBaseUrl('not a url')).toBe(false)
     expect(isAllowedAiBaseUrl('')).toBe(false)
+  })
+
+  it('detects origin changes for profiles that already hold a key', () => {
+    const base = withProfiles()
+
+    expect(
+      findBaseUrlChanges(base, {
+        ai: { profiles: [{ id: 'a', baseUrl: 'https://evil.example/v1', model: 'model-a' }] }
+      })
+    ).toEqual([{ id: 'a', from: 'https://a.example/v1', to: 'https://evil.example/v1' }])
+
+    // 端口变化同样会改变 Key 的去向
+    expect(
+      findBaseUrlChanges(base, {
+        ai: { profiles: [{ id: 'a', baseUrl: 'https://a.example:8443/v1', model: 'model-a' }] }
+      })
+    ).toHaveLength(1)
+  })
+
+  it('does not ask for path-only edits, new profiles, missing keys or deletions', () => {
+    const base = withProfiles()
+
+    // 仅路径变化
+    expect(
+      findBaseUrlChanges(base, {
+        ai: { profiles: [{ id: 'a', baseUrl: 'https://a.example/v2', model: 'model-a' }] }
+      })
+    ).toEqual([])
+
+    // 新增配置
+    expect(
+      findBaseUrlChanges(base, {
+        ai: {
+          profiles: [
+            ...base.ai.profiles.map(({ id, baseUrl, model }) => ({ id, baseUrl, model })),
+            { id: 'new', baseUrl: 'https://new.example/v1', apiKey: 'sk-new', model: 'm' }
+          ]
+        }
+      })
+    ).toEqual([])
+
+    // 没有 Key 的配置改了地址也不需要确认
+    const noKey = normalizeStoredSettings({
+      ai: { profiles: [{ id: 'a', baseUrl: 'https://a.example/v1', model: 'model-a' }] }
+    })
+    expect(
+      findBaseUrlChanges(noKey, {
+        ai: { profiles: [{ id: 'a', baseUrl: 'https://evil.example/v1', model: 'm' }] }
+      })
+    ).toEqual([])
+
+    // 删除配置或只切换 activeId 不触发
+    expect(findBaseUrlChanges(base, { ai: { profiles: [], activeId: '' } })).toEqual([])
+    expect(findBaseUrlChanges(base, { ai: { activeId: 'a' } })).toEqual([])
   })
 
   it('rejects saving a non-HTTPS base URL', () => {

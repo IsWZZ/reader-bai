@@ -229,12 +229,17 @@ test('rejects invalid library operations', async () => {
   expect(add).toContain('Paper not found in library')
   expect(remove).toContain('Paper not found in library')
 
-  // 读取注释是只读操作，未入库路径返回空列表而不是报错
-  const listed = await reader.page.evaluate(async () => {
+  // 读取注释与写入一样校验论文库归属
+  const listError = await reader.page.evaluate(async () => {
     const api = (globalThis as unknown as { api: TestApi }).api
-    return api.listAnnotations('/tmp/not-in-library.pdf')
+    try {
+      await api.listAnnotations('/tmp/not-in-library.pdf')
+      return ''
+    } catch (error) {
+      return String(error)
+    }
   })
-  expect(listed).toEqual([])
+  expect(listError).toContain('Paper not found in library')
   // 超长空间名会被截断到 60 个字符
   expect((await readLibrary())?.spaces[0]?.name).toHaveLength(60)
 

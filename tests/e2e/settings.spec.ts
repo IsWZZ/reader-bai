@@ -6,6 +6,7 @@ import {
   launchReader,
   readJsonFile,
   removeUserDataDir,
+  stubMessageBox,
   stubOpenDialog,
   stubOpenDirectoryDialog,
   writeSamplePdf,
@@ -270,6 +271,42 @@ test('rewrites legacy AI settings into profiles when saved', async () => {
     model: 'legacy-model'
   })
   expect(stored?.ai.activeId).toBe('default')
+  await reader.app.close()
+})
+
+test('requires native confirmation before sending an existing key to a new host', async () => {
+  const reader = await launchReader(userDataDir)
+  const dialog = await openSettings(reader.page)
+  await dialog.getByRole('button', { name: 'AI 服务' }).click()
+  await dialog.getByRole('button', { name: '新增模型' }).click()
+  await dialog.locator('#ai-base-url').fill('https://api.example.com/v1')
+  await dialog.locator('#ai-model').fill('model-a')
+  await dialog.locator('#ai-api-key').fill('sk-e2e-secret')
+  await dialog.getByRole('button', { name: '保存' }).click()
+  await expect(dialog.getByText('已保存')).toBeVisible()
+
+  await dialog.getByRole('button', { name: '编辑' }).click()
+  await dialog.locator('#ai-base-url').fill('https://evil.example/v1')
+
+  // 用户在原生确认框里取消：保留原地址
+  await stubMessageBox(reader.app, 0)
+  await dialog.getByRole('button', { name: '保存' }).click()
+  await expect(dialog.getByText(/已取消保存/)).toBeVisible()
+  await expect
+    .poll(
+      async () => (await readJsonFile<StoredSettings>(settingsFile()))?.ai.profiles?.[0].baseUrl
+    )
+    .toBe('https://api.example.com/v1')
+
+  // 确认后才把新地址写入
+  await stubMessageBox(reader.app, 1)
+  await dialog.getByRole('button', { name: '保存' }).click()
+  await expect(dialog.getByText('已保存')).toBeVisible()
+  await expect
+    .poll(
+      async () => (await readJsonFile<StoredSettings>(settingsFile()))?.ai.profiles?.[0].baseUrl
+    )
+    .toBe('https://evil.example/v1')
   await reader.app.close()
 })
 

@@ -205,6 +205,55 @@ export const normalizeStoredSettings = (raw: unknown): StoredSettings => {
   }
 }
 
+export interface AiBaseUrlChange {
+  id: string
+  from: string
+  to: string
+}
+
+const urlOrigin = (value: string): string | null => {
+  try {
+    return new URL(value).origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 找出“已有 API Key 的配置改了服务地址”的条目。
+ * 只有 origin（协议、主机、端口）变化才会改变 Key 的去向，路径变化不算。
+ * 主进程据此在保存前弹出原生确认，避免被攻破的渲染进程把 Key 引到别处。
+ */
+export const findBaseUrlChanges = (stored: StoredSettings, patch: unknown): AiBaseUrlChange[] => {
+  const source = objectOf(patch)
+  const aiPatch = source ? objectOf(source.ai) : null
+  if (!aiPatch || !Array.isArray(aiPatch.profiles)) return []
+
+  const existing = new Map(stored.ai.profiles.map((profile) => [profile.id, profile]))
+  const used = new Set<string>()
+  const changes: AiBaseUrlChange[] = []
+  const raws = aiPatch.profiles
+    .slice(0, MAX_PROFILES)
+    .map(objectOf)
+    .filter((item): item is Record<string, unknown> => item !== null)
+
+  raws.forEach((raw, index) => {
+    const id = normalizeId(raw.id, index, used)
+    const previous = existing.get(id)
+    if (!previous || !previous.apiKey) return
+
+    const nextUrl = asString(raw.baseUrl, MAX_BASE_URL)
+    if (nextUrl === previous.baseUrl) return
+    const previousOrigin = urlOrigin(previous.baseUrl)
+    const nextOrigin = urlOrigin(nextUrl)
+    if (previousOrigin !== null && previousOrigin === nextOrigin) return
+
+    changes.push({ id, from: previous.baseUrl, to: nextUrl })
+  })
+
+  return changes
+}
+
 const encodeStoredProfile = (
   raw: Record<string, unknown>,
   index: number,

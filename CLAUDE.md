@@ -69,7 +69,7 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 
 - 渲染进程不可信；所有 IPC 参数在主进程校验，preload 只暴露最小 `window.api`，不暴露 `electronAPI`、Node 或文件系统。
 - API Key 只在主进程解密和使用；`settings:get` 只回传 `hasApiKey`，`settings:update` 中未带 `apiKey` 的配置保留原有 Key。新增能力不得让明文 Key 进入渲染进程。
-- AI Base URL 只允许 HTTPS；仅本机回环地址（`localhost` / `127.0.0.1` / `[::1]`）可用 HTTP。
+- AI Base URL 只允许 HTTPS；仅本机回环地址（`localhost` / `127.0.0.1` / `[::1]`）可用 HTTP。已有 Key 的配置更改 origin 时，`settings:update` 会先在主进程弹出原生确认。
 - 文件读取只允许书库中已登记的路径，导入只走系统对话框；渲染进程不直接请求外部服务。
 - 外链与导航默认拒绝，只放行 `http(s)`；权限请求默认拒绝。C 层插件在独立 utilityProcess 中运行，平台工具按 manifest 权限放行；宿主仍有 Node 权限，不得把它当成已沙箱，见 [docs/security.md](docs/security.md)。
 - 威胁模型、现有防护、已知风险和新增 IPC 检查清单见 [docs/security.md](docs/security.md)。

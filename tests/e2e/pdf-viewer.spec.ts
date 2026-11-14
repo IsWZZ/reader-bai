@@ -132,15 +132,16 @@ test('highlights a selected word, persists it, and removes it', async () => {
 })
 
 test('rejects annotations for papers that are not in the library', async () => {
-  await seedPaper()
+  const pdfPath = await seedPaper()
   const reader = await launchReader(userDataDir)
 
-  const results = await reader.page.evaluate(async () => {
+  const results = await reader.page.evaluate(async (paperPath) => {
     const api = (
       globalThis as unknown as {
         api: {
           addAnnotation: (path: string, annotation: unknown) => Promise<unknown>
-          removeAnnotations: (path: string, ids: string[]) => Promise<unknown>
+          listAnnotations: (path: string) => Promise<unknown>
+          removeAnnotations: (path: string, ids: unknown) => Promise<unknown>
         }
       }
     ).api
@@ -156,7 +157,11 @@ test('rejects annotations for papers that are not in the library', async () => {
     const messages: string[] = []
     for (const call of [
       () => api.addAnnotation('/tmp/not-in-library.pdf', annotation),
-      () => api.removeAnnotations('/tmp/not-in-library.pdf', ['a-1'])
+      () => api.removeAnnotations('/tmp/not-in-library.pdf', ['a-1']),
+      () => api.listAnnotations('/tmp/not-in-library.pdf'),
+      () => api.addAnnotation(paperPath, { ...annotation, type: 'note' }),
+      () => api.addAnnotation(paperPath, { ...annotation, rects: [{ x: -1, y: 0 }] }),
+      () => api.removeAnnotations(paperPath, 'a-1')
     ]) {
       try {
         await call()
@@ -166,11 +171,26 @@ test('rejects annotations for papers that are not in the library', async () => {
       }
     }
     return messages
-  })
+  }, pdfPath)
 
   expect(results[0]).toContain('Paper not found in library')
   expect(results[1]).toContain('Paper not found in library')
+  expect(results[2]).toContain('Paper not found in library')
+  // 格式非法的标注和 id 列表在写库前被拒绝
+  expect(results[3]).toContain('标注类型不正确')
+  expect(results[4]).toContain('标注坐标')
+  expect(results[5]).toContain('标注 id 列表不正确')
+  expect(results.every((message) => message !== '')).toBe(true)
   expect(await readAnnotations()).toBeNull()
+
+  // 论文已在库中时列表接口可以正常返回
+  const listed = await reader.page.evaluate(async (paperPath) => {
+    const api = (
+      globalThis as unknown as { api: { listAnnotations: (path: string) => Promise<unknown> } }
+    ).api
+    return api.listAnnotations(paperPath)
+  }, pdfPath)
+  expect(listed).toEqual([])
 
   await reader.app.close()
 })
