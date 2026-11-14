@@ -22,8 +22,6 @@
         <TooltipContent side="right">论文库</TooltipContent>
       </Tooltip>
 
-      <div class="flex-1" />
-
       <Tooltip>
         <TooltipTrigger as-child>
           <Button
@@ -42,6 +40,8 @@
         </TooltipTrigger>
         <TooltipContent side="right">翻译与 AI</TooltipContent>
       </Tooltip>
+
+      <div class="flex-1" />
 
       <Tooltip>
         <TooltipTrigger as-child>
