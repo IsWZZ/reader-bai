@@ -1,0 +1,93 @@
+# src/renderer/CLAUDE.md
+
+渲染进程指引。仓库级规则见 [根 CLAUDE.md](../../CLAUDE.md)，阅读器细节见 [docs/pdf-viewer.md](../../docs/pdf-viewer.md)；这里只补充 Vue 渲染进程内部约定。
+
+## 基本边界
+
+- 渲染进程不碰 Node、文件系统或 `ipcRenderer`；所有平台能力只通过 `window.api`。
+- `window.api` 可能为 `undefined`（测试环境或 preload 未加载），新代码先判空并优雅降级。
+- 不直接 `fetch` 外部服务，不持有 API Key；AI、检索和下载统一走主进程。
+- 类型：共享 API 类型在 [src/preload/index.d.ts](../preload/index.d.ts)，渲染侧副本在 [types.ts](src/types.ts)；引入应用数据新类型时两处同步。
+- 传给主进程的数据先转成普通对象（剥离 Vue 代理），不要直接发送 reactive/ref 对象。
+
+## 目录结构
+
+```text
+src/renderer/src/
+  App.vue / main.ts / router/
+  views/Home.vue               # 外壳：布局、面板编排
+  components/                  # ActivityBar、LibraryPanel、PdfViewer、AssistantPanel、
+                               # SettingsDialog、PluginSettings、Toolbar
+  components/ui/               # shadcn-vue 生成代码
+  store/                       # assistant、settings、plugins
+  lib/                         # agent-loop、ai、pdf
+  types.ts
+  assets/css/                  # reset.css 设计 token、index.css、common.css
+```
+
+- `Home.vue` 只做外壳和面板编排；`PdfViewer.vue` 只负责阅读/选词/标注。
+- 新功能做成独立组件 + store，通过 props/事件与外壳通信；不要塞进 `Home.vue` 或 `PdfViewer.vue`。
+- 功能之间不互相 import store；需要共享时用平台 API、事件或独立 lib。
+- Pinia 使用 setup store；异步操作自己维护 `loading` / `error`，组件卸载或面板关闭时解除监听和计时器。
+
+## 平台 API
+
+- 使用 `window.api` 上的窄方法，不要拼通用 IPC；新增能力先补主进程和 preload，再改这里。
+- 流式 AI：通过 `onAiChunk` 订阅增量并保存返回的取消函数；切换对话或卸载时调用取消函数，避免串流。
+- 工具模式：
+  - 先用 `startRun({ maxSteps, timeoutMs })` 建立平台 run 边界，再按 `runId` 调 `chatWithTools`。
+  - 执行工具走 `executeTool`；写操作确认由主进程负责，渲染进程不要自己弹确认框。
+  - 完成调 `finishRun(runId)`；取消或停止调 `cancelRun(runId)`。
+- 设置：AI 配置只拿到 `hasApiKey`；编辑时 Key 留空表示保留原 Key，不要尝试读取或回填 Key。
+- 插件：只使用 `listPlugins` / `getPluginRuntime` / `setPluginEnabled` / `onPluginRuntime`；插件代码不在渲染进程执行。
+
+## AI 面板与 agent loop
+
+- `AssistantPanel.vue` + [store/assistant.ts](src/store/assistant.ts) 负责翻译和对话；翻译和对话是两条独立请求，不要混用状态。
+- 第一方 agent loop 在 [lib/agent-loop.ts](src/lib/agent-loop.ts)：
+  - 只传工具名，schema 由主进程解析。
+  - 工具模式只暴露 `risk === 'read'` 且 `exposeToAi` 的工具。
+  - 工具错误作为 `tool` 消息回给模型，不中断整个对话。
+  - 记录 `tool-call` / `tool-error` 供面板展示，不要伪造工具结果。
+- 用户停止对话时同时中止当前请求并取消平台 run。
+- 模型、Base URL、Key 都来自设置；没有完整配置时提示用户，不要发起请求。
+
+## UI 与样式
+
+- 所有组件使用 Vue 3 + TypeScript + `<script setup lang="ts">`；新逻辑优先 Composition API。
+- 样式用 Tailwind v4 工具类和 [reset.css](src/assets/css/reset.css) 的设计 token：
+  - 不新增自定义 CSS 或大段内联样式。
+  - 动态类名写完整字符串，保证 Tailwind 能扫描到。
+  - 条件类名用 `cn` 合并。
+- 先复用 `components/ui/**`；缺组件时用 shadcn-vue CLI 按 `components.json` 添加（`npx shadcn-vue@latest add <component>`），生成代码少改。
+- 业务图标用 `lucide-vue-next`；`components/ui/**` 里的 `@lucide/vue` 保持不动。
+- 纯图标按钮必须有 `aria-label`；表单控件保留可访问名称，组件和 E2E 测试依赖 role/label 定位。
+- 状态和工具优先用 Pinia、Vue Router、`@vueuse/core` 的现成能力；能不加依赖就不加。
+
+## PDF 阅读器
+
+改动 `PdfViewer.vue` 或 `lib/pdf.ts` 前先读 [docs/pdf-viewer.md](../../docs/pdf-viewer.md)。
+
+- worker 保持内联（`?worker&inline`）。
+- 渲染保留 generation 守卫和任务取消，避免旧页面覆盖新页面。
+- 选择和标注仅支持单页；标注坐标使用相对页面的归一化 `0..1`。
+- 不移动 `document` 上的选择监听，也不改单击/双击语义。
+- `lib/pdf.ts` 管 worker 和元数据；不要在组件里重复初始化 pdfjs。
+
+## 设置与插件界面
+
+- `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：主题、AI 配置、论文库目录、插件分区。
+- Base URL 校验与主进程一致：默认 HTTPS，仅 `localhost` / `127.0.0.1` / `[::1]` 可用 HTTP；新增配置必须有 Key。
+- `settings.keyStorage === 'plaintext'` 时明确提示 Key 会以明文落盘。
+- `PluginSettings.vue` + [store/plugins.ts](src/store/plugins.ts)：
+  - 展示插件名称、版本、权限、命令、兼容性和宿主运行状态。
+  - 启用开关失败时恢复原状态，保持界面与主进程一致。
+  - 监听 `onPluginRuntime` 并在卸载时取消订阅。
+  - 插件不兼容或宿主不可用时只展示错误，不影响设置页其他功能。
+
+## 测试
+
+- 组件测试用 Vitest + Vue Test Utils，在 `beforeEach` 里 mock `window.api`，不要启动 Electron。
+- 测试优先按用户可见行为断言：role、`aria-label`、文本、输入值和禁用状态。
+- `agent-loop.ts` 的纯逻辑在 `tests/unit/agent-loop.test.ts` 覆盖，组件测试只验证面板接线。
+- 用户流程用 Playwright E2E，复用 `tests/e2e/helpers.ts` 的临时 `--user-data-dir` 和对话框打桩；见 [docs/testing.md](../../docs/testing.md)。

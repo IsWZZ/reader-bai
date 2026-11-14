@@ -63,12 +63,12 @@
 
 ### P1：待处理
 
-1. **扩展宿主不是安全沙箱。** [host-process.ts](../src/main/plugins/host-process.ts) 运行在 `utilityProcess` 中，只能隔离崩溃和主进程状态，插件 JS 仍可 `require('fs')`、`require('net')` 或读取 `process.env`；manifest 权限只约束平台工具调用。在引入 Node 权限模型、能力进程或 OS 级沙箱之前，应只安装可信插件，并优先补上安装来源校验与签名。不要因为插件声明了权限就把它当成已隔离。
+1. **扩展宿主不是安全沙箱（现阶段仍保留独立 utilityProcess）。** [host-process.ts](../src/main/plugins/host-process.ts) 运行在 `utilityProcess` 中，只能隔离崩溃和主进程状态，插件 JS 仍可 `require('fs')`、`require('net')` 或读取 `process.env`；manifest 权限只约束平台工具调用。当前决定是不把插件拉回主进程、也不改成进程内模块，继续以独立宿主进程作为隔离边界；Node 权限模型、能力进程或 OS 级沙箱等进一步限制放到后续阶段。在补齐这些限制和安装来源校验/签名之前，应只安装可信插件。不要因为插件声明了权限就把它当成已隔离。
 
 ### P2：持续清理
 
 4. CSP 的 `style-src` 含 `'unsafe-inline'`。当前由 Vue/Tailwind 运行时样式需要；引入自定义样式时优先使用 class，逐步收紧。
-5. 依赖与更新链路：保持锁文件提交，定期跑 `npm audit`，跟 Electron 安全版本；C 层插件必须有签名或哈希校验，安装前展示权限。
+5. 依赖与更新链路：保持锁文件提交，定期跑 `npm audit`，跟 Electron 安全版本；C 层插件必须有签名或哈希校验，安装前展示权限。当前 `npm audit --omit=dev` 为 0；开发依赖仍有 eslint / minimatch 链路的 moderate 告警，升级前先确认工具链兼容。
 
 ## 新增 IPC 检查清单
 
