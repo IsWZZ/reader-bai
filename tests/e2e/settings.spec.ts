@@ -377,3 +377,34 @@ test('rejects an invalid Base URL', async () => {
   await expect.poll(async () => readJsonFile<StoredSettings>(settingsFile())).toBeNull()
   await reader.app.close()
 })
+
+test('clears Electron caches from the storage section', async () => {
+  const reader = await launchReader(userDataDir)
+  await reader.app.evaluate(({ session }) => {
+    const calls: string[] = []
+    ;(globalThis as { __cacheCalls?: string[] }).__cacheCalls = calls
+    const target = session.defaultSession
+    target.clearCache = async () => {
+      calls.push('cache')
+    }
+    target.clearCodeCaches = async () => {
+      calls.push('code')
+    }
+    target.clearHostResolverCache = async () => {
+      calls.push('dns')
+    }
+  })
+
+  const dialog = await openSettings(reader.page)
+  await dialog.getByRole('button', { name: '存储' }).click()
+  await dialog.getByRole('button', { name: '清理缓存' }).click()
+
+  await expect(dialog.getByText('缓存已清理')).toBeVisible()
+  await expect
+    .poll(() =>
+      reader.app.evaluate(() => (globalThis as { __cacheCalls?: string[] }).__cacheCalls ?? [])
+    )
+    .toEqual(['cache', 'code', 'dns'])
+
+  await reader.app.close()
+})

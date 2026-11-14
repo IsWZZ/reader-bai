@@ -20,6 +20,7 @@
   - `paper:read`
   - `annotations:list/add/remove`
   - `settings:get/update`
+  - `cache:clear`：清理 Electron 的 HTTP、代码和 DNS 缓存，不碰 Cookie、书库或设置
   - `ai:chat`、`ai:abort`、`ai:chunk`
   - `runs:start/finish/cancel`
   - `tools:list/execute`

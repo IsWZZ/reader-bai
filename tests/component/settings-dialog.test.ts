@@ -43,6 +43,7 @@ let current: AppSettings
 const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
 const chooseDirectory = vi.fn<() => Promise<string | null>>()
+const clearCache = vi.fn<() => Promise<void>>()
 
 const installSettings = (settings: AppSettings): void => {
   current = structuredClone(settings)
@@ -103,6 +104,8 @@ describe('SettingsDialog', () => {
     updateSettings.mockReset()
     chooseDirectory.mockReset()
     chooseDirectory.mockResolvedValue(null)
+    clearCache.mockReset()
+    clearCache.mockResolvedValue(undefined)
     installSettings(BASE_SETTINGS)
     updateSettings.mockImplementation(async (patch) => {
       // 模拟主进程：没带 apiKey 的配置保留已保存的 Key
@@ -133,7 +136,7 @@ describe('SettingsDialog', () => {
       }
       return structuredClone(current)
     })
-    window.api = { getSettings, updateSettings, chooseDirectory } as unknown as Api
+    window.api = { getSettings, updateSettings, chooseDirectory, clearCache } as unknown as Api
 
     const store = useSettingsStore()
     await store.initialize()
@@ -460,6 +463,31 @@ describe('SettingsDialog', () => {
 
     expect(document.body.textContent).toContain('当前环境无法选择文件夹')
     expect(updateSettings).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('clears Electron caches from the storage section', async () => {
+    const wrapper = await mountDialog()
+    await findButton('存储').trigger('click')
+
+    expect(document.body.textContent).toContain('Electron 缓存')
+    await findButton('清理缓存').trigger('click')
+    await flushPromises()
+
+    expect(clearCache).toHaveBeenCalledTimes(1)
+    expect(document.body.textContent).toContain('缓存已清理')
+    wrapper.unmount()
+  })
+
+  it('reports a cache clearing failure', async () => {
+    clearCache.mockRejectedValueOnce(new Error('缓存清理失败'))
+    const wrapper = await mountDialog()
+    await findButton('存储').trigger('click')
+
+    await findButton('清理缓存').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('缓存清理失败')
     wrapper.unmount()
   })
 

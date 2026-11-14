@@ -76,7 +76,8 @@ src/renderer/src/
 
 ## 设置与插件界面
 
-- `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：主题、AI 配置、论文库目录、插件分区。
+- `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：主题、AI 配置、论文库目录、存储分区和插件分区。
+- 「存储」分区通过 `window.api.clearCache()` 清理 Electron 的 HTTP、代码和 DNS 缓存；只展示成功/失败状态，不要在渲染进程推断文件系统缓存。
 - Base URL 校验与主进程一致：默认 HTTPS，仅 `localhost` / `127.0.0.1` / `[::1]` 可用 HTTP；新增配置必须有 Key。
 - `settings.keyStorage === 'plaintext'` 时明确提示 Key 会以明文落盘。
 - `PluginSettings.vue` + [store/plugins.ts](src/store/plugins.ts)：

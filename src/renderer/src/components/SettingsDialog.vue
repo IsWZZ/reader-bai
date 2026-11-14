@@ -75,6 +75,35 @@
             </p>
           </section>
 
+          <section v-else-if="activeSection === 'storage'" class="space-y-4">
+            <div>
+              <h3 class="text-sm font-medium">Electron 缓存</h3>
+              <p class="text-muted-foreground mt-1 text-xs">
+                清理 Chromium 的网页缓存、代码缓存和 DNS 缓存；不会删除书库、标注、设置或 API Key。
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                :disabled="clearingCache"
+                @click="clearCache"
+              >
+                {{ clearingCache ? '清理中…' : '清理缓存' }}
+              </Button>
+              <span v-if="cacheStatus === 'cleared'" class="text-muted-foreground text-xs">
+                缓存已清理
+              </span>
+              <span v-else-if="cacheError" class="text-destructive text-xs">{{ cacheError }}</span>
+            </div>
+
+            <p class="text-muted-foreground text-xs">
+              清理后，页面上的离线资源会在下次加载时重新获取。
+            </p>
+          </section>
+
           <section v-else-if="activeSection === 'appearance'" class="space-y-4">
             <div>
               <h3 class="text-sm font-medium">主题</h3>
@@ -271,17 +300,28 @@ import { Input } from '@renderer/components/ui/input'
 import PluginSettings from '@renderer/components/PluginSettings.vue'
 import { useSettingsStore } from '@renderer/store/settings'
 import { aiProfileLabel } from '@renderer/lib/ai'
-import { Eye, EyeOff, FolderOpen, Moon, Palette, Puzzle, Sparkles, Sun } from 'lucide-vue-next'
+import {
+  Eye,
+  EyeOff,
+  FolderOpen,
+  HardDrive,
+  Moon,
+  Palette,
+  Puzzle,
+  Sparkles,
+  Sun
+} from 'lucide-vue-next'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const settingsStore = useSettingsStore()
 
-type SectionId = 'appearance' | 'ai' | 'library' | 'plugins'
+type SectionId = 'appearance' | 'ai' | 'library' | 'plugins' | 'storage'
 
 const sections: { id: SectionId; label: string; icon: typeof Palette }[] = [
   { id: 'library', label: '论文库', icon: FolderOpen },
+  { id: 'storage', label: '存储', icon: HardDrive },
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'ai', label: 'AI 服务', icon: Sparkles },
   { id: 'plugins', label: '插件', icon: Puzzle }
@@ -303,6 +343,9 @@ const model = ref('')
 const showKey = ref(false)
 const status = ref<'idle' | 'saved'>('idle')
 const formError = ref('')
+const clearingCache = ref(false)
+const cacheStatus = ref<'idle' | 'cleared'>('idle')
+const cacheError = ref('')
 
 const editing = computed(() => editingId.value !== null)
 const editingProfileHasKey = computed(() =>
@@ -344,18 +387,25 @@ const cancelEdit = (): void => {
   resetForm()
 }
 
+const resetCacheState = (): void => {
+  cacheStatus.value = 'idle'
+  cacheError.value = ''
+}
+
 watch(
   () => props.open,
   (open) => {
     if (!open) return
     settingsStore.clearError()
     resetForm()
+    resetCacheState()
   }
 )
 
 watch(activeSection, () => {
   status.value = 'idle'
   formError.value = ''
+  resetCacheState()
 })
 
 const saveLibraryDirectory = async (directory: string): Promise<void> => {
@@ -384,6 +434,28 @@ const chooseLibraryDirectory = async (): Promise<void> => {
 }
 
 const resetLibraryDirectory = (): Promise<void> => saveLibraryDirectory('')
+
+const clearCache = async (): Promise<void> => {
+  if (clearingCache.value) return
+  cacheStatus.value = 'idle'
+  cacheError.value = ''
+  const api = window.api
+  if (!api?.clearCache) {
+    cacheError.value = '当前环境无法清理缓存'
+    return
+  }
+
+  clearingCache.value = true
+  try {
+    await api.clearCache()
+    cacheStatus.value = 'cleared'
+  } catch (e) {
+    cacheStatus.value = 'idle'
+    cacheError.value = e instanceof Error ? e.message : '清理缓存失败'
+  } finally {
+    clearingCache.value = false
+  }
+}
 
 const isLoopbackHost = (hostname: string): boolean =>
   hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'

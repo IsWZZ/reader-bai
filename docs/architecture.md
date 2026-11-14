@@ -238,7 +238,7 @@ C 层已从“只发现”推进到“独立进程执行”，但进程隔离不
 ## 数据与安全边界
 
 - API Key、账号令牌等敏感信息只在主进程解密和使用；第三方插件拿不到明文，只能通过平台服务发起请求。
-- 应用数据统一放在 `userData/data`：`library.json`、`annotations.json`、`settings.json`、`plugins.json`、`papers/` 和 `plugins/` 都在这层，与 Electron/Chromium 的缓存和配置分开，便于备份和迁移。旧版平铺在 `userData` 根目录的数据由 [user-data.ts](../src/main/user-data.ts) 在启动时迁移。
+- 应用数据统一放在 `userData/data`：`library.json`、`annotations.json`、`settings.json`、`plugins.json`、`papers/` 和 `plugins/` 都在这层，与 Electron/Chromium 的缓存和配置分开，便于备份和迁移。旧版平铺在 `userData` 根目录的数据由 [user-data.ts](../src/main/user-data.ts) 在启动时迁移。设置页的「存储」分区只清理 Electron 的 HTTP、代码和 DNS 缓存，不删除 `data` 下的应用数据。
 - 威胁模型、当前防护、已知风险和加固顺序见 [security.md](security.md)。新增 IPC、文件访问、网络请求和插件能力时按其中的检查清单执行。
 - 任何模块或插件都不得直接写 `library.json` / `annotations.json`；对书库的修改必须走平台 API 并经过校验。
 - 云端能力默认关闭，开启前说明会发送哪些数据；本地知识库索引不自动上传。

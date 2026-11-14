@@ -153,6 +153,7 @@ const api = {
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch: SettingsPatch): Promise<AppSettings> =>
     ipcRenderer.invoke('settings:update', patch),
+  clearCache: (): Promise<void> => ipcRenderer.invoke('cache:clear'),
   chat: async (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> => {
     const result = await ipcRenderer.invoke('ai:chat', requestId, messages, profileId)
     return result.text

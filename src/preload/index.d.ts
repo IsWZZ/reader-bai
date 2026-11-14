@@ -234,6 +234,8 @@ declare global {
     removeAnnotations: (filePath: string, ids: string[]) => Promise<string[]>
     getSettings: () => Promise<AppSettings>
     updateSettings: (patch: SettingsPatch) => Promise<AppSettings>
+    /** 清理 Electron 的 HTTP、代码和 DNS 缓存；不影响书库、标注或设置 */
+    clearCache: () => Promise<void>
     /** 使用指定 AI 配置发起流式对话，返回完整回复文本；增量通过 onAiChunk 推送 */
     chat: (requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>
     /** 带工具定义的流式对话，返回归一化后的文本和工具调用；runId 用于平台预算和取消 */
