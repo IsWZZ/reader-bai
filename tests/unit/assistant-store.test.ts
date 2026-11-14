@@ -8,6 +8,9 @@ import type {
   AiProfile,
   AppSettings,
   ChatMessage,
+  AgentRunInfo,
+  RunLimits,
+  RunUsage,
   SettingsPatch,
   ToolInfo,
   ToolResult
@@ -47,12 +50,17 @@ const chatWithTools =
       requestId: string,
       messages: ChatMessage[],
       profileId: string,
-      tools?: string[]
+      tools?: string[],
+      runId?: string
     ) => Promise<AiChatResult>
   >()
 const listTools = vi.fn<() => Promise<ToolInfo[]>>()
 const executeTool = vi.fn<(name: string, input: unknown) => Promise<ToolResult>>()
 const abortChat = vi.fn<(requestId: string) => void>()
+const startRun = vi.fn<(limits?: RunLimits) => Promise<AgentRunInfo>>()
+const finishRun = vi.fn<(id: string) => Promise<RunUsage>>()
+const cancelRun = vi.fn<(id: string) => Promise<void>>()
+let runSequence = 0
 let chunkHandler: ((payload: AiChunk) => void) | null = null
 const unsubscribe = vi.fn()
 const onAiChunk = vi.fn((callback: (payload: AiChunk) => void) => {
@@ -69,9 +77,21 @@ const installApi = (): void => {
     listTools,
     executeTool,
     abortChat,
+    startRun,
+    finishRun,
+    cancelRun,
     onAiChunk
   } as unknown as Api
 }
+
+const readTool = (name: string): ToolInfo => ({
+  name,
+  title: name,
+  description: name,
+  inputSchema: { type: 'object', properties: {} },
+  risk: 'read',
+  exposeToAi: true
+})
 
 const replyResult = (text: string): AiChatResult => ({
   text,
@@ -121,7 +141,14 @@ describe('assistant store', () => {
     listTools.mockReset()
     executeTool.mockReset()
     abortChat.mockReset()
+    startRun.mockReset()
+    finishRun.mockReset()
+    cancelRun.mockReset()
     onAiChunk.mockClear()
+    runSequence = 0
+    startRun.mockImplementation(async () => ({ id: `run-${(runSequence += 1)}` }))
+    finishRun.mockResolvedValue({ steps: 1, inputTokens: 0, outputTokens: 0 })
+    cancelRun.mockResolvedValue(undefined)
     listTools.mockResolvedValue([])
     executeTool.mockResolvedValue({ content: 'ok' })
     chunkHandler = null
@@ -365,10 +392,37 @@ describe('assistant store', () => {
     await store.sendChat('库里有几篇论文？')
 
     expect(listTools).toHaveBeenCalledTimes(1)
+    expect(startRun).toHaveBeenCalledWith({ maxSteps: 6, timeoutMs: 120_000 })
     expect(chatWithTools.mock.calls[0][3]).toEqual(['library.list'])
+    expect(chatWithTools.mock.calls[0][4]).toBe('run-1')
     expect(executeTool).toHaveBeenCalledWith('library.list', {})
+    expect(finishRun).toHaveBeenCalledWith('run-1')
+    expect(cancelRun).not.toHaveBeenCalled()
     expect(store.messages[store.messages.length - 1].content).toBe('找到一篇论文')
     expect(store.messages[store.messages.length - 1].toolNotes).toEqual(['调用工具：library.list'])
+  })
+
+  it('cancels the platform run when the agent is stopped', async () => {
+    listTools.mockResolvedValue([readTool('library.list')])
+    pendingReply()
+
+    const store = useAssistantStore()
+    store.initialize()
+    store.agentMode = true
+
+    const promise = store.sendChat('库里有几篇论文？')
+    await flush()
+    const requestId = chatWithTools.mock.calls[0][0]
+
+    store.stopChat()
+
+    expect(cancelRun).toHaveBeenCalledWith('run-1')
+    expect(abortChat).toHaveBeenCalledWith(requestId)
+
+    resolveReply(replyResult('部分内容'))
+    await promise
+    expect(finishRun).not.toHaveBeenCalled()
+    expect(store.chatLoading).toBe(false)
   })
 
   it('stops a streaming chat reply', async () => {

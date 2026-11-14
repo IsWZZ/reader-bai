@@ -105,6 +105,22 @@ declare global {
     delta: string
   }
 
+  interface RunLimits {
+    maxSteps?: number
+    /** 运行超时，毫秒 */
+    timeoutMs?: number
+  }
+
+  interface RunUsage {
+    steps: number
+    inputTokens: number
+    outputTokens: number
+  }
+
+  interface AgentRunInfo {
+    id: string
+  }
+
   type ToolRisk = 'read' | 'write' | 'destructive'
 
   interface ToolInfo {
@@ -198,13 +214,20 @@ declare global {
     updateSettings: (patch: SettingsPatch) => Promise<AppSettings>
     /** 使用指定 AI 配置发起流式对话，返回完整回复文本；增量通过 onAiChunk 推送 */
     chat: (requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>
-    /** 带工具定义的流式对话，返回归一化后的文本和工具调用 */
+    /** 带工具定义的流式对话，返回归一化后的文本和工具调用；runId 用于平台预算和取消 */
     chatWithTools: (
       requestId: string,
       messages: ChatMessage[],
       profileId: string,
-      tools?: string[]
+      tools?: string[],
+      runId?: string
     ) => Promise<AiChatResult>
+    /** 开始一次 agent run，由平台记录步数、超时和取消 */
+    startRun: (limits?: RunLimits) => Promise<AgentRunInfo>
+    /** 正常结束 run，返回用量 */
+    finishRun: (id: string) => Promise<RunUsage>
+    /** 取消 run；之后使用该 runId 的模型请求会被拒绝 */
+    cancelRun: (id: string) => Promise<void>
     /** 中止指定请求 */
     abortChat: (requestId: string) => void
     /** 订阅流式增量，返回取消订阅函数 */

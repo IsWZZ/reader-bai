@@ -1,10 +1,12 @@
 import { ipcMain } from 'electron'
 import { normalizeChatMessages, streamChat, type ChatToolDefinition } from '../ai'
+import type { AgentRun, RunManager } from '../ai-run'
 import type { SettingsStore } from '../settings-store'
 import { toChatToolDefinition, type ToolRegistry } from '../tool-registry'
 
 const MAX_TOOLS = 50
 const MAX_TOOL_NAME_LENGTH = 100
+const MAX_RUN_ID_LENGTH = 100
 
 const isHttpUrl = (value: string): boolean => {
   try {
@@ -37,7 +39,11 @@ const resolveTools = (input: unknown, registry: ToolRegistry): ChatToolDefinitio
 }
 
 /** AI 对话的 IPC：Key 只在主进程解密，不经过渲染进程参数 */
-export const registerAiIpc = (settings: SettingsStore, tools: ToolRegistry): void => {
+export const registerAiIpc = (
+  settings: SettingsStore,
+  tools: ToolRegistry,
+  runs: RunManager
+): void => {
   // 进行中的 AI 请求，按 requestId 索引，供渲染进程中止
   const aiRequests = new Map<string, AbortController>()
 
@@ -49,7 +55,8 @@ export const registerAiIpc = (settings: SettingsStore, tools: ToolRegistry): voi
       requestId: unknown,
       messages: unknown,
       profileId: unknown,
-      toolNames: unknown
+      toolNames: unknown,
+      runId: unknown
     ) => {
       if (typeof requestId !== 'string' || !requestId || requestId.length > 100) {
         throw new Error('请求标识不正确')
@@ -76,8 +83,22 @@ export const registerAiIpc = (settings: SettingsStore, tools: ToolRegistry): voi
         throw new Error('Base URL 需要是以 http:// 或 https:// 开头的地址')
       }
 
+      // run 边界：每次模型调用计一步；超出预算或已被取消时不再发起请求
+      let run: AgentRun | undefined
+      if (runId !== undefined && runId !== null) {
+        if (typeof runId !== 'string' || !runId || runId.length > MAX_RUN_ID_LENGTH) {
+          throw new Error('运行标识不正确')
+        }
+        run = runs.get(runId)
+        if (!run) throw new Error('运行不存在或已结束')
+        if (run.isAborted) throw new Error('运行已取消')
+        run.recordStep()
+      }
+
       const controller = new AbortController()
       const abort = (): void => controller.abort()
+      run?.signal.addEventListener('abort', abort, { once: true })
+      if (run?.signal.aborted) controller.abort()
       aiRequests.set(requestId, controller)
       event.sender.once('destroyed', abort)
 
@@ -96,6 +117,7 @@ export const registerAiIpc = (settings: SettingsStore, tools: ToolRegistry): voi
           }
         })
       } finally {
+        run?.signal.removeEventListener('abort', abort)
         event.sender.removeListener('destroyed', abort)
         aiRequests.delete(requestId)
       }

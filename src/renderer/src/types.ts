@@ -80,6 +80,22 @@ export interface AiChatResult {
   finishReason: ChatFinishReason
 }
 
+export interface RunLimits {
+  maxSteps?: number
+  /** 运行超时，毫秒 */
+  timeoutMs?: number
+}
+
+export interface RunUsage {
+  steps: number
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface AgentRunInfo {
+  id: string
+}
+
 export type ToolRisk = 'read' | 'write' | 'destructive'
 
 export interface ToolInfo {

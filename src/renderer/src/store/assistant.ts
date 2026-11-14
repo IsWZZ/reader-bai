@@ -8,6 +8,7 @@ const TRANSLATE_DEBOUNCE_MS = 250
 const MAX_SELECTION_CHARS = 4000
 const MAX_HISTORY_MESSAGES = 20
 const MAX_AGENT_STEPS = 6
+const AGENT_RUN_TIMEOUT_MS = 120_000
 
 export interface ChatEntry {
   id: string
@@ -68,6 +69,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   let translateRequestId: string | null = null
   let chatRequestId: string | null = null
   let chatAbort: AbortController | null = null
+  let chatRunId: string | null = null
 
   const handleChunk = (payload: AiChunk): void => {
     if (payload.requestId === translateRequestId && translation.value) {
@@ -229,7 +231,22 @@ export const useAssistantStore = defineStore('assistant', () => {
       entry.toolNotes.push(note)
     }
 
+    let runId: string | undefined
     try {
+      // 工具模式走平台 run 边界：预算、超时和取消都由主进程记录
+      if (agentMode.value) {
+        const run = await api.startRun({
+          maxSteps: MAX_AGENT_STEPS,
+          timeoutMs: AGENT_RUN_TIMEOUT_MS
+        })
+        runId = run.id
+        chatRunId = run.id
+        if (controller.signal.aborted) {
+          await api.cancelRun(run.id).catch(() => undefined)
+          return
+        }
+      }
+
       // agent loop 在模块里，平台只负责每次模型请求和工具执行
       const result = await runAgentLoop({
         messages: [
@@ -245,7 +262,7 @@ export const useAssistantStore = defineStore('assistant', () => {
         createRequestId: createId,
         chat: (requestId, loopMessages) => {
           chatRequestId = requestId
-          return api.chatWithTools(requestId, loopMessages, profile.id, toolNames)
+          return api.chatWithTools(requestId, loopMessages, profile.id, toolNames, runId)
         },
         executeTool: (name, toolInput) => api.executeTool(name, toolInput),
         onEvent: (event) => {
@@ -268,6 +285,14 @@ export const useAssistantStore = defineStore('assistant', () => {
       }
       chatError.value = cleanError(error, 'AI 回复失败，请稍后重试')
     } finally {
+      if (runId) {
+        if (controller.signal.aborted) {
+          void api.cancelRun(runId).catch(() => undefined)
+        } else {
+          void api.finishRun(runId).catch(() => undefined)
+        }
+        if (chatRunId === runId) chatRunId = null
+      }
       if (chatAbort === controller) {
         chatAbort = null
         chatRequestId = null
@@ -276,9 +301,16 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
+  const cancelChatRun = (): void => {
+    const runId = chatRunId
+    chatRunId = null
+    if (runId) void window.api?.cancelRun(runId).catch(() => undefined)
+  }
+
   const stopChat = (): void => {
     chatAbort?.abort()
     chatAbort = null
+    cancelChatRun()
     if (chatRequestId) {
       window.api?.abortChat(chatRequestId)
       chatRequestId = null
@@ -293,6 +325,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     abortTranslation()
     chatAbort?.abort()
     chatAbort = null
+    cancelChatRun()
     if (chatRequestId) {
       window.api?.abortChat(chatRequestId)
       chatRequestId = null

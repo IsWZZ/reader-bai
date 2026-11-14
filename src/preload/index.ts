@@ -87,6 +87,21 @@ interface PluginListResult {
   issues: PluginIssue[]
 }
 
+interface RunLimits {
+  maxSteps?: number
+  timeoutMs?: number
+}
+
+interface RunUsage {
+  steps: number
+  inputTokens: number
+  outputTokens: number
+}
+
+interface AgentRunInfo {
+  id: string
+}
+
 interface SettingsPatch {
   theme?: AppTheme
   ai?: {
@@ -128,8 +143,13 @@ const api = {
     requestId: string,
     messages: ChatMessage[],
     profileId: string,
-    tools: string[] = []
-  ) => ipcRenderer.invoke('ai:chat', requestId, messages, profileId, tools),
+    tools: string[] = [],
+    runId?: string
+  ) => ipcRenderer.invoke('ai:chat', requestId, messages, profileId, tools, runId),
+  startRun: (limits: RunLimits = {}): Promise<AgentRunInfo> =>
+    ipcRenderer.invoke('runs:start', limits),
+  finishRun: (id: string): Promise<RunUsage> => ipcRenderer.invoke('runs:finish', id),
+  cancelRun: (id: string): Promise<void> => ipcRenderer.invoke('runs:cancel', id),
   abortChat: (requestId: string): void => {
     ipcRenderer.send('ai:abort', requestId)
   },

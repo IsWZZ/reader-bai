@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import packageJson from '../../package.json'
+import { createRunManager } from './ai-run'
 import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
 import { readPdfPageText } from './pdf-text'
@@ -13,6 +14,7 @@ import { registerAiIpc } from './ipc/ai'
 import { registerAnnotationsIpc } from './ipc/annotations'
 import { registerLibraryIpc } from './ipc/library'
 import { registerPluginsIpc } from './ipc/plugins'
+import { registerRunsIpc } from './ipc/runs'
 import { registerSettingsIpc } from './ipc/settings'
 import { confirmToolInvocation, registerToolsIpc } from './ipc/tools'
 
@@ -33,6 +35,7 @@ app.whenReady().then(() => {
   const library = createLibraryStore(join(userData, 'library.json'))
   const annotations = createAnnotationStore(join(userData, 'annotations.json'))
   const settings = createSettingsStore(join(userData, 'settings.json'), join(userData, 'papers'))
+  const runs = createRunManager()
   const plugins = createPluginHost({
     root: join(userData, 'plugins'),
     stateFile: join(userData, 'plugins.json'),
@@ -50,7 +53,8 @@ app.whenReady().then(() => {
   registerAnnotationsIpc(annotations, library)
   registerSettingsIpc(settings)
   registerPluginsIpc(plugins)
-  registerAiIpc(settings, tools)
+  registerRunsIpc(runs)
+  registerAiIpc(settings, tools, runs)
   registerToolsIpc(tools)
 
   createWindow()

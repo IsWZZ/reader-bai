@@ -48,12 +48,16 @@ const chatWithTools =
       requestId: string,
       messages: ChatMessage[],
       profileId: string,
-      tools?: string[]
+      tools?: string[],
+      runId?: string
     ) => Promise<AiChatResult>
   >()
 const listTools = vi.fn<() => Promise<ToolInfo[]>>()
 const executeTool = vi.fn<(name: string, input: unknown) => Promise<ToolResult>>()
 const abortChat = vi.fn<(requestId: string) => void>()
+const startRun = vi.fn<() => Promise<{ id: string }>>()
+const finishRun = vi.fn<(id: string) => Promise<{ steps: number }>>()
+const cancelRun = vi.fn<(id: string) => Promise<void>>()
 const onAiChunk = vi.fn(() => vi.fn())
 
 const installApi = (): void => {
@@ -64,6 +68,9 @@ const installApi = (): void => {
     listTools,
     executeTool,
     abortChat,
+    startRun,
+    finishRun,
+    cancelRun,
     onAiChunk
   } as unknown as Api
 }
@@ -102,7 +109,13 @@ describe('AssistantPanel', () => {
     listTools.mockReset()
     executeTool.mockReset()
     abortChat.mockReset()
+    startRun.mockReset()
+    finishRun.mockReset()
+    cancelRun.mockReset()
     onAiChunk.mockClear()
+    startRun.mockResolvedValue({ id: 'run-1' })
+    finishRun.mockResolvedValue({ steps: 1 })
+    cancelRun.mockResolvedValue(undefined)
     listTools.mockResolvedValue([])
     executeTool.mockResolvedValue({ content: 'ok' })
     installSettings(BASE_SETTINGS)
@@ -291,8 +304,10 @@ describe('AssistantPanel', () => {
     await flushPromises()
 
     expect(chatWithTools.mock.calls[0][3]).toEqual(['library.list'])
+    expect(chatWithTools.mock.calls[0][4]).toBe('run-1')
     expect(executeTool).toHaveBeenCalledWith('library.list', {})
     expect(chatWithTools).toHaveBeenCalledTimes(2)
+    expect(finishRun).toHaveBeenCalledWith('run-1')
     expect(wrapper.text()).toContain('调用工具：library.list')
     expect(wrapper.text()).toContain('库里有一篇论文')
     wrapper.unmount()
