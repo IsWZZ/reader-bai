@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, type Mock } from 'vitest'
-import { runAgentLoop, type AgentEvent, type AgentLoopOptions } from '@renderer/lib/agent-loop'
-import type { AiChatResult, ChatMessage, ChatToolCallResult } from '@renderer/types'
+import { runAgentLoop, type AgentEvent, type AgentLoopOptions } from '../../src/main/agent/loop'
+import type { ChatMessage, ChatToolCallResult, StreamChatResult } from '../../src/main/ai'
 
 type ChatFn = AgentLoopOptions['chat']
 type ExecuteFn = AgentLoopOptions['executeTool']
@@ -10,7 +10,7 @@ interface TestOptions extends AgentLoopOptions {
   executeTool: Mock<ExecuteFn>
 }
 
-const aiResult = (overrides: Partial<AiChatResult> = {}): AiChatResult => ({
+const aiResult = (overrides: Partial<StreamChatResult> = {}): StreamChatResult => ({
   text: '',
   toolCalls: [],
   finishReason: 'stop',

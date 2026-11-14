@@ -201,14 +201,15 @@ for (let step = 0; step < 12 && !run.signal.aborted; step++) {
 还不是完整的插件宿主，但先把 agent 需要的平台边界立住了：
 
 - `src/main/ai.ts`：把流式文本和 `tool_calls` 归一化为 `StreamChatResult`；工具参数分片会拼装完整后再返回；旧的 `streamChatCompletion` 保留为只取文本的兼容包装。
-- `src/main/ai-run.ts` + `src/main/ipc/runs.ts`：`runId`、取消、步数/token 预算和超时；`runs:start/finish/cancel` 暴露生命周期，`ai:chat` 可带 `runId` 记录步数并绑定取消/超时；agent loop 仍由插件实现。
+- `src/main/ai-run.ts`：`runId`、取消、步数/token 预算和超时；run 不再通过 IPC 暴露，由 agent runtime 和 `ai-request.ts` 内部使用。
+- `src/main/ai-request.ts`：单次模型请求的执行边界，负责解析配置、解密 Key、校验 Base URL、解析工具 schema、计步和取消；翻译与 agent 宿主共用。
 - `src/main/tool-registry.ts`：工具注册、JSON Schema、风险等级、AI 暴露白名单、`authorize`/`onInvoke` 钩子。
 - `src/main/platform-tools.ts`：第一批平台工具 `library.list`、`paper.get`、`paper.readPage`、`annotations.list/add/remove`；只读工具直接执行，写入和删除默认拒绝，必须经过确认钩子。
 - `src/main/pdf-text.ts`：主进程侧的 PDF 单页文本提取，pdfjs 按需动态加载，限制文件大小和解析超时；渲染进程和插件都不需要直接读文件。
 - `src/main/ipc/tools.ts`：`tools:list` / `tools:execute` 执行边界；渲染进程只能按名字调用已注册工具，写操作由主进程弹出确认弹窗，插件无法跳过。
-- `src/main/ipc/ai.ts`：`ai:chat` 接受工具名列表，由主进程注册表解析成工具定义后再发给模型，返回归一化的文本、`toolCalls` 和结束原因；工具 schema 不能由渲染进程伪造。
-- `src/renderer/src/lib/agent-loop.ts`：第一方 agent loop（模型 → 工具 → 模型），通过注入的模型请求和工具执行接口工作；平台只提供能力，循环属于模块。
-- `AssistantPanel.vue` + `store/assistant.ts`：对话可开启“工具”模式，只使用平台判定为只读且对 AI 开放的工具，并在气泡下方展示工具调用记录；工具模式会先向平台申请 run，模型请求带 `runId`，停止对话时同时取消 run。
+- `src/main/ipc/ai.ts`：`ai:chat` 只负责翻译，接收消息、配置 id 和请求 id，返回文本；工具 schema 不能由渲染进程伪造。
+- `src/main/agent/`：第一方 agent loop（模型 → 工具 → 模型）运行在独立的 `agent-host` `utilityProcess` 中。主进程负责会话、run 预算、超时、工具白名单、Key 和事件转发，宿主只按会话请求模型和工具；渲染进程只调 `agent:start/cancel` 并订阅 `agent:event`。
+- `AssistantPanel.vue` + `store/assistant.ts`：对话可开启“工具”模式，只使用平台判定为只读且对 AI 开放的工具，并在气泡下方展示工具调用记录；停止对话时取消会话，模型增量、工具事件和最终结果都通过 `agent:event` 返回。
 
 后续接入扩展宿主时，插件 API 直接复用这些边界；不需要重写 SSE 解析，也不需要把 agent loop 搬进主进程。
 

@@ -3,17 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAssistantStore } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
 import type {
-  AiChatResult,
+  AgentEvent,
+  AgentEventPayload,
+  AgentSessionInfo,
+  AgentStartRequest,
   AiChunk,
   AiProfile,
   AppSettings,
   ChatMessage,
-  AgentRunInfo,
-  RunLimits,
-  RunUsage,
-  SettingsPatch,
-  ToolInfo,
-  ToolResult
+  SettingsPatch
 } from '@renderer/types'
 
 const PROFILE_A: AiProfile = {
@@ -63,28 +61,22 @@ const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
 const chat =
   vi.fn<(requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>>()
-const chatWithTools =
-  vi.fn<
-    (
-      requestId: string,
-      messages: ChatMessage[],
-      profileId: string,
-      tools?: string[],
-      runId?: string
-    ) => Promise<AiChatResult>
-  >()
-const listTools = vi.fn<() => Promise<ToolInfo[]>>()
-const executeTool = vi.fn<(name: string, input: unknown) => Promise<ToolResult>>()
 const abortChat = vi.fn<(requestId: string) => void>()
-const startRun = vi.fn<(limits?: RunLimits) => Promise<AgentRunInfo>>()
-const finishRun = vi.fn<(id: string) => Promise<RunUsage>>()
-const cancelRun = vi.fn<(id: string) => Promise<void>>()
+const startAgent = vi.fn<(request: AgentStartRequest) => Promise<AgentSessionInfo>>()
+const cancelAgent = vi.fn<(id: string) => Promise<void>>()
 let runSequence = 0
+
 let chunkHandler: ((payload: AiChunk) => void) | null = null
-const unsubscribe = vi.fn()
+let agentHandler: ((payload: AgentEventPayload) => void) | null = null
+const unsubscribeChunks = vi.fn()
+const unsubscribeAgent = vi.fn()
 const onAiChunk = vi.fn((callback: (payload: AiChunk) => void) => {
   chunkHandler = callback
-  return unsubscribe
+  return unsubscribeChunks
+})
+const onAgentEvent = vi.fn((callback: (payload: AgentEventPayload) => void) => {
+  agentHandler = callback
+  return unsubscribeAgent
 })
 
 const installApi = (): void => {
@@ -92,35 +84,28 @@ const installApi = (): void => {
     getSettings,
     updateSettings,
     chat,
-    chatWithTools,
-    listTools,
-    executeTool,
     abortChat,
-    startRun,
-    finishRun,
-    cancelRun,
-    onAiChunk
+    startAgent,
+    cancelAgent,
+    onAiChunk,
+    onAgentEvent
   } as unknown as Api
 }
 
-const readTool = (name: string): ToolInfo => ({
-  name,
-  title: name,
-  description: name,
-  inputSchema: { type: 'object', properties: {} },
-  risk: 'read',
-  exposeToAi: true
-})
-
-const replyResult = (text: string): AiChatResult => ({
+const replyResult = (text: string): AgentEvent => ({
+  type: 'done',
   text,
-  toolCalls: [],
+  steps: 1,
   finishReason: 'stop'
 })
 
 // 让 pending 的 Promise 在几次微任务后继续
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 5; i += 1) await Promise.resolve()
+}
+
+const emitAgent = (sessionId: string, event: AgentEvent): void => {
+  agentHandler?.({ sessionId, event })
 }
 
 let resolveChat: (value: string) => void
@@ -135,16 +120,14 @@ const pendingChat = (): void => {
   )
 }
 
-let resolveReply: (value: AiChatResult) => void
-let rejectReply: (error: unknown) => void
+let resolveSession: (value: AgentSessionInfo) => void
 
-/** 对话走带工具的 chatWithTools */
-const pendingReply = (): void => {
-  chatWithTools.mockImplementation(
+/** 会话 id 迟迟不返回，用于测试“启动途中停止” */
+const pendingSession = (): void => {
+  startAgent.mockImplementation(
     () =>
-      new Promise<AiChatResult>((resolve, reject) => {
-        resolveReply = resolve
-        rejectReply = reject
+      new Promise<AgentSessionInfo>((resolve) => {
+        resolveSession = resolve
       })
   )
 }
@@ -156,21 +139,18 @@ describe('assistant store', () => {
     getSettings.mockReset()
     updateSettings.mockReset()
     chat.mockReset()
-    chatWithTools.mockReset()
-    listTools.mockReset()
-    executeTool.mockReset()
     abortChat.mockReset()
-    startRun.mockReset()
-    finishRun.mockReset()
-    cancelRun.mockReset()
+    startAgent.mockReset()
+    cancelAgent.mockReset()
     onAiChunk.mockClear()
+    onAgentEvent.mockClear()
+    unsubscribeChunks.mockClear()
+    unsubscribeAgent.mockClear()
     runSequence = 0
-    startRun.mockImplementation(async () => ({ id: `run-${(runSequence += 1)}` }))
-    finishRun.mockResolvedValue({ steps: 1, inputTokens: 0, outputTokens: 0 })
-    cancelRun.mockResolvedValue(undefined)
-    listTools.mockResolvedValue([])
-    executeTool.mockResolvedValue({ content: 'ok' })
+    startAgent.mockImplementation(async () => ({ id: `session-${(runSequence += 1)}` }))
+    cancelAgent.mockResolvedValue(undefined)
     chunkHandler = null
+    agentHandler = null
     getSettings.mockResolvedValue(structuredClone(CONFIGURED))
     updateSettings.mockImplementation(async (patch) => ({
       theme: patch.theme ?? CONFIGURED.theme,
@@ -287,6 +267,7 @@ describe('assistant store', () => {
 
     await store.sendChat('hello')
     expect(chat).not.toHaveBeenCalled()
+    expect(startAgent).not.toHaveBeenCalled()
     expect(store.chatError).toContain('请先在设置')
   })
 
@@ -302,6 +283,7 @@ describe('assistant store', () => {
 
     await store.sendChat('hello')
     expect(chat).not.toHaveBeenCalled()
+    expect(startAgent).not.toHaveBeenCalled()
     expect(store.chatError).toContain('请先在设置')
   })
 
@@ -400,8 +382,7 @@ describe('assistant store', () => {
     expect(store.translation?.error).toContain('选中的文本过长')
   })
 
-  it('streams chat replies and only sends the recent history', async () => {
-    pendingReply()
+  it('starts an agent session with recent history and streams its events', async () => {
     const store = useAssistantStore()
     store.initialize()
 
@@ -417,36 +398,76 @@ describe('assistant store', () => {
     expect(store.messages).toHaveLength(27)
     expect(store.chatLoading).toBe(true)
 
-    const [requestId, messages, profileId] = chatWithTools.mock.calls[0]
-    expect(profileId).toBe('a')
-    expect(messages[0].role).toBe('system')
-    expect(messages).toHaveLength(21)
-    expect(messages[messages.length - 1]).toEqual({ role: 'user', content: 'hello' })
+    await flush()
 
-    chunkHandler?.({ requestId, delta: '回复内容' })
+    const [request] = startAgent.mock.calls[0]
+    expect(request.profileId).toBe('a')
+    expect(request.mode).toBe('chat')
+    expect(request.messages).toHaveLength(20)
+    expect(request.messages[0]).toEqual({ role: 'user', content: 'm6' })
+    expect(request.messages[request.messages.length - 1]).toEqual({
+      role: 'user',
+      content: 'hello'
+    })
+
+    emitAgent('session-1', { type: 'chunk', delta: '回复内容' })
     const reply = store.messages[store.messages.length - 1]
     expect(reply.content).toBe('回复内容')
 
-    resolveReply(replyResult('回复内容'))
+    emitAgent('session-1', replyResult('回复内容'))
     await promise
     expect(reply.content).toBe('回复内容')
     expect(store.chatLoading).toBe(false)
   })
 
-  it('uses the final reply when no stream chunks arrive', async () => {
-    chatWithTools.mockResolvedValueOnce(replyResult('最终回复'))
+  it('uses the final text when no stream chunks arrive', async () => {
     const store = useAssistantStore()
     store.initialize()
 
-    await store.sendChat('hello')
+    const promise = store.sendChat('hello')
+    await flush()
+    emitAgent('session-1', replyResult('最终回复'))
+    await promise
 
     expect(store.messages).toHaveLength(2)
     expect(store.messages[1]).toMatchObject({ role: 'assistant', content: '最终回复' })
     expect(store.chatLoading).toBe(false)
   })
 
+  it('buffers events that arrive before the session id is known', async () => {
+    pendingSession()
+    const store = useAssistantStore()
+    store.initialize()
+
+    const promise = store.sendChat('hello')
+    await flush()
+
+    emitAgent('session-1', { type: 'chunk', delta: '早到' })
+    emitAgent('session-1', replyResult('早到'))
+
+    resolveSession({ id: 'session-1' })
+    await promise
+
+    expect(store.messages[1].content).toBe('早到')
+    expect(store.chatLoading).toBe(false)
+  })
+
+  it('ignores events from other sessions', async () => {
+    const store = useAssistantStore()
+    store.initialize()
+
+    const promise = store.sendChat('hello')
+    await flush()
+
+    emitAgent('session-other', { type: 'chunk', delta: '串台' })
+    expect(store.messages[1].content).toBe('')
+
+    emitAgent('session-1', replyResult('正常'))
+    await promise
+    expect(store.messages[1].content).toBe('正常')
+  })
+
   it('ignores blank input and concurrent submissions', async () => {
-    pendingReply()
     const store = useAssistantStore()
     store.initialize()
 
@@ -456,151 +477,85 @@ describe('assistant store', () => {
     const first = store.sendChat('hello')
     await store.sendChat('again')
 
-    expect(chatWithTools).toHaveBeenCalledTimes(1)
+    expect(startAgent).toHaveBeenCalledTimes(1)
     expect(store.messages.map((entry) => entry.content)).toEqual(['hello', ''])
 
-    resolveReply(replyResult('ok'))
+    await flush()
+    emitAgent('session-1', replyResult('ok'))
     await first
   })
 
-  it('continues without tools when listing tools fails', async () => {
-    listTools.mockRejectedValueOnce(new Error('registry unavailable'))
-    chatWithTools.mockResolvedValueOnce(replyResult('ok'))
-    const store = useAssistantStore()
-    store.initialize()
-    store.agentMode = true
-
-    await store.sendChat('hello')
-
-    expect(chatWithTools.mock.calls[0][3]).toEqual([])
-    expect(chatWithTools.mock.calls[0][1][0].content).toContain('学术阅读助手')
-    expect(finishRun).toHaveBeenCalledWith('run-1')
-  })
-
-  it('cancels the run when stopped before the first model request', async () => {
-    listTools.mockResolvedValue([readTool('library.list')])
-    let resolveRun: ((value: AgentRunInfo) => void) | undefined
-    startRun.mockImplementation(
-      () =>
-        new Promise<AgentRunInfo>((resolve) => {
-          resolveRun = resolve
-        })
-    )
-    const store = useAssistantStore()
-    store.initialize()
-    store.agentMode = true
-
-    const promise = store.sendChat('hello')
-    await flush()
-
-    expect(startRun).toHaveBeenCalledTimes(1)
-    expect(resolveRun).toBeDefined()
-
-    store.stopChat()
-    resolveRun?.({ id: 'run-9' })
-    await promise
-
-    expect(chatWithTools).not.toHaveBeenCalled()
-    expect(cancelRun).toHaveBeenCalledWith('run-9')
-    expect(finishRun).not.toHaveBeenCalled()
-    expect(store.chatLoading).toBe(false)
-  })
-
-  it('runs read-only tools through the agent loop', async () => {
-    listTools.mockResolvedValue([
-      {
-        name: 'library.list',
-        title: '列出论文',
-        description: '只读',
-        inputSchema: { type: 'object', properties: {} },
-        risk: 'read',
-        exposeToAi: true
-      },
-      {
-        name: 'annotations.remove',
-        title: '删除标注',
-        description: '破坏性',
-        inputSchema: { type: 'object', properties: {} },
-        risk: 'destructive',
-        exposeToAi: true
-      }
-    ])
-    chatWithTools
-      .mockResolvedValueOnce({
-        text: '',
-        toolCalls: [{ id: 'call-1', name: 'library.list', arguments: '{}' }],
-        finishReason: 'tool_calls'
-      })
-      .mockResolvedValueOnce(replyResult('找到一篇论文'))
-    executeTool.mockResolvedValue({ content: '{"total":1}' })
-
-    const store = useAssistantStore()
-    store.initialize()
-    store.agentMode = true
-
-    await store.sendChat('库里有几篇论文？')
-
-    expect(listTools).toHaveBeenCalledTimes(1)
-    expect(startRun).toHaveBeenCalledWith({ maxSteps: 6, timeoutMs: 120_000 })
-    expect(chatWithTools.mock.calls[0][3]).toEqual(['library.list'])
-    expect(chatWithTools.mock.calls[0][4]).toBe('run-1')
-    expect(executeTool).toHaveBeenCalledWith('library.list', {})
-    expect(finishRun).toHaveBeenCalledWith('run-1')
-    expect(cancelRun).not.toHaveBeenCalled()
-    expect(store.messages[store.messages.length - 1].content).toBe('找到一篇论文')
-    expect(store.messages[store.messages.length - 1].toolNotes).toEqual(['调用工具：library.list'])
-  })
-
-  it('cancels the platform run when the agent is stopped', async () => {
-    listTools.mockResolvedValue([readTool('library.list')])
-    pendingReply()
-
+  it('passes agent mode to the platform and shows tool notes', async () => {
     const store = useAssistantStore()
     store.initialize()
     store.agentMode = true
 
     const promise = store.sendChat('库里有几篇论文？')
     await flush()
-    const requestId = chatWithTools.mock.calls[0][0]
 
-    store.stopChat()
+    expect(startAgent.mock.calls[0][0].mode).toBe('agent')
 
-    expect(cancelRun).toHaveBeenCalledWith('run-1')
-    expect(abortChat).toHaveBeenCalledWith(requestId)
-
-    resolveReply(replyResult('部分内容'))
+    emitAgent('session-1', { type: 'chunk', delta: '查询中' })
+    emitAgent('session-1', { type: 'tool-call', callId: 'call-1', name: 'library.list' })
+    emitAgent('session-1', {
+      type: 'tool-result',
+      callId: 'call-1',
+      name: 'library.list',
+      content: '{"total":1}'
+    })
+    emitAgent('session-1', {
+      type: 'tool-error',
+      callId: 'call-2',
+      name: 'paper.get',
+      error: '缺少参数'
+    })
+    emitAgent('session-1', replyResult('找到一篇论文'))
     await promise
-    expect(finishRun).not.toHaveBeenCalled()
-    expect(store.chatLoading).toBe(false)
+
+    const reply = store.messages[store.messages.length - 1]
+    expect(reply.content).toBe('查询中')
+    expect(reply.toolNotes).toEqual(['调用工具：library.list', '工具 paper.get 失败：缺少参数'])
   })
 
-  it('stops a streaming chat reply', async () => {
-    pendingReply()
+  it('cancels the session when stopped', async () => {
     const store = useAssistantStore()
     store.initialize()
 
     const promise = store.sendChat('hello')
-    const requestId = chatWithTools.mock.calls[0][0]
-    chunkHandler?.({ requestId, delta: '部分' })
+    await flush()
+    emitAgent('session-1', { type: 'chunk', delta: '部分' })
 
     store.stopChat()
-
-    expect(abortChat).toHaveBeenCalledWith(requestId)
+    expect(cancelAgent).toHaveBeenCalledWith('session-1')
     expect(store.chatLoading).toBe(false)
 
-    resolveReply(replyResult('部分内容'))
     await promise
-    expect(store.chatLoading).toBe(false)
     expect(store.messages[store.messages.length - 1].content).toBe('部分')
   })
 
-  it('shows an error when the request fails', async () => {
-    pendingReply()
+  it('cancels a session that starts after the user stops', async () => {
+    pendingSession()
     const store = useAssistantStore()
     store.initialize()
 
     const promise = store.sendChat('hello')
-    rejectReply(new Error("Error invoking remote method 'ai:chat': Error: 服务不可用"))
+    await flush()
+    store.stopChat()
+
+    resolveSession({ id: 'session-9' })
+    await promise
+
+    expect(cancelAgent).toHaveBeenCalledWith('session-9')
+    expect(store.chatLoading).toBe(false)
+  })
+
+  it('shows an error emitted by the agent', async () => {
+    const store = useAssistantStore()
+    store.initialize()
+
+    const promise = store.sendChat('hello')
+    await flush()
+    emitAgent('session-1', { type: 'error', message: '服务不可用' })
     await promise
 
     expect(store.chatError).toBe('服务不可用')
@@ -610,26 +565,34 @@ describe('assistant store', () => {
     expect(store.messages[0]).toMatchObject({ role: 'user', content: 'hello' })
   })
 
-  it('aborts pending translation and chat requests when disposed', async () => {
-    pendingChat()
+  it('shows an error when the session cannot start', async () => {
+    startAgent.mockRejectedValueOnce(
+      new Error("Error invoking remote method 'agent:start': Error: 无法启动 agent 宿主")
+    )
     const store = useAssistantStore()
     store.initialize()
-    store.handleSelection('hello')
-    await vi.advanceTimersByTimeAsync(250)
-    const translationId = chat.mock.calls[0][0]
 
-    pendingReply()
-    const chatPromise = store.sendChat('question')
+    await store.sendChat('hello')
+
+    expect(store.chatError).toBe('无法启动 agent 宿主')
+    expect(store.chatLoading).toBe(false)
+    expect(store.messages).toHaveLength(1)
+  })
+
+  it('cancels the session and unsubscribes when disposed', async () => {
+    const store = useAssistantStore()
+    store.initialize()
+
+    const promise = store.sendChat('hello')
     await flush()
-    const requestId = chatWithTools.mock.calls[0][0]
 
     store.$dispose()
 
-    expect(abortChat).toHaveBeenCalledWith(translationId)
-    expect(abortChat).toHaveBeenCalledWith(requestId)
+    expect(cancelAgent).toHaveBeenCalledWith('session-1')
+    expect(unsubscribeChunks).toHaveBeenCalled()
+    expect(unsubscribeAgent).toHaveBeenCalled()
 
-    resolveReply(replyResult('部分'))
-    await chatPromise
+    await promise
   })
 
   it('clears the translation when the paper changes', async () => {
@@ -652,9 +615,11 @@ describe('assistant store', () => {
     store.initialize()
 
     expect(onAiChunk).toHaveBeenCalledTimes(1)
+    expect(onAgentEvent).toHaveBeenCalledTimes(1)
 
     store.$dispose()
 
-    expect(unsubscribe).toHaveBeenCalled()
+    expect(unsubscribeChunks).toHaveBeenCalled()
+    expect(unsubscribeAgent).toHaveBeenCalled()
   })
 })

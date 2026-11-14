@@ -9,7 +9,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
-          // 扩展宿主是独立 utilityProcess，必须单独产出一个入口
+          // agent 宿主和扩展宿主都是独立 utilityProcess，必须各自产出入口
+          'agent-host': resolve('src/main/agent/host-process.ts'),
           'plugin-host': resolve('src/main/plugins/host-process.ts')
         }
       }

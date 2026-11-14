@@ -1,15 +1,12 @@
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
-import type { AiChunk, ChatMessage } from '@renderer/types'
-import { runAgentLoop } from '@renderer/lib/agent-loop'
+import type { AgentEvent, AgentEventPayload, AiChunk, ChatMessage } from '@renderer/types'
 import { t } from '@renderer/lib/i18n'
 import { useSettingsStore } from '@renderer/store/settings'
 
 const TRANSLATE_DEBOUNCE_MS = 250
 const MAX_SELECTION_CHARS = 4000
 const MAX_HISTORY_MESSAGES = 20
-const MAX_AGENT_STEPS = 6
-const AGENT_RUN_TIMEOUT_MS = 120_000
 
 export interface ChatEntry {
   id: string
@@ -29,11 +26,6 @@ export interface TranslationState {
 const TRANSLATE_SYSTEM_PROMPT =
   '你是学术论文翻译助手。请把用户提供的文本翻译成简体中文，保留术语与公式，只输出译文，不要解释。'
 
-const CHAT_SYSTEM_PROMPT = '你是一个简洁、准确的学术阅读助手，请用中文回答用户的问题。'
-
-const AGENT_SYSTEM_PROMPT =
-  '你是一个简洁、准确的学术阅读助手，请用中文回答用户的问题。你可以调用平台工具查询论文库和标注；涉及论文标题、标注内容时先查工具，不要编造。'
-
 const createId = (): string =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
@@ -46,9 +38,11 @@ const cleanError = (error: unknown, fallback: string): string => {
   return message || fallback
 }
 
+type ChatStatus = 'idle' | 'starting' | 'running'
+
 /**
  * 右侧辅助面板的状态：选区译文 + AI 对话。
- * 放在 store 里，关闭面板或切换论文时聊天记录不会丢。
+ * agent 循环在主进程的独立宿主里运行，这里只发起/取消会话并渲染事件。
  */
 export const useAssistantStore = defineStore('assistant', () => {
   const settingsStore = useSettingsStore()
@@ -63,22 +57,76 @@ export const useAssistantStore = defineStore('assistant', () => {
   const isConfigured = computed(() => settingsStore.isAiConfigured)
 
   let initialized = false
-  let unsubscribe: (() => void) | null = null
+  let unsubscribeChunks: (() => void) | null = null
+  let unsubscribeAgent: (() => void) | null = null
   let translateTimer: ReturnType<typeof setTimeout> | undefined
   let translateRequestId: string | null = null
-  let chatRequestId: string | null = null
-  let chatAbort: AbortController | null = null
-  let chatRunId: string | null = null
+
+  let chatStatus: ChatStatus = 'idle'
+  let currentSessionId: string | null = null
+  let activeReplyId: string | null = null
+  let cancelRequested = false
+  /** 会话 id 返回前就到达的事件，先按会话暂存 */
+  let pendingEvents: AgentEventPayload[] = []
+  let settleChat: { resolve: () => void; reject: (error: Error) => void } | null = null
 
   const handleChunk = (payload: AiChunk): void => {
     if (payload.requestId === translateRequestId && translation.value) {
       translation.value.text += payload.delta
+    }
+  }
+
+  const findActiveReply = (): ChatEntry | undefined =>
+    activeReplyId ? messages.value.find((item) => item.id === activeReplyId) : undefined
+
+  const addToolNote = (note: string): void => {
+    const entry = findActiveReply()
+    if (!entry) return
+    entry.toolNotes ??= []
+    entry.toolNotes.push(note)
+  }
+
+  const applyAgentEvent = (event: AgentEvent): void => {
+    switch (event.type) {
+      case 'chunk': {
+        const entry = findActiveReply()
+        if (entry) entry.content += event.delta
+        return
+      }
+      case 'tool-call':
+        addToolNote(t('assistant.tool.call', { name: event.name }))
+        return
+      case 'tool-error':
+        addToolNote(t('assistant.tool.error', { name: event.name, error: event.error }))
+        return
+      case 'done': {
+        const entry = findActiveReply()
+        if (entry && !entry.content && event.text) entry.content = event.text
+        const settle = settleChat
+        settleChat = null
+        settle?.resolve()
+        return
+      }
+      case 'error': {
+        const entry = findActiveReply()
+        if (entry && !entry.content) {
+          messages.value = messages.value.filter((item) => item.id !== entry.id)
+        }
+        const settle = settleChat
+        settleChat = null
+        settle?.reject(new Error(event.message))
+        return
+      }
+    }
+  }
+
+  const handleAgentEvent = (payload: AgentEventPayload): void => {
+    if (chatStatus === 'starting') {
+      pendingEvents.push(payload)
       return
     }
-    if (payload.requestId === chatRequestId) {
-      const last = messages.value[messages.value.length - 1]
-      if (last && last.role === 'assistant') last.content += payload.delta
-    }
+    if (payload.sessionId !== currentSessionId) return
+    applyAgentEvent(payload.event)
   }
 
   /** 只订阅一次流式事件；组件在 onMounted 里调用 */
@@ -86,7 +134,9 @@ export const useAssistantStore = defineStore('assistant', () => {
     if (initialized) return
     initialized = true
     const api = window.api
-    if (api) unsubscribe = api.onAiChunk(handleChunk)
+    if (!api) return
+    unsubscribeChunks = api.onAiChunk(handleChunk)
+    unsubscribeAgent = api.onAgentEvent(handleAgentEvent)
   }
 
   const abortTranslation = (): void => {
@@ -182,20 +232,6 @@ export const useAssistantStore = defineStore('assistant', () => {
     translation.value = null
   }
 
-  /** agent 只拿平台判定为只读且对 AI 开放的工具 */
-  const resolveReadToolNames = async (): Promise<string[]> => {
-    const api = window.api
-    if (!api) return []
-    try {
-      const tools = await api.listTools()
-      return tools
-        .filter((tool) => tool.risk === 'read' && tool.exposeToAi)
-        .map((tool) => tool.name)
-    } catch {
-      return []
-    }
-  }
-
   const sendChat = async (input: string): Promise<void> => {
     const content = input.trim()
     if (!content || chatLoading.value) return
@@ -222,118 +258,81 @@ export const useAssistantStore = defineStore('assistant', () => {
       .slice(-MAX_HISTORY_MESSAGES)
       .map<ChatMessage>((item) => ({ role: item.role, content: item.content }))
 
-    const toolNames = agentMode.value ? await resolveReadToolNames() : []
-    const controller = new AbortController()
-    chatAbort = controller
     chatLoading.value = true
+    chatStatus = 'starting'
+    activeReplyId = reply.id
+    cancelRequested = false
+    pendingEvents = []
 
-    const addToolNote = (note: string): void => {
-      // 通过响应式数组取回代理对象，push 才能触发视图更新
-      const entry = messages.value.find((item) => item.id === reply.id)
-      if (!entry) return
-      entry.toolNotes ??= []
-      entry.toolNotes.push(note)
-    }
-
-    let runId: string | undefined
     try {
-      // 工具模式走平台 run 边界：预算、超时和取消都由主进程记录
-      if (agentMode.value) {
-        const run = await api.startRun({
-          maxSteps: MAX_AGENT_STEPS,
-          timeoutMs: AGENT_RUN_TIMEOUT_MS
-        })
-        runId = run.id
-        chatRunId = run.id
-        if (controller.signal.aborted) {
-          await api.cancelRun(run.id).catch(() => undefined)
-          return
-        }
+      // 循环和预算都在主进程的 agent 宿主里，渲染进程只拿会话 id
+      const session = await api.startAgent({
+        messages: history,
+        profileId: profile.id,
+        mode: agentMode.value ? 'agent' : 'chat'
+      })
+      currentSessionId = session.id
+
+      if (cancelRequested) {
+        void api.cancelAgent(session.id).catch(() => undefined)
+        return
       }
 
-      // agent loop 在模块里，平台只负责每次模型请求和工具执行
-      const result = await runAgentLoop({
-        messages: [
-          {
-            role: 'system',
-            content: toolNames.length > 0 ? AGENT_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT
-          },
-          ...history
-        ],
-        toolNames,
-        signal: controller.signal,
-        maxSteps: MAX_AGENT_STEPS,
-        createRequestId: createId,
-        chat: (requestId, loopMessages) => {
-          chatRequestId = requestId
-          return api.chatWithTools(requestId, loopMessages, profile.id, toolNames, runId)
-        },
-        executeTool: (name, toolInput) => api.executeTool(name, toolInput),
-        onEvent: (event) => {
-          if (event.type === 'tool-call') {
-            addToolNote(t('assistant.tool.call', { name: event.name }))
-          } else if (event.type === 'tool-error') {
-            addToolNote(t('assistant.tool.error', { name: event.name, error: event.error }))
-          }
-        }
+      chatStatus = 'running'
+      const completion = new Promise<void>((resolve, reject) => {
+        settleChat = { resolve, reject }
       })
-
-      if (controller.signal.aborted || result.finishReason === 'aborted') return
-      // 有流式回调时内容已经写入；没有回调的环境用最终结果兜底
-      const entry = messages.value.find((item) => item.id === reply.id)
-      if (entry && !entry.content && result.text) entry.content = result.text
+      const buffered = pendingEvents
+      pendingEvents = []
+      for (const payload of buffered) {
+        if (payload.sessionId === session.id) applyAgentEvent(payload.event)
+      }
+      await completion
     } catch (error) {
-      if (controller.signal.aborted) return
-      if (!reply.content) {
+      if (cancelRequested) return
+      const entry = messages.value.find((item) => item.id === reply.id)
+      if (entry && !entry.content) {
         messages.value = messages.value.filter((item) => item.id !== reply.id)
       }
       chatError.value = cleanError(error, t('assistant.error.reply'))
     } finally {
-      if (runId) {
-        if (controller.signal.aborted) {
-          void api.cancelRun(runId).catch(() => undefined)
-        } else {
-          void api.finishRun(runId).catch(() => undefined)
-        }
-        if (chatRunId === runId) chatRunId = null
-      }
-      if (chatAbort === controller) {
-        chatAbort = null
-        chatRequestId = null
-        chatLoading.value = false
-      }
+      chatStatus = 'idle'
+      currentSessionId = null
+      activeReplyId = null
+      cancelRequested = false
+      pendingEvents = []
+      settleChat = null
+      chatLoading.value = false
     }
-  }
-
-  const cancelChatRun = (): void => {
-    const runId = chatRunId
-    chatRunId = null
-    if (runId) void window.api?.cancelRun(runId).catch(() => undefined)
   }
 
   const stopChat = (): void => {
-    chatAbort?.abort()
-    chatAbort = null
-    cancelChatRun()
-    if (chatRequestId) {
-      window.api?.abortChat(chatRequestId)
-      chatRequestId = null
-    }
+    const sessionId = currentSessionId
+    const settle = settleChat
+    settleChat = null
+    currentSessionId = null
+    chatStatus = 'idle'
+    pendingEvents = []
+    cancelRequested = true
     chatLoading.value = false
+
+    if (sessionId) void window.api?.cancelAgent(sessionId).catch(() => undefined)
+    settle?.resolve()
   }
 
   onScopeDispose(() => {
-    unsubscribe?.()
-    unsubscribe = null
+    unsubscribeChunks?.()
+    unsubscribeChunks = null
+    unsubscribeAgent?.()
+    unsubscribeAgent = null
     if (translateTimer) clearTimeout(translateTimer)
     abortTranslation()
-    chatAbort?.abort()
-    chatAbort = null
-    cancelChatRun()
-    if (chatRequestId) {
-      window.api?.abortChat(chatRequestId)
-      chatRequestId = null
+    if (currentSessionId) {
+      void window.api?.cancelAgent(currentSessionId).catch(() => undefined)
     }
+    currentSessionId = null
+    settleChat?.resolve()
+    settleChat = null
   })
 
   return {

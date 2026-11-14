@@ -3,6 +3,8 @@ import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import packageJson from '../../package.json'
+import { createAgentRuntime } from './agent/runtime'
+import { createAiRequester } from './ai-request'
 import { createRunManager } from './ai-run'
 import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
@@ -13,13 +15,13 @@ import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
 import { createUserDataPaths } from './user-data'
 import { createWindow } from './window'
+import { registerAgentIpc } from './ipc/agent'
 import { registerAiIpc } from './ipc/ai'
 import { registerAnnotationsIpc } from './ipc/annotations'
 import { registerAppIpc } from './ipc/app'
 import { registerCacheIpc } from './ipc/cache'
 import { registerLibraryIpc } from './ipc/library'
 import { registerPluginsIpc } from './ipc/plugins'
-import { registerRunsIpc } from './ipc/runs'
 import { registerSettingsIpc } from './ipc/settings'
 import { confirmToolInvocation, registerToolsIpc } from './ipc/tools'
 
@@ -51,10 +53,11 @@ app.whenReady().then(async () => {
     return
   }
 
-  // 存的是论文的原始数据
+  // 存的是论文的原始数据 library.json
   const library = createLibraryStore(paths.libraryFile)
-  // 存的是论文的批注数据,比如高亮数据
+  // 存的是论文的批注数据,比如高亮数据 annotations.json
   const annotations = createAnnotationStore(paths.annotationsFile)
+  // 阅读本地的设置文件 settings.json
   const settings = createSettingsStore(paths.settingsFile, paths.papersDirectory)
   const runs = createRunManager()
   const plugins = createPluginHost({
@@ -68,6 +71,16 @@ app.whenReady().then(async () => {
     annotations,
     readPageText: (paper, page) => readPdfPageText(paper.path, page),
     confirm: confirmToolInvocation
+  })
+  // 单次 AI 请求：渲染进程（翻译）和 agent 宿主共用，Key 只在这里解密
+  const requester = createAiRequester(settings, tools)
+  // agent loop 跑在独立的 utilityProcess 里；主进程只提供能力、预算和取消
+  const agentRuntime = createAgentRuntime({
+    hostScript: join(__dirname, 'agent-host.js'),
+    requester,
+    tools,
+    runs,
+    onLog: (message) => console.warn(`[agent] ${message}`)
   })
   const runtime = createPluginRuntime({
     hostScript: join(__dirname, 'plugin-host.js'),
@@ -87,14 +100,15 @@ app.whenReady().then(async () => {
   registerCacheIpc()
   registerSettingsIpc(settings)
   registerPluginsIpc(plugins, runtime)
-  registerRunsIpc(runs)
-  registerAiIpc(settings, tools, runs)
+  registerAgentIpc(agentRuntime)
+  registerAiIpc(requester)
   registerToolsIpc(tools)
 
   createWindow()
   void runtime.refresh()
 
   app.on('before-quit', () => {
+    void agentRuntime.stop()
     void runtime.stop()
   })
 

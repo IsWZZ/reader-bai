@@ -20,7 +20,7 @@ src/renderer/src/
                                # SettingsDialog、PluginSettings、Toolbar
   components/ui/               # shadcn-vue 生成代码
   store/                       # assistant、settings、plugins
-  lib/                         # agent-loop、ai、pdf、i18n
+  lib/                         # ai、pdf、i18n
   lib/locales/                 # zh.ts 消息源与 en.ts 译文
   types.ts
   assets/css/                  # reset.css 设计 token、index.css、common.css
@@ -35,22 +35,21 @@ src/renderer/src/
 
 - 使用 `window.api` 上的窄方法，不要拼通用 IPC；新增能力先补主进程和 preload，再改这里。
 - 流式 AI：通过 `onAiChunk` 订阅增量并保存返回的取消函数；切换对话或卸载时调用取消函数，避免串流。
-- 工具模式：
-  - 先用 `startRun({ maxSteps, timeoutMs })` 建立平台 run 边界，再按 `runId` 调 `chatWithTools`。
-  - 执行工具走 `executeTool`；写操作确认由主进程负责，渲染进程不要自己弹确认框。
-  - 完成调 `finishRun(runId)`；取消或停止调 `cancelRun(runId)`。
+- 对话与工具：调 `startAgent({ messages, profileId, mode })` 启动会话，通过 `onAgentEvent` 订阅 `chunk` / `tool-call` / `tool-result` / `tool-error` / `done` / `error`；停止调 `cancelAgent(sessionId)`。
+  - 渲染进程不执行 agent loop，也不决定步数、超时和工具白名单，这些都在主进程。
+  - 写操作确认由主进程负责，渲染进程不要自己弹确认框。
 - 设置：AI 配置只拿到 `hasApiKey`；编辑时 Key 留空表示保留原 Key，不要尝试读取或回填 Key。
 - 插件：只使用 `listPlugins` / `getPluginRuntime` / `setPluginEnabled` / `onPluginRuntime`；插件代码不在渲染进程执行。
 
 ## AI 面板与 agent loop
 
 - `AssistantPanel.vue` + [store/assistant.ts](src/store/assistant.ts) 负责翻译和对话；翻译和对话是两条独立请求，不要混用状态。
-- 第一方 agent loop 在 [lib/agent-loop.ts](src/lib/agent-loop.ts)：
-  - 只传工具名，schema 由主进程解析。
-  - 工具模式只暴露 `risk === 'read'` 且 `exposeToAi` 的工具。
+- 第一方 agent loop 在独立的 `agent-host` utilityProcess（[src/main/agent/](../../src/main/agent/)），渲染进程只发会话事件：
+  - 只传消息、`profileId` 和 `mode`；步数、超时、工具白名单和 Key 都由主进程决定。
+  - `chat` 模式只有 1 步，`agent` 模式最多 6 步，且只开放 `risk === 'read'` 且 `exposeToAi` 的工具。
   - 工具错误作为 `tool` 消息回给模型，不中断整个对话。
   - 记录 `tool-call` / `tool-error` 供面板展示，不要伪造工具结果。
-- 用户停止对话时同时中止当前请求并取消平台 run。
+- 用户停止对话时调 `cancelAgent(sessionId)`；会话 id 返回前就停止时，要在拿到 id 后补一次取消。
 - 模型、Base URL、Key 都来自设置；没有完整配置时提示用户，不要发起请求。
 
 ## UI 与样式
@@ -102,5 +101,5 @@ src/renderer/src/
 
 - 组件测试用 Vitest + Vue Test Utils，在 `beforeEach` 里 mock `window.api`，不要启动 Electron。
 - 测试优先按用户可见行为断言：role、`aria-label`、文本、输入值和禁用状态。
-- `agent-loop.ts` 的纯逻辑在 `tests/unit/agent-loop.test.ts` 覆盖，组件测试只验证面板接线。
+- agent loop 的纯逻辑在 `tests/unit/agent-loop.test.ts` 覆盖，协议校验在 `tests/unit/agent-protocol.test.ts`，组件测试只验证面板接线。
 - 用户流程用 Playwright E2E，复用 `tests/e2e/helpers.ts` 的临时 `--user-data-dir` 和对话框打桩；见 [docs/testing.md](../../docs/testing.md)。

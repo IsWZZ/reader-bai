@@ -92,42 +92,37 @@ declare global {
     tool_call_id?: string
   }
 
-  type ChatFinishReason = 'stop' | 'tool_calls' | 'length' | 'aborted' | 'error'
-
-  interface ChatToolCallResult {
-    id: string
-    name: string
-    /** 模型返回的原始 JSON 字符串 */
-    arguments: string
-  }
-
-  /** 一次模型请求的归一化结果 */
-  interface AiChatResult {
-    text: string
-    toolCalls: ChatToolCallResult[]
-    finishReason: ChatFinishReason
-  }
-
   /** 主进程流式返回的增量片段 */
   interface AiChunk {
     requestId: string
     delta: string
   }
 
-  interface RunLimits {
-    maxSteps?: number
-    /** 运行超时，毫秒 */
-    timeoutMs?: number
+  type AgentMode = 'chat' | 'agent'
+
+  interface AgentStartRequest {
+    messages: ChatMessage[]
+    profileId: string
+    mode: AgentMode
   }
 
-  interface RunUsage {
-    steps: number
-    inputTokens: number
-    outputTokens: number
-  }
-
-  interface AgentRunInfo {
+  interface AgentSessionInfo {
     id: string
+  }
+
+  type AgentFinishReason = 'stop' | 'max-steps' | 'aborted'
+
+  type AgentEvent =
+    | { type: 'chunk'; delta: string }
+    | { type: 'tool-call'; callId: string; name: string }
+    | { type: 'tool-result'; callId: string; name: string; content: string }
+    | { type: 'tool-error'; callId: string; name: string; error: string }
+    | { type: 'done'; text: string; steps: number; finishReason: AgentFinishReason }
+    | { type: 'error'; message: string }
+
+  interface AgentEventPayload {
+    sessionId: string
+    event: AgentEvent
   }
 
   type ToolRisk = 'read' | 'write' | 'destructive'
@@ -247,26 +242,18 @@ declare global {
     clearCache: () => Promise<void>
     /** 卸载应用：原生确认后删除本地论文、标注、设置、API Key 和插件并退出 */
     uninstallApp: () => Promise<UninstallResult>
-    /** 使用指定 AI 配置发起流式对话，返回完整回复文本；增量通过 onAiChunk 推送 */
+    /** 单次流式对话（翻译），返回完整文本；增量通过 onAiChunk 推送 */
     chat: (requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>
-    /** 带工具定义的流式对话，返回归一化后的文本和工具调用；runId 用于平台预算和取消 */
-    chatWithTools: (
-      requestId: string,
-      messages: ChatMessage[],
-      profileId: string,
-      tools?: string[],
-      runId?: string
-    ) => Promise<AiChatResult>
-    /** 开始一次 agent run，由平台记录步数、超时和取消 */
-    startRun: (limits?: RunLimits) => Promise<AgentRunInfo>
-    /** 正常结束 run，返回用量 */
-    finishRun: (id: string) => Promise<RunUsage>
-    /** 取消 run；之后使用该 runId 的模型请求会被拒绝 */
-    cancelRun: (id: string) => Promise<void>
     /** 中止指定请求 */
     abortChat: (requestId: string) => void
     /** 订阅流式增量，返回取消订阅函数 */
     onAiChunk: (callback: (payload: AiChunk) => void) => () => void
+    /** 启动一次 agent 会话；循环运行在独立进程中，这里只返回会话 id */
+    startAgent: (request: AgentStartRequest) => Promise<AgentSessionInfo>
+    /** 取消 agent 会话 */
+    cancelAgent: (sessionId: string) => Promise<void>
+    /** 订阅 agent 会话事件（增量、工具调用、结束和错误） */
+    onAgentEvent: (callback: (payload: AgentEventPayload) => void) => () => void
     /** 列出平台注册的工具 */
     listTools: () => Promise<ToolInfo[]>
     /** 执行一个已注册工具；写操作由主进程弹出确认 */

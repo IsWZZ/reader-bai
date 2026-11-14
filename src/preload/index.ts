@@ -62,6 +62,33 @@ interface AiChunk {
   delta: string
 }
 
+type AgentMode = 'chat' | 'agent'
+
+interface AgentStartRequest {
+  messages: ChatMessage[]
+  profileId: string
+  mode: AgentMode
+}
+
+interface AgentSessionInfo {
+  id: string
+}
+
+type AgentFinishReason = 'stop' | 'max-steps' | 'aborted'
+
+type AgentEvent =
+  | { type: 'chunk'; delta: string }
+  | { type: 'tool-call'; callId: string; name: string }
+  | { type: 'tool-result'; callId: string; name: string; content: string }
+  | { type: 'tool-error'; callId: string; name: string; error: string }
+  | { type: 'done'; text: string; steps: number; finishReason: AgentFinishReason }
+  | { type: 'error'; message: string }
+
+interface AgentEventPayload {
+  sessionId: string
+  event: AgentEvent
+}
+
 interface LibrarySettings {
   directory: string
 }
@@ -113,21 +140,6 @@ interface PluginRuntimeState {
   message?: string
 }
 
-interface RunLimits {
-  maxSteps?: number
-  timeoutMs?: number
-}
-
-interface RunUsage {
-  steps: number
-  inputTokens: number
-  outputTokens: number
-}
-
-interface AgentRunInfo {
-  id: string
-}
-
 interface SettingsPatch {
   theme?: AppTheme
   language?: AppLanguage
@@ -164,23 +176,22 @@ const api = {
     ipcRenderer.invoke('settings:update', patch),
   clearCache: (): Promise<void> => ipcRenderer.invoke('cache:clear'),
   uninstallApp: (): Promise<UninstallResult> => ipcRenderer.invoke('app:uninstall'),
-  chat: async (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> => {
-    const result = await ipcRenderer.invoke('ai:chat', requestId, messages, profileId)
-    return result.text
-  },
-  chatWithTools: (
-    requestId: string,
-    messages: ChatMessage[],
-    profileId: string,
-    tools: string[] = [],
-    runId?: string
-  ) => ipcRenderer.invoke('ai:chat', requestId, messages, profileId, tools, runId),
-  startRun: (limits: RunLimits = {}): Promise<AgentRunInfo> =>
-    ipcRenderer.invoke('runs:start', limits),
-  finishRun: (id: string): Promise<RunUsage> => ipcRenderer.invoke('runs:finish', id),
-  cancelRun: (id: string): Promise<void> => ipcRenderer.invoke('runs:cancel', id),
+  chat: (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> =>
+    ipcRenderer.invoke('ai:chat', requestId, messages, profileId),
   abortChat: (requestId: string): void => {
     ipcRenderer.send('ai:abort', requestId)
+  },
+  startAgent: (request: AgentStartRequest): Promise<AgentSessionInfo> =>
+    ipcRenderer.invoke('agent:start', request),
+  cancelAgent: (sessionId: string): Promise<void> => ipcRenderer.invoke('agent:cancel', sessionId),
+  onAgentEvent: (callback: (payload: AgentEventPayload) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, payload: AgentEventPayload): void => {
+      callback(payload)
+    }
+    ipcRenderer.on('agent:event', listener)
+    return () => {
+      ipcRenderer.removeListener('agent:event', listener)
+    }
   },
   listTools: () => ipcRenderer.invoke('tools:list'),
   executeTool: (name: string, input: unknown) => ipcRenderer.invoke('tools:execute', name, input),

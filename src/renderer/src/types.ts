@@ -76,36 +76,31 @@ export interface ChatMessage {
   tool_call_id?: string
 }
 
-export type ChatFinishReason = 'stop' | 'tool_calls' | 'length' | 'aborted' | 'error'
+export type AgentMode = 'chat' | 'agent'
 
-export interface ChatToolCallResult {
+export interface AgentStartRequest {
+  messages: ChatMessage[]
+  profileId: string
+  mode: AgentMode
+}
+
+export interface AgentSessionInfo {
   id: string
-  name: string
-  /** 模型返回的原始 JSON 字符串 */
-  arguments: string
 }
 
-/** 一次模型请求的归一化结果 */
-export interface AiChatResult {
-  text: string
-  toolCalls: ChatToolCallResult[]
-  finishReason: ChatFinishReason
-}
+export type AgentFinishReason = 'stop' | 'max-steps' | 'aborted'
 
-export interface RunLimits {
-  maxSteps?: number
-  /** 运行超时，毫秒 */
-  timeoutMs?: number
-}
+export type AgentEvent =
+  | { type: 'chunk'; delta: string }
+  | { type: 'tool-call'; callId: string; name: string }
+  | { type: 'tool-result'; callId: string; name: string; content: string }
+  | { type: 'tool-error'; callId: string; name: string; error: string }
+  | { type: 'done'; text: string; steps: number; finishReason: AgentFinishReason }
+  | { type: 'error'; message: string }
 
-export interface RunUsage {
-  steps: number
-  inputTokens: number
-  outputTokens: number
-}
-
-export interface AgentRunInfo {
-  id: string
+export interface AgentEventPayload {
+  sessionId: string
+  event: AgentEvent
 }
 
 export type ToolRisk = 'read' | 'write' | 'destructive'

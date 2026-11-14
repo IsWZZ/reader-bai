@@ -5,13 +5,13 @@ import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import { useAssistantStore } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
 import type {
-  AiChatResult,
+  AgentEvent,
+  AgentEventPayload,
+  AgentSessionInfo,
+  AgentStartRequest,
   AiProfile,
   AppSettings,
-  ChatMessage,
-  SettingsPatch,
-  ToolInfo,
-  ToolResult
+  SettingsPatch
 } from '@renderer/types'
 
 const PROFILE_A: AiProfile = {
@@ -47,60 +47,49 @@ let current: AppSettings
 
 const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
-const chatWithTools =
-  vi.fn<
-    (
-      requestId: string,
-      messages: ChatMessage[],
-      profileId: string,
-      tools?: string[],
-      runId?: string
-    ) => Promise<AiChatResult>
-  >()
-const listTools = vi.fn<() => Promise<ToolInfo[]>>()
-const executeTool = vi.fn<(name: string, input: unknown) => Promise<ToolResult>>()
 const abortChat = vi.fn<(requestId: string) => void>()
-const startRun = vi.fn<() => Promise<{ id: string }>>()
-const finishRun = vi.fn<(id: string) => Promise<{ steps: number }>>()
-const cancelRun = vi.fn<(id: string) => Promise<void>>()
+const startAgent = vi.fn<(request: AgentStartRequest) => Promise<AgentSessionInfo>>()
+const cancelAgent = vi.fn<(id: string) => Promise<void>>()
 const onAiChunk = vi.fn(() => vi.fn())
+let agentHandler: ((payload: AgentEventPayload) => void) | null = null
+const onAgentEvent = vi.fn((callback: (payload: AgentEventPayload) => void) => {
+  agentHandler = callback
+  return vi.fn()
+})
 
 const installApi = (): void => {
   window.api = {
     getSettings,
     updateSettings,
-    chatWithTools,
-    listTools,
-    executeTool,
     abortChat,
-    startRun,
-    finishRun,
-    cancelRun,
-    onAiChunk
+    startAgent,
+    cancelAgent,
+    onAiChunk,
+    onAgentEvent
   } as unknown as Api
 }
 
-const reply = (text: string): AiChatResult => ({
+const reply = (text: string): AgentEvent => ({
+  type: 'done',
   text,
-  toolCalls: [],
+  steps: 1,
   finishReason: 'stop'
 })
 
-const readTool = (name: string): ToolInfo => ({
-  name,
-  title: name,
-  description: name,
-  inputSchema: { type: 'object', properties: {} },
-  risk: 'read',
-  exposeToAi: true
-})
+const emitAgent = (sessionId: string, event: AgentEvent): void => {
+  agentHandler?.({ sessionId, event })
+}
 
 const installSettings = (settings: AppSettings): void => {
   current = structuredClone(settings)
   getSettings.mockResolvedValue(structuredClone(current))
 }
 
-const mountPanel = (): VueWrapper => mount(AssistantPanel, { props: { width: 340 } })
+const mountPanel = (): VueWrapper => {
+  // 订阅 agent 事件通常由 Home 外壳发起；这里直接挂载面板时手动初始化
+  useAssistantStore().initialize()
+  return mount(AssistantPanel, { props: { width: 340 } })
+}
 
 const selectModels = (wrapper: VueWrapper): ReturnType<VueWrapper['get']> =>
   wrapper.get('select[aria-label="选择模型"]')
@@ -110,19 +99,14 @@ describe('AssistantPanel', () => {
     setActivePinia(createPinia())
     getSettings.mockReset()
     updateSettings.mockReset()
-    chatWithTools.mockReset()
-    listTools.mockReset()
-    executeTool.mockReset()
     abortChat.mockReset()
-    startRun.mockReset()
-    finishRun.mockReset()
-    cancelRun.mockReset()
+    startAgent.mockReset()
+    cancelAgent.mockReset()
     onAiChunk.mockClear()
-    startRun.mockResolvedValue({ id: 'run-1' })
-    finishRun.mockResolvedValue({ steps: 1 })
-    cancelRun.mockResolvedValue(undefined)
-    listTools.mockResolvedValue([])
-    executeTool.mockResolvedValue({ content: 'ok' })
+    onAgentEvent.mockClear()
+    agentHandler = null
+    startAgent.mockResolvedValue({ id: 'session-1' })
+    cancelAgent.mockResolvedValue(undefined)
     installSettings(BASE_SETTINGS)
     updateSettings.mockImplementation(async (patch) => {
       current = {
@@ -215,7 +199,7 @@ describe('AssistantPanel', () => {
   })
 
   it('disables the profile select while a chat reply is streaming', async () => {
-    chatWithTools.mockImplementation(() => new Promise<AiChatResult>(() => undefined))
+    startAgent.mockImplementation(() => new Promise<AgentSessionInfo>(() => undefined))
     const wrapper = mountPanel()
 
     await wrapper.get('textarea[aria-label="向 AI 提问"]').setValue('你好')
@@ -274,54 +258,52 @@ describe('AssistantPanel', () => {
   })
 
   it('sends chat messages with Enter but not with Shift+Enter', async () => {
-    chatWithTools.mockResolvedValue(reply('回复'))
     const wrapper = mountPanel()
     await wrapper.get('textarea[aria-label="向 AI 提问"]').setValue('你好')
 
     await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
-    expect(chatWithTools).not.toHaveBeenCalled()
+    expect(startAgent).not.toHaveBeenCalled()
 
     await wrapper.get('textarea').trigger('keydown', { key: 'Enter' })
     await flushPromises()
 
-    expect(chatWithTools).toHaveBeenCalledTimes(1)
-    expect(chatWithTools.mock.calls[0][1][1]).toEqual({ role: 'user', content: '你好' })
-    expect(chatWithTools.mock.calls[0][2]).toBe('a')
+    expect(startAgent).toHaveBeenCalledTimes(1)
+    const [request] = startAgent.mock.calls[0]
+    expect(request.messages[request.messages.length - 1]).toEqual({
+      role: 'user',
+      content: '你好'
+    })
+    expect(request.profileId).toBe('a')
+    expect(request.mode).toBe('chat')
+
+    emitAgent('session-1', reply('回复'))
+    await flushPromises()
+
     expect(wrapper.text()).toContain('回复')
     wrapper.unmount()
   })
 
-  it('runs the agent loop with read-only tools when enabled', async () => {
-    listTools.mockResolvedValue([
-      readTool('library.list'),
-      { ...readTool('annotations.remove'), risk: 'destructive' }
-    ])
-    chatWithTools
-      .mockResolvedValueOnce({
-        text: '',
-        toolCalls: [{ id: 'call-1', name: 'library.list', arguments: '{}' }],
-        finishReason: 'tool_calls'
-      })
-      .mockResolvedValueOnce(reply('库里有一篇论文'))
-
+  it('asks for agent mode and renders tool notes', async () => {
     const wrapper = mountPanel()
     await wrapper.get('input[aria-label="使用工具"]').setValue(true)
     await wrapper.get('textarea[aria-label="向 AI 提问"]').setValue('库里有几篇论文？')
     await wrapper.get('button[aria-label="发送"]').trigger('click')
     await flushPromises()
 
-    expect(chatWithTools.mock.calls[0][3]).toEqual(['library.list'])
-    expect(chatWithTools.mock.calls[0][4]).toBe('run-1')
-    expect(executeTool).toHaveBeenCalledWith('library.list', {})
-    expect(chatWithTools).toHaveBeenCalledTimes(2)
-    expect(finishRun).toHaveBeenCalledWith('run-1')
+    expect(startAgent.mock.calls[0][0].mode).toBe('agent')
+
+    emitAgent('session-1', { type: 'chunk', delta: '查询中' })
+    emitAgent('session-1', { type: 'tool-call', callId: 'call-1', name: 'library.list' })
+    emitAgent('session-1', { type: 'chunk', delta: '，找到一篇论文' })
+    emitAgent('session-1', reply('查询中，找到一篇论文'))
+    await flushPromises()
+
     expect(wrapper.text()).toContain('调用工具：library.list')
-    expect(wrapper.text()).toContain('库里有一篇论文')
+    expect(wrapper.text()).toContain('找到一篇论文')
     wrapper.unmount()
   })
 
   it('stops a streaming reply', async () => {
-    chatWithTools.mockImplementation(() => new Promise<AiChatResult>(() => undefined))
     const wrapper = mountPanel()
     await wrapper.get('textarea[aria-label="向 AI 提问"]').setValue('你好')
     await wrapper.get('button[aria-label="发送"]').trigger('click')
@@ -330,7 +312,7 @@ describe('AssistantPanel', () => {
     const stop = wrapper.get('button[aria-label="停止"]')
     await stop.trigger('click')
 
-    expect(abortChat).toHaveBeenCalledTimes(1)
+    expect(cancelAgent).toHaveBeenCalledWith('session-1')
     expect(wrapper.find('button[aria-label="发送"]').exists()).toBe(true)
     wrapper.unmount()
   })

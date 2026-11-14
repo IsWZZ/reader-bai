@@ -1,9 +1,10 @@
-// 第一方 agent 模块的循环。
-// 这里刻意不直接依赖 window.api：模型调用和工具执行由调用方注入，
-// 平台只提供网关、工具和确认边界，loop 属于模块/插件自己。
+// 第一方 agent 循环：模型 → 工具 → 模型。
+// 它运行在独立的 utilityProcess 里（见 host-process.ts），主进程只按请求
+// 提供模型访问和工具执行；循环本身不接触 Key、设置、文件系统或窗口。
+// 这个模块保持纯逻辑，便于直接做单元测试。
 
-import { t } from '@renderer/lib/i18n'
-import type { AiChatResult, ChatMessage, ChatToolCallResult, ToolResult } from '@renderer/types'
+import type { ChatMessage, ChatToolCallResult, StreamChatResult } from '../ai'
+import type { ToolResult } from '../tool-registry'
 
 export interface AgentToolCallEvent {
   callId: string
@@ -28,11 +29,15 @@ export interface AgentRunResult {
 
 export interface AgentLoopOptions {
   messages: ChatMessage[]
-  /** 只传工具名，真正的 schema 由平台注册表解析 */
+  /** 只传工具名，真正的 schema 由主进程注册表解析 */
   toolNames: string[]
   signal: AbortSignal
   /** 发起一次模型请求，返回文本和工具调用 */
-  chat: (requestId: string, messages: ChatMessage[], signal: AbortSignal) => Promise<AiChatResult>
+  chat: (
+    requestId: string,
+    messages: ChatMessage[],
+    signal: AbortSignal
+  ) => Promise<StreamChatResult>
   /** 通过平台执行边界调用工具，写操作会在那里确认 */
   executeTool: (name: string, input: unknown) => Promise<ToolResult>
   createRequestId: () => string
@@ -61,7 +66,7 @@ const abortResult = (messages: ChatMessage[], text: string, steps: number): Agen
 
 /**
  * 运行 agent loop：模型 → 工具 → 模型，直到不再有工具调用、被取消或达到步数上限。
- * 平台不参与循环，只按 runId 提供每次模型请求和工具执行。
+ * 平台不参与循环，只按会话提供每次模型请求和工具执行。
  */
 export const runAgentLoop = async (options: AgentLoopOptions): Promise<AgentRunResult> => {
   const { signal } = options
@@ -108,7 +113,7 @@ export const runAgentLoop = async (options: AgentLoopOptions): Promise<AgentRunR
       try {
         input = parseArguments(call.arguments)
       } catch {
-        const message = t('assistant.tool.argsInvalid')
+        const message = '工具参数不是合法的 JSON'
         emit({ type: 'tool-error', callId: call.id, name: call.name, error: message })
         messages.push({ role: 'tool', tool_call_id: call.id, content: message })
         continue
@@ -126,7 +131,7 @@ export const runAgentLoop = async (options: AgentLoopOptions): Promise<AgentRunR
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
-          content: t('assistant.tool.failed', { message })
+          content: `工具执行失败：${message}`
         })
       }
     }

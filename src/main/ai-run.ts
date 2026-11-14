@@ -2,7 +2,7 @@
 // agent loop 由插件实现，平台只负责 runId、取消、预算和超时，
 // 这样插件即使死循环，也不能无限消耗 token 或让用户无法停止。
 
-export type RunAbortReason = 'user' | 'limit' | 'timeout'
+export type RunAbortReason = 'user' | 'limit' | 'timeout' | 'error'
 
 export interface RunUsage {
   steps: number

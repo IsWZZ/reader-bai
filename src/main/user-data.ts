@@ -6,6 +6,7 @@ import { join } from 'path'
 
 export const USER_DATA_DIRECTORY = 'Userdata'
 
+// 定义的用户数据路径接口
 export interface UserDataPaths {
   /** userData/Userdata */
   dataRoot: string

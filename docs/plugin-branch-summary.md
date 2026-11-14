@@ -5,7 +5,7 @@
 ## 总体定位
 
 - **AI 仍是平台核心能力**：模型访问、密钥、工具注册和运行边界留在主进程。
-- **agent loop 下放到模块**：第一方循环位于渲染进程的 [agent-loop.ts](../src/renderer/src/lib/agent-loop.ts)，平台只提供模型请求和工具执行接口。
+- **agent loop 独立进程运行**：第一方循环位于 [agent/loop.ts](../src/main/agent/loop.ts)，由 `utilityProcess` 宿主执行；平台只提供模型请求和工具执行接口。
 - **C 层插件独立进程运行**：插件在 `utilityProcess` 扩展宿主中执行，拿不到 `window.api`、主进程设置或 API Key。
 - **平台能力可被复用**：平台工具同时暴露给第一方 AI 和插件，权限校验、参数校验与写操作确认统一下沉到主进程。
 
@@ -58,31 +58,30 @@
 
 ## 3. Agent run 生命周期
 
-新增 [ai-run.ts](../src/main/ai-run.ts) 和 `runs:start/finish/cancel`：
+[ai-run.ts](../src/main/ai-run.ts) 持有平台侧运行边界：
 
 - 每次 agent 运行由平台分配 `runId`，并持有 `AbortSignal`。
 - 支持最大步数、输入/输出 token 预算和超时；超限、超时或取消都会中止运行。
 - `recordStep` 在每次模型调用前计步，达到上限后拒绝继续请求。
-- IPC 侧校验步数上限（1–20）和超时范围（1 秒–10 分钟）。
-- `ai:chat` 携带 `runId` 时，会先确认运行仍有效，再计步并发起请求；运行中止时同步中止网络请求。
-- 应用退出时停止全部运行。
+- run 不再通过 IPC 暴露，只由 [agent/runtime.ts](../src/main/agent/runtime.ts) 和 [ai-request.ts](../src/main/ai-request.ts) 使用。
+- 应用退出时停止 agent runtime 和全部会话。
 
 ### 第一方 agent loop
 
-[agent-loop.ts](../src/renderer/src/lib/agent-loop.ts) 实现“模型 → 工具 → 模型”循环：
+[agent/loop.ts](../src/main/agent/loop.ts) 实现“模型 → 工具 → 模型”循环，运行在独立的 `agent-host` `utilityProcess` 中：
 
-- 默认最多 8 步，硬上限 20 步。
-- 只传工具名，schema 由平台解析。
+- 平台按模式固定预算：`chat` 1 步，`agent` 6 步，超时 120 秒。
+- 只传工具名，schema 由主进程解析；`agent` 模式只开放 `risk === 'read'` 且 `exposeToAi` 的工具。
 - 工具参数不是合法 JSON 或执行失败时，错误会作为 `tool` 消息回给模型，不会中断整个对话。
-- 支持 `assistant-message` / `tool-call` / `tool-result` / `tool-error` 事件。
-- 取消、步数上限和最终原因都有明确返回值。
+- 支持 `tool-call` / `tool-result` / `tool-error` 事件；模型增量由主进程直接推给渲染进程。
+- 取消、步数上限和最终原因都有明确返回值；宿主拿不到 Key、设置、文件系统或窗口。
 
 ### 对话面板
 
-- 新增「工具」开关，开启后只向模型暴露 `risk === 'read'` 且 `exposeToAi` 的平台工具。
-- 工具模式先 `startRun` 建立预算和超时，再按 `runId` 发起每次模型请求。
+- 新增「工具」开关，开启后以 `mode: 'agent'` 启动会话；关闭时 `mode: 'chat'`。
+- 渲染进程只调 `agent:start` / `agent:cancel`，并订阅 `agent:event`（`chunk` / `tool-call` / `tool-result` / `tool-error` / `done` / `error`）。
 - 工具调用记录显示在回复气泡下方（`调用工具：...` / 工具失败信息）。
-- 停止对话会同时取消平台 run 和当前模型请求。
+- 停止对话会取消当前会话；会话 id 尚未返回时会先标记，拿到 id 后补一次取消。
 
 ## 4. C 层第三方插件宿主
 
@@ -183,20 +182,20 @@ interface PluginModule {
 
 新增或扩展的 IPC：
 
-- `ai:chat` 增加 `toolNames` / `runId`。
-- `runs:start`、`runs:finish`、`runs:cancel`。
+- `ai:chat` / `ai:abort` / `ai:chunk`（翻译）。
+- `agent:start`、`agent:cancel`，以及主进程推送的 `agent:event`。
 - `tools:list`、`tools:execute`。
 - `plugins:list`、`plugins:runtime`、`plugins:setEnabled`。
 - 主进程推送 `plugins:runtime-changed`。
 
 构建侧：
 
-- [electron.vite.config.ts](../electron.vite.config.ts) 的 main 入口增加 `plugin-host`，产出独立的 `out/main/plugin-host.js`。
+- [electron.vite.config.ts](../electron.vite.config.ts) 的 main 入口增加 `plugin-host` 和 `agent-host`，分别产出 `out/main/plugin-host.js`、`out/main/agent-host.js`。
 
 ## 8. 测试与文档
 
-- 新增单元/组件测试覆盖：agent loop、run 生命周期、AI 请求解析、PDF 文本提取、平台工具、工具注册表、manifest 校验、插件发现、宿主协议、插件宿主、插件设置界面、设置与标注安全校验。
-- 新增 E2E：`tools.spec.ts`、`runs.spec.ts`、`plugins.spec.ts`、`plugin-runtime.spec.ts`，并扩展 assistant/settings/pdf-viewer/library-management。
+- 新增单元/组件测试覆盖：agent loop、agent 协议、AI 请求执行边界、run 生命周期、AI 请求解析、PDF 文本提取、平台工具、工具注册表、manifest 校验、插件发现、宿主协议、插件宿主、插件设置界面、设置与标注安全校验。
+- 新增 E2E：`tools.spec.ts`、`agent.spec.ts`、`plugins.spec.ts`、`plugin-runtime.spec.ts`，并扩展 assistant/settings/pdf-viewer/library-management。
 - 当前验证状态：lint、四组 typecheck、231 个单元测试、50 个 E2E 全部通过。
 - [docs/architecture.md](architecture.md)、[docs/security.md](security.md)、[CLAUDE.md](../CLAUDE.md) 已同步新边界。
 
@@ -206,7 +205,7 @@ interface PluginModule {
 - **命令触发未接入**：`onCommand` 已在协议中保留，但宿主目前只激活 `onStartup`。
 - **participant 输出协议未接入**：插件还不能向聊天 UI 输出结构化消息、工具卡片或进度。
 - **安装流程未完成**：目前通过把插件目录放入 `userData/Userdata/plugins` 安装，还没有市场、签名、哈希校验或权限安装确认。
-- **第一方 agent loop 仍在渲染进程**：它是模块化的第一方实现，还没有作为插件加载；后续可用于验证“loop 在插件、能力在平台”。
+- **第一方 agent loop 已移出渲染进程**：现在运行在独立的 `agent-host` `utilityProcess`，但仍是平台内置实现，还没有作为插件加载；后续可用于验证“loop 在插件、能力在平台”。
 - **B 层内置模块尚未落地**：当前新增的是平台能力、C 层宿主和第一方 agent 循环。
 
 ## 10. 关键文件
@@ -218,8 +217,8 @@ interface PluginModule {
 | 平台工具           | [src/main/platform-tools.ts](../src/main/platform-tools.ts)                                                           |
 | PDF 文本提取       | [src/main/pdf-text.ts](../src/main/pdf-text.ts)                                                                       |
 | run 生命周期       | [src/main/ai-run.ts](../src/main/ai-run.ts)                                                                           |
-| 工具/运行 IPC      | [src/main/ipc/tools.ts](../src/main/ipc/tools.ts)、[src/main/ipc/runs.ts](../src/main/ipc/runs.ts)                    |
-| 第一方 agent loop  | [src/renderer/src/lib/agent-loop.ts](../src/renderer/src/lib/agent-loop.ts)                                           |
+| 工具/运行 IPC      | [src/main/ipc/tools.ts](../src/main/ipc/tools.ts)、[src/main/ipc/agent.ts](../src/main/ipc/agent.ts)                  |
+| 第一方 agent loop  | [src/main/agent/loop.ts](../src/main/agent/loop.ts)、[runtime.ts](../src/main/agent/runtime.ts)                       |
 | 插件 manifest/发现 | [src/main/plugins/manifest.ts](../src/main/plugins/manifest.ts)、[discovery.ts](../src/main/plugins/discovery.ts)     |
 | 插件宿主           | [src/main/plugins/runtime.ts](../src/main/plugins/runtime.ts)、[host-process.ts](../src/main/plugins/host-process.ts) |
 | 插件协议与 API     | [src/main/plugins/protocol.ts](../src/main/plugins/protocol.ts)、[api.ts](../src/main/plugins/api.ts)                 |

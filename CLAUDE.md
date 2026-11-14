@@ -43,7 +43,7 @@ reader-bai/
 │        ├─ views/          # Home 外壳
 │        ├─ components/     # 书库/阅读器/AI/设置/插件界面，ui/ 为 shadcn-vue
 │        ├─ store/          # Pinia：assistant/settings/plugins
-│        ├─ lib/            # agent-loop/pdf/ai
+│        ├─ lib/            # ai/pdf/i18n
 │        └─ assets/css/     # Tailwind 与设计 token
 ├─ tests/                   # unit / component / e2e
 ├─ docs/                    # 架构、安全、PDF、测试

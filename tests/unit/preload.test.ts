@@ -41,15 +41,13 @@ describe('preload bridge', () => {
       [
         'abortChat',
         'addAnnotation',
-        'cancelRun',
+        'cancelAgent',
         'chat',
-        'chatWithTools',
         'chooseDirectory',
         'clearCache',
         'createSpace',
         'deleteSpace',
         'executeTool',
-        'finishRun',
         'getPluginRuntime',
         'getSettings',
         'importPaper',
@@ -58,6 +56,7 @@ describe('preload bridge', () => {
         'listPlugins',
         'listTools',
         'movePaper',
+        'onAgentEvent',
         'onAiChunk',
         'onPluginRuntime',
         'readPaper',
@@ -66,7 +65,7 @@ describe('preload bridge', () => {
         'renamePaper',
         'renameSpace',
         'setPluginEnabled',
-        'startRun',
+        'startAgent',
         'uninstallApp',
         'updateSettings'
       ].sort()
@@ -129,8 +128,8 @@ describe('preload bridge', () => {
     expect(electron.invoke).toHaveBeenLastCalledWith('annotations:remove', '/papers/a.pdf', ['a1'])
   })
 
-  it('forwards settings, AI, run, tool and plugin calls', async () => {
-    electron.invoke.mockResolvedValue({ text: 'reply' })
+  it('forwards settings, AI, agent, tool and plugin calls', async () => {
+    electron.invoke.mockResolvedValue('reply')
 
     await expect(api.chat('r1', [{ role: 'user', content: 'hi' }], 'profile-1')).resolves.toBe(
       'reply'
@@ -142,15 +141,16 @@ describe('preload bridge', () => {
       'profile-1'
     )
 
-    await api.chatWithTools('r2', [], 'profile-1')
-    expect(electron.invoke).toHaveBeenLastCalledWith(
-      'ai:chat',
-      'r2',
-      [],
-      'profile-1',
-      [],
-      undefined
-    )
+    const startRequest = {
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      profileId: 'profile-1',
+      mode: 'agent' as const
+    }
+    await api.startAgent(startRequest)
+    expect(electron.invoke).toHaveBeenLastCalledWith('agent:start', startRequest)
+
+    await api.cancelAgent('session-1')
+    expect(electron.invoke).toHaveBeenLastCalledWith('agent:cancel', 'session-1')
 
     await api.getSettings()
     expect(electron.invoke).toHaveBeenLastCalledWith('settings:get')
@@ -163,15 +163,6 @@ describe('preload bridge', () => {
 
     await api.uninstallApp()
     expect(electron.invoke).toHaveBeenLastCalledWith('app:uninstall')
-
-    await api.startRun()
-    expect(electron.invoke).toHaveBeenLastCalledWith('runs:start', {})
-
-    await api.finishRun('run-1')
-    expect(electron.invoke).toHaveBeenLastCalledWith('runs:finish', 'run-1')
-
-    await api.cancelRun('run-1')
-    expect(electron.invoke).toHaveBeenLastCalledWith('runs:cancel', 'run-1')
 
     api.abortChat('r3')
     expect(electron.send).toHaveBeenCalledWith('ai:abort', 'r3')
@@ -208,6 +199,26 @@ describe('preload bridge', () => {
 
     offChunk()
     expect(electron.removeListener).toHaveBeenCalledWith('ai:chunk', chunkListener)
+  })
+
+  it('subscribes and removes the agent event listener', () => {
+    const onEvent = vi.fn()
+    const offEvent = api.onAgentEvent(onEvent)
+
+    expect(electron.on).toHaveBeenCalledWith('agent:event', expect.any(Function))
+    const [, agentListener] = electron.on.mock.calls[0] as unknown as [
+      string,
+      (event: unknown, payload: unknown) => void
+    ]
+    const payload = {
+      sessionId: 'session-1',
+      event: { type: 'chunk' as const, delta: '你' }
+    }
+    agentListener({}, payload)
+    expect(onEvent).toHaveBeenCalledWith(payload)
+
+    offEvent()
+    expect(electron.removeListener).toHaveBeenCalledWith('agent:event', agentListener)
   })
 
   it('subscribes and removes the plugin runtime listener', () => {

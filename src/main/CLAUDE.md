@@ -4,7 +4,7 @@
 
 ## 职责与装配
 
-- `index.ts` 只做启动装配：创建 store、run manager、插件宿主、工具注册表，注册 IPC，创建窗口，退出时停止插件宿主。业务逻辑不要写进这里。
+- `index.ts` 只做启动装配：创建 store、run manager、AI 请求器、agent runtime、插件宿主、工具注册表，注册 IPC，创建窗口，退出时停止 agent runtime 和插件宿主。业务逻辑不要写进这里。
 - 领域逻辑按域拆到 `src/main/<domain>.ts`：`library.ts`、`annotations.ts`、`settings.ts`、`settings-store.ts`、`ai.ts`、`ai-run.ts`、`pdf-text.ts`、`platform-tools.ts`、`tool-registry.ts`。
 - IPC handler 统一放 `src/main/ipc/<domain>.ts`，导出 `register<Domain>Ipc(...)`，由 `index.ts` 装配。
 - 窗口与 Electron 加固在 `window.ts`：保持 `sandbox`、`contextIsolation`，关闭 `nodeIntegration` / `webviewTag`；导航、新窗口、权限请求默认拒绝。
@@ -23,7 +23,7 @@
   - `cache:clear`：清理 Electron 的 HTTP、代码和 DNS 缓存，不碰 Cookie、书库或设置
   - `app:uninstall`：原生确认后删除本地论文副本、`userData/Userdata` 和会话数据并退出；导入前的原始 PDF 保留
   - `ai:chat`、`ai:abort`、`ai:chunk`
-  - `runs:start/finish/cancel`
+  - `agent:start/cancel`，以及主进程推送的 `agent:event`
   - `tools:list/execute`
   - `plugins:list/runtime/setEnabled`，以及主进程推送的 `plugins:runtime-changed`
 - 文件访问只允许书库中已登记的路径；导入只接受系统对话框的结果；`library.directory` 只接受绝对路径或空字符串（默认 `userData/Userdata/papers`）。
@@ -51,13 +51,12 @@
 ## AI 网关
 
 - `ai.ts` 刻意不依赖 Electron，方便单元测试；负责 OpenAI 兼容的 SSE 流式解析和 `tool_calls` 聚合。
-- `ai:chat` 接收 `requestId`、`messages`、`profileId`、可选 `toolNames` 和 `runId`：
+- `ai-request.ts` 是单次模型请求的执行边界：解析 `profileId`、解密 Key、校验 Base URL、解析工具 schema、计步和取消都集中在这里；`ai.ts` 只做 OpenAI 兼容 SSE 和 `tool_calls` 聚合。
   - `messages` 先经 `normalizeChatMessages` 校验角色、结构、条数和总长度。
   - `toolNames` 只能引用工具注册表中已注册且 `exposeToAi` 的工具，schema 由主进程解析。
-  - `runId` 存在时先取 run、检查是否已中止，并调用 `recordStep` 计步。
-  - Key 只在本 handler 内解密并传给 `streamChat`，不进入聊天参数。
-- 流式增量通过 `ai:chunk` 推送，发送前检查 `event.sender.isDestroyed()`。
-- 每个请求用独立 `AbortController`；`ai:abort` 和 run 的 abort signal 都要能中止网络请求。
+  - `run` 存在时先检查是否已中止，再调用 `recordStep` 计步；`run.signal` 和调用方 `signal` 都要能中止网络请求。
+  - Key 只在这里解密并传给 `streamChat`，不进入聊天参数。
+- `ai:chat` 只供翻译使用，接收 `requestId`、`messages`、`profileId`，返回文本；流式增量通过 `ai:chunk` 推送，发送前检查 `event.sender.isDestroyed()`。
 
 ## 平台工具与运行边界
 
@@ -70,7 +69,11 @@
   - `annotations.add`（写）、`annotations.remove`（破坏性）
   - 权限：读工具要 `documents:read`；标注写入要 `documents:read` + `annotations:write`。
 - `pdf-text.ts` 按需加载 pdfjs，限制 PDF 大小（100 MB）和解析时间（20 秒）；页码从 1 开始，越界返回可读错误；单页文本会截断后再返回。
-- `ai-run.ts` 持有 run 生命周期：`runId`、`AbortSignal`、步数、token 用量、超时和取消原因。`runs:*` IPC 只接受合法的步数上限（1–20）和超时（1 秒–10 分钟）。
+- `ai-run.ts` 持有 run 生命周期：`runId`、`AbortSignal`、步数、token 用量、超时和取消原因。run 不再通过 IPC 暴露，由 `agent/runtime.ts` 和 `ai-request.ts` 内部使用。
+- `agent/loop.ts`：纯 agent 循环（模型 → 工具 → 模型），不依赖 Electron；按 `maxSteps` 截断，工具参数非法或执行失败时把错误作为 `tool` 消息回给模型。
+- `agent/runtime.ts`：主进程侧会话管理。用 `utilityProcess.fork(out/main/agent-host.js)` 启动宿主；策略固定为 `chat` 1 步、`agent` 6 步、120 秒超时，调用方不能放宽；只把 `risk === 'read'` 且 `exposeToAi` 的工具交给宿主；宿主只能请求本会话开放的工具。
+- `agent/host-process.ts`：agent 宿主入口。只请求模型和工具，不接触 Key、设置、文件系统或窗口。
+- `agent/protocol.ts`：主进程与宿主之间的消息协议；两端的每条消息都重新校验类型、长度和体积。新增消息类型时同步两端。
 
 ## 插件宿主
 
@@ -81,11 +84,11 @@
 - `plugins/host-process.ts`：独立宿主入口，动态 import 插件 `main`；只激活声明了 `onStartup` 的插件（`onCommand` 暂未接入）；激活/停用有 10 秒超时；向插件注入 `pluginId`、`permissions`、`log` 和受限的 `tools` API。
 - `plugins/protocol.ts`：校验宿主消息（`ready` / `status` / `log` / `api-request` / `stopped`），API 方法限定为 `tools.list` / `tools.execute`，字段和参数体积有上限。
 - `plugins/api.ts`：插件作者契约；插件拿不到 `window.api`、设置文件、`BrowserWindow` 或 API Key。
-- 构建入口在 `electron.vite.config.ts` 的 main rollup input 中，必须保留 `plugin-host` 独立产物。
+- 构建入口在 `electron.vite.config.ts` 的 main rollup input 中，必须保留 `plugin-host` 和 `agent-host` 独立产物。
 
 ## 测试
 
-- 纯逻辑模块（`ai.ts`、`ai-run.ts`、`tool-registry.ts`、`platform-tools.ts`、`plugins/*`、`pdf-text.ts`、`settings.ts`、`library.ts`、`annotations.ts`）优先用 Vitest 直接测，尽量不启动 Electron。
+- 纯逻辑模块（`ai.ts`、`ai-request.ts`、`ai-run.ts`、`agent/loop.ts`、`agent/protocol.ts`、`tool-registry.ts`、`platform-tools.ts`、`plugins/*`、`pdf-text.ts`、`settings.ts`、`library.ts`、`annotations.ts`）优先用 Vitest 直接测，尽量不启动 Electron。
 - 需要 Electron API 时在测试里 mock 或通过 E2E 的 `app.evaluate` 打桩（例如 `safeStorage`、`dialog.showMessageBox`、`dialog.showOpenDialog`）。
 - E2E 使用临时 `--user-data-dir`；写操作确认、非法输入、路径归属和 Key 不出现在返回值中都要覆盖。
 - 测试分层和命令见 [docs/testing.md](../../docs/testing.md)。
