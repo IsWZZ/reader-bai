@@ -23,9 +23,19 @@
             <p class="text-sm">
               {{ plugin.name }}
               <span class="text-muted-foreground text-xs">v{{ plugin.version }}</span>
+              <span
+                v-if="runtimeFor(plugin.id)"
+                class="text-muted-foreground text-xs"
+                data-testid="plugin-runtime"
+              >
+                · {{ runtimeLabel(plugin.id) }}
+              </span>
             </p>
             <p v-if="plugin.description" class="text-muted-foreground text-xs">
               {{ plugin.description }}
+            </p>
+            <p v-if="runtimeFor(plugin.id)?.message" class="text-destructive text-xs">
+              {{ runtimeFor(plugin.id)?.message }}
             </p>
             <p class="text-muted-foreground font-mono text-[10px]">{{ plugin.id }}</p>
           </div>
@@ -76,14 +86,35 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import type { PluginInfo } from '@renderer/types'
+import { onBeforeUnmount, onMounted } from 'vue'
+import type { PluginInfo, PluginRuntimeState, PluginRuntimeStatus } from '@renderer/types'
 import { usePluginsStore } from '@renderer/store/plugins'
 
 const store = usePluginsStore()
+let unsubscribe: (() => void) | undefined
+
+const RUNTIME_LABELS: Record<PluginRuntimeStatus, string> = {
+  inactive: '未启动',
+  activating: '启动中…',
+  active: '运行中',
+  error: '启动失败'
+}
+
+const runtimeFor = (pluginId: string): PluginRuntimeState | undefined => store.runtimeFor(pluginId)
+
+const runtimeLabel = (pluginId: string): string => {
+  const state = store.runtimeFor(pluginId)
+  return state ? RUNTIME_LABELS[state.status] : ''
+}
 
 onMounted(() => {
   void store.load()
+  void store.loadRuntime()
+  unsubscribe = window.api?.onPluginRuntime?.(store.applyRuntime)
+})
+
+onBeforeUnmount(() => {
+  unsubscribe?.()
 })
 
 const toggle = async (plugin: PluginInfo, event: Event): Promise<void> => {

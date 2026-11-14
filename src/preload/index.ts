@@ -87,6 +87,14 @@ interface PluginListResult {
   issues: PluginIssue[]
 }
 
+type PluginRuntimeStatus = 'inactive' | 'activating' | 'active' | 'error'
+
+interface PluginRuntimeState {
+  pluginId: string
+  status: PluginRuntimeStatus
+  message?: string
+}
+
 interface RunLimits {
   maxSteps?: number
   timeoutMs?: number
@@ -158,6 +166,16 @@ const api = {
   listPlugins: (): Promise<PluginListResult> => ipcRenderer.invoke('plugins:list'),
   setPluginEnabled: (id: string, enabled: boolean): Promise<PluginInfo> =>
     ipcRenderer.invoke('plugins:setEnabled', id, enabled),
+  getPluginRuntime: (): Promise<PluginRuntimeState[]> => ipcRenderer.invoke('plugins:runtime'),
+  onPluginRuntime: (callback: (states: PluginRuntimeState[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, states: PluginRuntimeState[]): void => {
+      callback(states)
+    }
+    ipcRenderer.on('plugins:runtime-changed', listener)
+    return () => {
+      ipcRenderer.removeListener('plugins:runtime-changed', listener)
+    }
+  },
   onAiChunk: (callback: (payload: AiChunk) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, payload: AiChunk): void => {
       callback(payload)

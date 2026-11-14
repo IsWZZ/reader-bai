@@ -7,6 +7,7 @@ import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
 import { readPdfPageText } from './pdf-text'
 import { createPluginHost } from './plugins/host'
+import { createPluginRuntime } from './plugins/runtime'
 import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
 import { createWindow } from './window'
@@ -48,16 +49,32 @@ app.whenReady().then(() => {
     readPageText: (paper, page) => readPdfPageText(paper.path, page),
     confirm: confirmToolInvocation
   })
+  const runtime = createPluginRuntime({
+    hostScript: join(__dirname, 'plugin-host.js'),
+    tools,
+    getPlugins: () => plugins.runtimePlugins(),
+    onChange: (states) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send('plugins:runtime-changed', states)
+      }
+    },
+    onLog: (entry) => console.info(`[plugin:${entry.pluginId}] [${entry.level}] ${entry.message}`)
+  })
 
   registerLibraryIpc(library, settings)
   registerAnnotationsIpc(annotations, library)
   registerSettingsIpc(settings)
-  registerPluginsIpc(plugins)
+  registerPluginsIpc(plugins, runtime)
   registerRunsIpc(runs)
   registerAiIpc(settings, tools, runs)
   registerToolsIpc(tools)
 
   createWindow()
+  void runtime.refresh()
+
+  app.on('before-quit', () => {
+    void runtime.stop()
+  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

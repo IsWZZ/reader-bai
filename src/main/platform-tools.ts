@@ -25,6 +25,8 @@ const MAX_ID_LENGTH = 100
 const DEFAULT_HIGHLIGHT_COLOR = '#facc15'
 const DEFAULT_UNDERLINE_COLOR = '#ef4444'
 const COLOR_PATTERN = /^#[0-9a-f]{3,8}$/i
+const DOCUMENTS_READ = ['documents:read']
+const ANNOTATIONS_WRITE = ['documents:read', 'annotations:write']
 
 interface LibraryListInput {
   query?: string
@@ -172,6 +174,7 @@ const libraryListTool = (library: LibraryStore): ToolDefinition<LibraryListInput
   },
   risk: 'read',
   exposeToAi: true,
+  requiredPermissions: DOCUMENTS_READ,
   validate: (input) => {
     const record = asRecord(input)
     return {
@@ -221,6 +224,7 @@ const paperGetTool = (
   },
   risk: 'read',
   exposeToAi: true,
+  requiredPermissions: DOCUMENTS_READ,
   validate: (input) => ({
     paperId: readRequiredString(asRecord(input), 'paperId', MAX_ID_LENGTH)
   }),
@@ -258,6 +262,7 @@ const paperReadPageTool = (
   },
   risk: 'read',
   exposeToAi: true,
+  requiredPermissions: DOCUMENTS_READ,
   validate: (input) => {
     const record = asRecord(input)
     const page = readInteger(record, 'page', 1, Number.MAX_SAFE_INTEGER)
@@ -298,6 +303,7 @@ const annotationsListTool = (
   },
   risk: 'read',
   exposeToAi: true,
+  requiredPermissions: DOCUMENTS_READ,
   validate: (input) => {
     const record = asRecord(input)
     return {
@@ -363,6 +369,7 @@ const annotationsAddTool = (
   },
   risk: 'write',
   exposeToAi: true,
+  requiredPermissions: ANNOTATIONS_WRITE,
   validate: (input) => {
     const record = asRecord(input)
     const rawType = record.type ?? 'highlight'
@@ -432,6 +439,7 @@ const annotationsRemoveTool = (
   },
   risk: 'destructive',
   exposeToAi: true,
+  requiredPermissions: ANNOTATIONS_WRITE,
   validate: (input) => {
     const record = asRecord(input)
     return {

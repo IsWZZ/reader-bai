@@ -15,15 +15,15 @@
 
 ## 信任边界
 
-| 边界            | 规则                                                                                           |
-| --------------- | ---------------------------------------------------------------------------------------------- |
-| Main ↔ Renderer | 渲染进程视为不可信；所有 IPC 参数在主进程校验，不信任类型、长度、路径和枚举值                  |
-| Preload         | 只暴露最小 `window.api`；不暴露 Node、`ipcRenderer`、`electronAPI` 或文件系统                  |
-| 核心数据文件    | `library.json` / `annotations.json` / `settings.json` 只由平台服务读写，模块和插件不得直接修改 |
-| 密钥            | API Key、令牌等只在主进程解密和使用；渲染进程只需要知道“是否已配置”                            |
-| 文件访问        | 导入只走系统文件对话框；读取只允许论文库中已登记的路径；不接受渲染进程传来的任意路径           |
-| 网络            | 渲染进程不直接请求外部服务；AI、检索、更新等统一走主进程代理                                   |
-| 插件            | 插件拿不到 `window.api`；通过宿主注入的受限 API 访问能力，网络和存储都按 manifest 授权         |
+| 边界            | 规则                                                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Main ↔ Renderer | 渲染进程视为不可信；所有 IPC 参数在主进程校验，不信任类型、长度、路径和枚举值                                        |
+| Preload         | 只暴露最小 `window.api`；不暴露 Node、`ipcRenderer`、`electronAPI` 或文件系统                                        |
+| 核心数据文件    | `library.json` / `annotations.json` / `settings.json` 只由平台服务读写，模块和插件不得直接修改                       |
+| 密钥            | API Key、令牌等只在主进程解密和使用；渲染进程只需要知道“是否已配置”                                                  |
+| 文件访问        | 导入只走系统文件对话框；读取只允许论文库中已登记的路径；不接受渲染进程传来的任意路径                                 |
+| 网络            | 渲染进程不直接请求外部服务；AI、检索、更新等统一走主进程代理                                                         |
+| 插件            | 插件运行在独立 utilityProcess，拿不到 `window.api`；平台工具按 manifest 权限放行。宿主目前仍有 Node 权限，见已知风险 |
 
 ## 现有防护
 
@@ -37,6 +37,7 @@
 - Key 优先用 Electron `safeStorage` 加密后落盘，见 [settings-store.ts](../src/main/settings-store.ts)。
 - 设置、书库和 AI 消息都有规范化逻辑，异常文件按空数据降级，不会导致启动失败。
 - 未发现 `v-html`、`innerHTML`、`eval` 等直接注入点。
+- 插件代码只在 `utilityProcess` 扩展宿主中执行，不进入渲染进程或主进程；宿主消息经过协议校验，API 方法限定为 `tools.list` / `tools.execute`，字段和参数有长度上限。插件调用工具时按 manifest 的 `requiredPermissions` 校验，写操作仍由主进程弹出确认。
 - E2E 使用临时 `--user-data-dir`，测试不会读写真实用户数据；密钥使用假值。
 
 ## 已知风险与加固顺序
@@ -57,13 +58,14 @@
 6. **没有拒绝默认权限请求。** 应设置 `session.setPermissionRequestHandler`，默认拒绝摄像头、麦克风、通知、剪贴板等权限，确有需要时再按 origin 精确放开。
 7. **AI Base URL 允许任意 `http://` 主机。** Key 会发往用户填写的地址。默认要求 HTTPS，仅对 `localhost` / `127.0.0.1` 放开 HTTP 便于本地模型；发送前展示目标主机，配置错误时给出明确提示。
 8. **`safeStorage` 不可用时退化为明文存储。** 这是可接受的降级，但必须让用户可见：设置页提示“系统安全存储不可用，Key 将以明文保存”，并避免把该文件纳入任何同步。
+9. **扩展宿主不是安全沙箱。** [host-process.ts](../src/main/plugins/host-process.ts) 运行在 `utilityProcess` 中，只能隔离崩溃和主进程状态，插件 JS 仍可 `require('fs')`、`require('net')` 或读取 `process.env`；manifest 权限只约束平台工具调用。在引入 Node 权限模型、能力进程或 OS 级沙箱之前，应只安装可信插件，并优先补上安装来源校验与签名。不要因为插件声明了权限就把它当成已隔离。
 
 ### P2：持续清理
 
-9. `annotations:list` 未校验论文库归属，与 `add` / `remove` 不一致；统一走同一个归属检查。
-10. 标注对象目前只依赖结构化克隆，未逐字段校验 `type`、`color`、`page`、`rects` 范围和文本长度；补上后再写入。
-11. CSP 的 `style-src` 含 `'unsafe-inline'`。当前由 Vue/Tailwind 运行时样式需要；引入自定义样式时优先使用 class，逐步收紧。
-12. 依赖与更新链路：保持锁文件提交，定期跑 `npm audit`，跟 Electron 安全版本；C 层插件必须有签名或哈希校验，安装前展示权限。
+10. `annotations:list` 未校验论文库归属，与 `add` / `remove` 不一致；统一走同一个归属检查。
+11. 标注对象目前只依赖结构化克隆，未逐字段校验 `type`、`color`、`page`、`rects` 范围和文本长度；补上后再写入。
+12. CSP 的 `style-src` 含 `'unsafe-inline'`。当前由 Vue/Tailwind 运行时样式需要；引入自定义样式时优先使用 class，逐步收紧。
+13. 依赖与更新链路：保持锁文件提交，定期跑 `npm audit`，跟 Electron 安全版本；C 层插件必须有签名或哈希校验，安装前展示权限。
 
 ## 新增 IPC 检查清单
 

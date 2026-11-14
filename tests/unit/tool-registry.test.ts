@@ -47,7 +47,8 @@ describe('tool registry', () => {
         description: '按标题搜索论文',
         inputSchema: searchTool().inputSchema,
         risk: 'read',
-        exposeToAi: true
+        exposeToAi: true,
+        requiredPermissions: []
       }
     ])
     expect(registry.get('library.search')?.title).toBe('搜索论文')
@@ -101,7 +102,7 @@ describe('tool registry', () => {
     expect(onInvoke).toHaveBeenCalledTimes(1)
   })
 
-  it('does not expose private tools to AI', async () => {
+  it('does not expose private tools to AI or plugins', async () => {
     const registry = createToolRegistry()
     registry.register({ ...searchTool(), exposeToAi: false })
 
@@ -109,10 +110,20 @@ describe('tool registry', () => {
       '工具未对 AI 开放'
     )
     await expect(
+      registry.execute('library.search', { query: 'x' }, context('plugin'))
+    ).rejects.toThrow('工具未对插件开放')
+    await expect(
       registry.execute('library.search', { query: 'x' }, context('ui'))
     ).resolves.toEqual({
       content: 'found:x'
     })
+  })
+
+  it('keeps required permissions in the tool info', () => {
+    const registry = createToolRegistry()
+    registry.register({ ...searchTool(), requiredPermissions: ['documents:read'] })
+
+    expect(registry.get('library.search')?.requiredPermissions).toEqual(['documents:read'])
   })
 
   it('honors the authorize hook', async () => {

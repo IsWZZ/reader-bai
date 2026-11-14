@@ -2,7 +2,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PluginSettings from '@renderer/components/PluginSettings.vue'
-import type { PluginInfo, PluginListResult } from '@renderer/types'
+import type { PluginInfo, PluginListResult, PluginRuntimeState } from '@renderer/types'
 
 const PLUGIN: PluginInfo = {
   id: 'reader-bai.arxiv-source',
@@ -17,9 +17,17 @@ const PLUGIN: PluginInfo = {
 
 const listPlugins = vi.fn<() => Promise<PluginListResult>>()
 const setPluginEnabled = vi.fn<(id: string, enabled: boolean) => Promise<PluginInfo>>()
+const getPluginRuntime = vi.fn<() => Promise<PluginRuntimeState[]>>()
+const unsubscribeRuntime = vi.fn()
+const onPluginRuntime = vi.fn(() => unsubscribeRuntime)
 
 const installApi = (): void => {
-  window.api = { listPlugins, setPluginEnabled } as unknown as Api
+  window.api = {
+    listPlugins,
+    setPluginEnabled,
+    getPluginRuntime,
+    onPluginRuntime
+  } as unknown as Api
 }
 
 const mountSettings = async (): Promise<VueWrapper> => {
@@ -35,8 +43,13 @@ beforeEach(() => {
   setActivePinia(createPinia())
   listPlugins.mockReset()
   setPluginEnabled.mockReset()
+  getPluginRuntime.mockReset()
+  onPluginRuntime.mockReset()
+  unsubscribeRuntime.mockClear()
   listPlugins.mockResolvedValue({ plugins: [PLUGIN], issues: [] })
   setPluginEnabled.mockImplementation(async (id, enabled) => ({ ...PLUGIN, id, enabled }))
+  getPluginRuntime.mockResolvedValue([])
+  onPluginRuntime.mockReturnValue(unsubscribeRuntime)
   installApi()
 })
 
@@ -95,6 +108,23 @@ describe('PluginSettings', () => {
 
     expect(wrapper.text()).toContain('无法加载的插件')
     expect(wrapper.text()).toContain('broken：manifest.id 格式不正确')
+  })
+
+  it('shows the extension host runtime state', async () => {
+    getPluginRuntime.mockResolvedValue([{ pluginId: PLUGIN.id, status: 'active' }])
+    const wrapper = await mountSettings()
+
+    expect(wrapper.get('[data-testid="plugin-runtime"]').text()).toContain('运行中')
+  })
+
+  it('shows activation errors from the extension host', async () => {
+    getPluginRuntime.mockResolvedValue([
+      { pluginId: PLUGIN.id, status: 'error', message: '插件入口没有导出 activate' }
+    ])
+    const wrapper = await mountSettings()
+
+    expect(wrapper.get('[data-testid="plugin-runtime"]').text()).toContain('启动失败')
+    expect(wrapper.text()).toContain('插件入口没有导出 activate')
   })
 
   it('shows an empty state when no plugins are installed', async () => {

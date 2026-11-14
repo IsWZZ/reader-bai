@@ -43,13 +43,13 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 - `views/Home.vue` 外壳；`LibraryPanel.vue` 书库；`PdfViewer.vue` 渲染/选词/标注（改动前读 [docs/pdf-viewer.md](docs/pdf-viewer.md)）。
 - `AssistantPanel.vue` + `store/assistant.ts` 翻译与 AI 对话；`lib/agent-loop.ts` 是第一方 agent 循环，通过 `window.api.chatWithTools` 和 `executeTool` 使用平台能力；工具模式先用 `startRun` 建立平台 run 边界，再按 `runId` 发起模型请求。`SettingsDialog.vue` + `store/settings.ts` 主题、多 AI 配置与论文库存储位置。
 - `src/main/platform-tools.ts` 注册平台工具（`library.list`、`paper.get`、`paper.readPage`、`annotations.list/add/remove`）；`src/main/ipc/tools.ts` 提供 `tools:list/execute`，写/删除操作由主进程在执行边界确认；`src/main/pdf-text.ts` 负责主进程侧的 PDF 单页文本提取。
-- `src/main/plugins/` 是 C 层插件宿主的基础：`manifest.ts` 校验 manifest，`discovery.ts` 扫描 `userData/plugins`，`host.ts` 管理启用状态（默认关闭、写入 `plugins.json`）；`ipc/plugins.ts` 提供 `plugins:list/setEnabled`；设置页的 `PluginSettings.vue` + `store/plugins.ts` 负责展示和启停。目前只发现和启停，不执行插件代码。
+- `src/main/plugins/` 是 C 层插件宿主：`manifest.ts` 校验 manifest，`discovery.ts` 扫描 `userData/plugins`，`host.ts` 管理启用状态（默认关闭、写入 `plugins.json`）并给出可运行入口；`runtime.ts` 用 `utilityProcess` 启动 `host-process.ts`（独立 main 入口 `plugin-host.js`），`protocol.ts` 校验宿主消息，`api.ts` 是插件作者契约。`ipc/plugins.ts` 提供 `plugins:list/runtime/setEnabled`；设置页的 `PluginSettings.vue` + `store/plugins.ts` 负责展示、启停和运行状态。插件工具调用按 `requiredPermissions` 放行，写操作仍由主进程确认；扩展宿主目前不是 OS 沙箱。
 - `components/ui/**` 为 shadcn-vue 生成代码；`lib/pdf.ts` 管 worker 与元数据；`types.ts` 是渲染侧类型副本。
 - 测试：`tests/unit|component`（Vitest，mock `window.api`）、`tests/e2e`（Playwright，独立 `--user-data-dir`）；约定见 [docs/testing.md](docs/testing.md)。
 
 ### IPC 与数据
 
-通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`dialog:chooseDirectory`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId, toolNames?, runId?）、`ai:abort`、`ai:chunk`、`runs:start/finish/cancel`、`tools:list`、`tools:execute`、`plugins:list`、`plugins:setEnabled`。
+通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`dialog:chooseDirectory`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId, toolNames?, runId?）、`ai:abort`、`ai:chunk`、`runs:start/finish/cancel`、`tools:list`、`tools:execute`、`plugins:list`、`plugins:runtime`、`plugins:setEnabled`（另有主进程推送的 `plugins:runtime-changed`）。
 
 - `settings.json` 为 `{ theme, ai: { profiles: [{ id, baseUrl, apiKey, apiKeyEncrypted, model }], activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`（不回写）；`settings:update` 接受部分补丁；`library.directory` 只接受绝对路径，空字符串表示默认的 `userData/papers`。
 - `library.json` 为 `{ spaces, papers }`，保持 `normalizeLibrary` 旧格式迁移；`annotations.json` 以论文路径为键；移除论文/空间不删 PDF。
@@ -70,7 +70,7 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 - 渲染进程不可信；所有 IPC 参数在主进程校验，preload 只暴露最小 `window.api`，不暴露 `electronAPI`、Node 或文件系统。
 - API Key 只在主进程解密和使用；新增能力不得让明文 Key 进入渲染进程（`settings:get` 当前仍回传明文，是待修复项）。
 - 文件读取只允许书库中已登记的路径，导入只走系统对话框；渲染进程不直接请求外部服务。
-- 外链与导航默认拒绝，只放行 `http(s)`；权限请求默认拒绝。C 层插件按 manifest 权限和沙箱处理。
+- 外链与导航默认拒绝，只放行 `http(s)`；权限请求默认拒绝。C 层插件在独立 utilityProcess 中运行，平台工具按 manifest 权限放行；宿主仍有 Node 权限，不得把它当成已沙箱，见 [docs/security.md](docs/security.md)。
 - 威胁模型、现有防护、已知风险和新增 IPC 检查清单见 [docs/security.md](docs/security.md)。
 
 ## 技术栈与工具偏好

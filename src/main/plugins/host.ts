@@ -3,13 +3,14 @@
 // 用户显式启用且版本兼容后，后续的扩展宿主才会执行 manifest.main。
 
 import { mkdir, readFile, writeFile } from 'fs/promises'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
 import { discoverPlugins, type DiscoveredPlugin, type PluginDiscoveryIssue } from './discovery'
 import {
   isEngineCompatible,
   type PluginCommandContribution,
   type PluginPermission
 } from './manifest'
+import type { PluginHostDescriptor } from './protocol'
 
 const MAX_STATE_BYTES = 1024 * 1024
 
@@ -38,6 +39,8 @@ export interface PluginListResult {
 export interface PluginHost {
   list: () => Promise<PluginListResult>
   setEnabled: (id: string, enabled: boolean) => Promise<PluginStatus>
+  /** 当前已启用、版本兼容且声明了入口的插件，供扩展宿主启动 */
+  runtimePlugins: () => Promise<PluginHostDescriptor[]>
 }
 
 export interface PluginHostOptions {
@@ -142,5 +145,31 @@ export const createPluginHost = (options: PluginHostOptions): PluginHost => {
     return toStatus(plugin, options.appVersion, state)
   }
 
-  return { list, setEnabled }
+  const runtimePlugins = async (): Promise<PluginHostDescriptor[]> => {
+    const [discovery, state] = await Promise.all([
+      discoverPlugins(options.root),
+      readState(options.stateFile)
+    ])
+
+    return discovery.plugins.flatMap((plugin) => {
+      const { manifest } = plugin
+      if (
+        manifest.main === undefined ||
+        state.enabled[manifest.id] !== true ||
+        !isEngineCompatible(manifest.engineRange, options.appVersion)
+      ) {
+        return []
+      }
+      return [
+        {
+          id: manifest.id,
+          entry: join(plugin.directory, manifest.main),
+          permissions: [...manifest.permissions],
+          activationEvents: [...manifest.activationEvents]
+        }
+      ]
+    })
+  }
+
+  return { list, setEnabled, runtimePlugins }
 }

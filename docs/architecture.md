@@ -214,13 +214,18 @@ for (let step = 0; step < 12 && !run.signal.aborted; step++) {
 
 ### 插件宿主现状
 
-C 层按“先验证、再加载”推进，目前完成了发现与启用状态管理，还没有执行插件代码：
+C 层已从“只发现”推进到“独立进程执行”，但进程隔离不等于安全沙箱：
 
 - `src/main/plugins/manifest.ts`：manifest 校验（id/version、`engines.readerBai`、激活事件、命令贡献、权限白名单、入口路径不越界）；未知字段一律拒绝。
-- `src/main/plugins/discovery.ts`：扫描 `userData/plugins` 的真实子目录，跳过符号链接，单个插件损坏只记录 issue；不加载代码。
-- `src/main/plugins/host.ts` + `src/main/ipc/plugins.ts`：第三方插件默认关闭，启用状态写入 `plugins.json`；不兼容当前版本的插件不能启用。`plugins:list` / `plugins:setEnabled` 只暴露展示所需字段。
-- `PluginSettings.vue` + `store/plugins.ts`：设置页展示插件、声明的权限、命令和 manifest 错误，并负责启停；启用状态由主进程落盘。
-- 下一步才是扩展宿主进程、participant 输出协议和工具权限执行；插件代码不会在渲染进程或主进程直接 import。
+- `src/main/plugins/discovery.ts`：扫描 `userData/plugins` 的真实子目录，跳过符号链接，单个插件损坏只记录 issue。
+- `src/main/plugins/host.ts` + `src/main/ipc/plugins.ts`：第三方插件默认关闭，启用状态写入 `plugins.json`；不兼容当前版本的插件不能启用。`runtimePlugins()` 只返回已启用、版本兼容且声明了 `main` 的入口。
+- `src/main/plugins/protocol.ts`：主进程与扩展宿主的消息协议；只接受 `ready/status/log/api-request/stopped`，API 方法限定为 `tools.list` / `tools.execute`，并限制字段长度和参数体积。
+- `src/main/plugins/runtime.ts`：用 `utilityProcess.fork` 启动 `out/main/plugin-host.js`，插件启停后整体重载宿主；宿主崩溃、启动失败和退出都会反映为运行状态。工具请求在主进程侧按 manifest 权限放行，写操作仍经过确认弹窗。
+- `src/main/plugins/host-process.ts`：扩展宿主入口，动态 import 插件 `main`，只激活声明了 `onStartup` 的插件（`onCommand` 暂保持 inactive），激活/停用都有 10 秒超时；向插件注入 `pluginId`、权限、`log` 和受限的 `tools` API。
+- `src/main/plugins/api.ts`：插件作者契约（`PluginContext` / `PluginModule` / `missingToolPermissions`）。
+- 平台工具带 `requiredPermissions`：读工具要求 `documents:read`，标注写工具要求 `documents:read` + `annotations:write`；插件未声明时主进程直接拒绝。
+- `PluginSettings.vue` + `store/plugins.ts`：设置页展示插件、权限、命令、manifest 错误和宿主运行状态（未启动/启动中/运行中/启动失败），并负责启停；`plugins:runtime` 与 `plugins:runtime-changed` 提供状态。
+- 已知边界：扩展宿主目前是带完整 Node 权限的 utilityProcess，manifest 权限只约束平台工具调用，不能阻止插件直接读文件或访问网络。命令触发、participant 输出协议和真正的 OS 级沙箱仍未接入；在此之前只应安装可信插件。
 
 ### AI 插件安全约束
 
@@ -243,7 +248,7 @@ C 层按“先验证、再加载”推进，目前完成了发现与启用状态
 1. **阅读与本地书库**（A，已有基础）：导入、空间、渲染、标注、持久化。
 2. **翻译与 AI 对话**（A，已有基础）：选区翻译、流式对话、多模型配置。
 3. **平台化改造**：抽出命令、视图槽位、事件总线、模块存储等贡献接口，把阅读/翻译按域与外壳解耦但保留在 A 层；同时把 AI 请求收进主进程网关，补上工具注册表和 run 边界；此时还不引入第三方插件宿主。
-4. **AI 插件宿主**：扩展宿主进程、manifest/激活事件、participant 输出协议、工具权限与确认；接入第一个第一方 agent 插件验证“loop 在插件、能力在平台”。
+4. **AI 插件宿主**（进行中）：扩展宿主进程、manifest/激活事件、工具权限与确认已落地；下一步补 participant 输出协议、命令触发和真正的插件沙箱，并接入第一个第一方 agent 插件验证“loop 在插件、能力在平台”。
 5. **本地知识库**（B）：全文索引、向量检索、笔记/引用管理，作为可关闭的内置模块接入。
 6. **云端查找与推荐**（B + C + D）：内置查找/推荐入口，检索源与推荐策略作为可替换插件，后端在云端；离线时优雅降级。
 7. **写作与社区**（B + C + D）：写作编辑器与社区客户端内置，文档格式/模板/导出走插件，账号、同步与内容在云端。

@@ -112,6 +112,35 @@ describe('plugin host', () => {
     await expect(host.setEnabled('reader-bai.missing', true)).rejects.toThrow('插件不存在')
   })
 
+  it('returns runtime entries only for enabled plugins with a safe main', async () => {
+    await writePlugin(root, 'with-main', manifest({ main: 'index.js' }))
+    await writePlugin(root, 'without-main', manifest({ id: 'reader-bai.no-main' }))
+    await writeFile(
+      stateFile,
+      JSON.stringify({
+        enabled: { 'reader-bai.arxiv-source': true, 'reader-bai.no-main': true }
+      })
+    )
+
+    expect(await host.runtimePlugins()).toEqual([
+      {
+        id: 'reader-bai.arxiv-source',
+        entry: join(root, 'with-main', 'index.js'),
+        permissions: ['network', 'storage'],
+        activationEvents: ['onStartup']
+      }
+    ])
+  })
+
+  it('keeps disabled and incompatible plugins out of the runtime list', async () => {
+    await writePlugin(root, 'with-main', manifest({ main: 'index.js' }))
+    expect(await host.runtimePlugins()).toEqual([])
+
+    await writeFile(stateFile, JSON.stringify({ enabled: { 'reader-bai.arxiv-source': true } }))
+    const incompatible = createHost('2.0.0')
+    expect(await incompatible.runtimePlugins()).toEqual([])
+  })
+
   it('keeps incompatible plugins disabled and refuses to enable them', async () => {
     await writePlugin(root, 'arxiv', manifest({ engines: { readerBai: '^2.0.0' } }))
     await writeFile(stateFile, JSON.stringify({ enabled: { 'reader-bai.arxiv-source': true } }))

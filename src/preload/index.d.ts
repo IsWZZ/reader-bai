@@ -132,6 +132,8 @@ declare global {
     risk: ToolRisk
     /** 是否允许 agent 调用 */
     exposeToAi: boolean
+    /** 插件调用该工具所需的 manifest 权限 */
+    requiredPermissions?: string[]
   }
 
   interface ToolResult {
@@ -168,6 +170,15 @@ declare global {
   interface PluginListResult {
     plugins: PluginInfo[]
     issues: PluginIssue[]
+  }
+
+  type PluginRuntimeStatus = 'inactive' | 'activating' | 'active' | 'error'
+
+  interface PluginRuntimeState {
+    pluginId: string
+    status: PluginRuntimeStatus
+    /** 启动失败时的错误摘要 */
+    message?: string
   }
 
   interface LibrarySettings {
@@ -240,6 +251,10 @@ declare global {
     listPlugins: () => Promise<PluginListResult>
     /** 启用或关闭插件；不兼容的插件会被主进程拒绝 */
     setPluginEnabled: (id: string, enabled: boolean) => Promise<PluginInfo>
+    /** 已启用插件的扩展宿主状态 */
+    getPluginRuntime: () => Promise<PluginRuntimeState[]>
+    /** 订阅宿主状态变化，返回取消订阅函数 */
+    onPluginRuntime: (callback: (states: PluginRuntimeState[]) => void) => () => void
   }
 
   interface Window {

@@ -1,14 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { PluginInfo, PluginIssue } from '@renderer/types'
+import type { PluginInfo, PluginIssue, PluginRuntimeState } from '@renderer/types'
 
 const errorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback
 
-/** 插件列表与启用状态；写操作仍由主进程校验，这里只做乐观更新和错误展示 */
+/** 插件列表、启用状态与扩展宿主状态；写操作仍由主进程校验 */
 export const usePluginsStore = defineStore('plugins', () => {
   const plugins = ref<PluginInfo[]>([])
   const issues = ref<PluginIssue[]>([])
+  const runtime = ref<PluginRuntimeState[]>([])
   const loading = ref(false)
   const savingId = ref<string | null>(null)
   const error = ref('')
@@ -33,6 +34,23 @@ export const usePluginsStore = defineStore('plugins', () => {
     }
   }
 
+  const loadRuntime = async (): Promise<void> => {
+    const api = window.api
+    if (!api?.getPluginRuntime) return
+    try {
+      runtime.value = await api.getPluginRuntime()
+    } catch {
+      // 宿主状态不可用不影响插件列表本身
+    }
+  }
+
+  const applyRuntime = (states: PluginRuntimeState[]): void => {
+    runtime.value = states
+  }
+
+  const runtimeFor = (pluginId: string): PluginRuntimeState | undefined =>
+    runtime.value.find((state) => state.pluginId === pluginId)
+
   const setEnabled = async (id: string, enabled: boolean): Promise<boolean> => {
     const api = window.api
     if (!api?.setPluginEnabled) {
@@ -54,5 +72,17 @@ export const usePluginsStore = defineStore('plugins', () => {
     }
   }
 
-  return { plugins, issues, loading, savingId, error, load, setEnabled }
+  return {
+    plugins,
+    issues,
+    runtime,
+    loading,
+    savingId,
+    error,
+    load,
+    loadRuntime,
+    applyRuntime,
+    runtimeFor,
+    setEnabled
+  }
 })

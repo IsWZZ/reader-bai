@@ -105,6 +105,8 @@ export interface ToolInfo {
   inputSchema: Record<string, unknown>
   risk: ToolRisk
   exposeToAi: boolean
+  /** 插件调用该工具所需的 manifest 权限；渲染进程不直接使用 */
+  requiredPermissions?: string[]
 }
 
 export interface ToolResult {
@@ -141,6 +143,15 @@ export interface PluginIssue {
 export interface PluginListResult {
   plugins: PluginInfo[]
   issues: PluginIssue[]
+}
+
+export type PluginRuntimeStatus = 'inactive' | 'activating' | 'active' | 'error'
+
+export interface PluginRuntimeState {
+  pluginId: string
+  status: PluginRuntimeStatus
+  /** 启动失败时的错误摘要 */
+  message?: string
 }
 
 /** 主进程流式返回的增量片段 */

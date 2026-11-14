@@ -30,6 +30,8 @@ export interface ToolDefinition<I = unknown> {
   risk: ToolRisk
   /** 默认 false；显式打开后才会进入模型的工具列表 */
   exposeToAi?: boolean
+  /** 非 AI 调用方（如插件）执行前必须具备的权限 */
+  requiredPermissions?: string[]
   /** 返回校验后的输入；缺失时按原样传入 */
   validate?: (input: unknown) => I
   execute: (input: I, context: ToolContext) => Promise<ToolResult>
@@ -42,6 +44,7 @@ export interface ToolInfo {
   inputSchema: Record<string, unknown>
   risk: ToolRisk
   exposeToAi: boolean
+  requiredPermissions: string[]
 }
 
 export interface ToolInvocation {
@@ -76,7 +79,8 @@ const toInfo = (definition: ToolDefinition<unknown>): ToolInfo => ({
   description: definition.description,
   inputSchema: definition.inputSchema,
   risk: definition.risk,
-  exposeToAi: definition.exposeToAi === true
+  exposeToAi: definition.exposeToAi === true,
+  requiredPermissions: [...(definition.requiredPermissions ?? [])]
 })
 
 /** 把注册表里的工具转成 OpenAI 兼容的 tools 数组 */
@@ -118,6 +122,9 @@ export const createToolRegistry = (options: ToolRegistryOptions = {}): ToolRegis
     if (!tool) throw new Error(`工具不存在：${name}`)
     if (context.source === 'ai' && !tool.info.exposeToAi) {
       throw new Error(`工具未对 AI 开放：${name}`)
+    }
+    if (context.source === 'plugin' && !tool.info.exposeToAi) {
+      throw new Error(`工具未对插件开放：${name}`)
     }
 
     let invocation: ToolInvocation = { tool: tool.info, context, input }
