@@ -36,7 +36,7 @@ const storedSettings = (profiles = [PROFILE]): StoredSettings => ({
   theme: 'light',
   language: 'zh',
   ai: { profiles, activeId: profiles[0]?.id ?? '' },
-  library: { directory: '' }
+  library: { directory: '', autoAnalyze: true }
 })
 
 const makeSettings = (profiles = [PROFILE], decodedKey = 'sk-secret'): SettingsStore => {

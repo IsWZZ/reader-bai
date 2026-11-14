@@ -61,7 +61,8 @@ interface FakeAnnotations extends AnnotationStore {
 const createLibrary = (papers: PaperInfo[] = PAPERS): LibraryStore => ({
   read: async () => ({ spaces: [], papers: papers.map((paper) => ({ ...paper })) }),
   write: async () => undefined,
-  hasPaperPath: async (filePath) => papers.some((paper) => paper.path === filePath)
+  hasPaperPath: async (filePath) => papers.some((paper) => paper.path === filePath),
+  mutate: async (fn) => fn({ spaces: [], papers: papers.map((paper) => ({ ...paper })) })
 })
 
 const createAnnotations = (initial: AnnotationMap = {}): FakeAnnotations => {

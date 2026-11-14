@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   language: DEFAULT_LOCALE,
   ai: { profiles: [], activeId: '' },
-  library: { directory: '' },
+  library: { directory: '', autoAnalyze: true },
   keyStorage: 'encrypted'
 }
 
@@ -27,7 +27,7 @@ export const useSettingsStore = defineStore('settings', () => {
     theme: DEFAULT_SETTINGS.theme,
     language: DEFAULT_SETTINGS.language,
     ai: { profiles: [], activeId: '' },
-    library: { directory: '' },
+    library: { directory: '', autoAnalyze: true },
     keyStorage: DEFAULT_SETTINGS.keyStorage
   })
   const loaded = ref(false)
@@ -36,6 +36,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const aiProfiles = computed<AiProfile[]>(() => settings.value.ai.profiles)
   const libraryDirectory = computed<string>(() => settings.value.library.directory)
+  const autoAnalyze = computed<boolean>(() => settings.value.library.autoAnalyze)
   const activeAiProfile = computed<AiProfile | null>(() => {
     const { profiles, activeId } = settings.value.ai
     return profiles.find((profile) => profile.id === activeId) ?? profiles[0] ?? null
@@ -108,7 +109,8 @@ export const useSettingsStore = defineStore('settings', () => {
         activeId: aiPatch?.activeId ?? previous.ai.activeId
       },
       library: {
-        directory: patch.library?.directory ?? previous.library.directory
+        directory: patch.library?.directory ?? previous.library.directory,
+        autoAnalyze: patch.library?.autoAnalyze ?? previous.library.autoAnalyze
       },
       keyStorage: previous.keyStorage
     }
@@ -174,6 +176,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const setLibraryDirectory = (directory: string): Promise<boolean> =>
     persist({ library: { directory: directory.trim() } })
 
+  const setAutoAnalyze = (enabled: boolean): Promise<boolean> =>
+    persist({ library: { autoAnalyze: enabled } })
+
   const clearError = (): void => {
     error.value = ''
   }
@@ -189,12 +194,14 @@ export const useSettingsStore = defineStore('settings', () => {
     activeAiProfile,
     isAiConfigured,
     libraryDirectory,
+    autoAnalyze,
     initialize,
     setTheme,
     setLanguage,
     saveAiProfiles,
     setActiveAiProfile,
     setLibraryDirectory,
+    setAutoAnalyze,
     clearError
   }
 })

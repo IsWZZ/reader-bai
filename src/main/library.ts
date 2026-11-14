@@ -1,6 +1,9 @@
 import { constants } from 'fs'
 import { copyFile, mkdir, readFile, writeFile } from 'fs/promises'
 import { isAbsolute, join, relative, sep } from 'path'
+import { normalizePaperMetadata, type PaperMetadata } from './paper-metadata'
+
+export type { PaperMetadata, PaperMetadataSource, PaperVenueType } from './paper-metadata'
 
 export interface SpaceInfo {
   id: string
@@ -22,9 +25,11 @@ export interface PaperInfo {
   fileName: string
   // 所属空间，null 表示未分类
   spaceId: string | null
-  // 标题来源：file=文件名，metadata=PDF 元数据，user=用户重命名
+  // 标题来源：file=文件名，metadata=PDF 元数据或 AI 解析，user=用户重命名
   titleSource: PaperTitleSource
   createdAt: number
+  // AI / Crossref 解析出的书目信息；旧数据没有该字段
+  metadata?: PaperMetadata
 }
 
 export interface LibraryState {
@@ -60,6 +65,8 @@ const normalizePaper = (raw: unknown): PaperInfo | null => {
   if (typeof item.sourcePath === 'string' && item.sourcePath) {
     paper.sourcePath = item.sourcePath
   }
+  const metadata = normalizePaperMetadata(item.metadata)
+  if (metadata) paper.metadata = metadata
   return paper
 }
 
@@ -127,6 +134,11 @@ export interface LibraryStore {
   read: () => Promise<LibraryState>
   write: (state: LibraryState) => Promise<void>
   hasPaperPath: (filePath: string) => Promise<boolean>
+  /**
+   * 串行化的读改写；回调抛错时不写盘。
+   * 导入、重命名和 AI 解析可能并发，统一走这里避免互相覆盖。
+   */
+  mutate: <T>(fn: (state: LibraryState) => Promise<T> | T) => Promise<T>
 }
 
 export const createLibraryStore = (libraryFile: string): LibraryStore => {
@@ -149,5 +161,17 @@ export const createLibraryStore = (libraryFile: string): LibraryStore => {
     return papers.some((paper) => paper.path === filePath)
   }
 
-  return { read, write, hasPaperPath }
+  let queue: Promise<unknown> = Promise.resolve()
+  const mutate = <T>(fn: (state: LibraryState) => Promise<T> | T): Promise<T> => {
+    const next = queue.then(async () => {
+      const state = await read()
+      const result = await fn(state)
+      await write(state)
+      return result
+    })
+    queue = next.catch(() => undefined)
+    return next
+  }
+
+  return { read, write, hasPaperPath, mutate }
 }

@@ -5,6 +5,25 @@ declare global {
     createdAt: number
   }
 
+  type PaperVenueType = 'journal' | 'conference' | 'preprint' | 'book' | 'other'
+  type PaperMetadataSource = 'ai' | 'crossref' | 'mixed'
+
+  /** AI / Crossref 解析出的书目信息 */
+  interface PaperMetadata {
+    title?: string
+    authors: string[]
+    venue?: string
+    venueType?: PaperVenueType
+    year?: number
+    doi?: string
+    abstract?: string
+    keywords: string[]
+    /** AI 生成的一段简短概括 */
+    summary?: string
+    source: PaperMetadataSource
+    analyzedAt: number
+  }
+
   interface PaperInfo {
     id: string
     /** 展示名称，用户可重命名 */
@@ -17,9 +36,11 @@ declare global {
     fileName: string
     /** 所属空间，null 表示未分类 */
     spaceId: string | null
-    /** 标题来源：file=文件名，metadata=PDF 元数据，user=用户重命名 */
+    /** 标题来源：file=文件名，metadata=PDF 元数据或 AI 解析，user=用户重命名 */
     titleSource: 'file' | 'metadata' | 'user'
     createdAt: number
+    /** AI / Crossref 解析出的书目信息 */
+    metadata?: PaperMetadata
   }
 
   interface LibraryState {
@@ -194,6 +215,8 @@ declare global {
   interface LibrarySettings {
     /** 当前生效的论文库目录 */
     directory: string
+    /** 导入后是否自动用 AI 解析论文信息 */
+    autoAnalyze: boolean
   }
 
   /** 系统安全存储是否可用；不可用时 Key 会明文落盘 */
@@ -219,6 +242,8 @@ declare global {
     library?: {
       /** 空字符串表示恢复默认目录 */
       directory?: string
+      /** 导入后自动解析论文信息 */
+      autoAnalyze?: boolean
     }
   }
 
@@ -238,6 +263,8 @@ declare global {
     renamePaper: (id: string, title: string, source: 'metadata' | 'user') => Promise<LibraryState>
     movePaper: (id: string, spaceId: string | null) => Promise<LibraryState>
     removePaper: (id: string) => Promise<LibraryState>
+    /** 用 AI 解析论文信息，并用 Crossref 校验补全；返回更新后的论文 */
+    analyzePaper: (id: string, options?: { useWeb?: boolean }) => Promise<PaperInfo>
     readPaper: (filePath: string) => Promise<Uint8Array>
     listAnnotations: (filePath: string) => Promise<PaperAnnotation[]>
     addAnnotation: (filePath: string, annotation: PaperAnnotation) => Promise<PaperAnnotation>

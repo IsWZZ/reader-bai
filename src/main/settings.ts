@@ -43,6 +43,8 @@ export interface AiSettings {
 export interface LibrarySettings {
   /** 论文库目录；空字符串表示使用主进程提供的默认目录 */
   directory: string
+  /** 导入后是否自动用 AI 解析论文信息；默认开启 */
+  autoAnalyze: boolean
 }
 
 /** 系统安全存储是否可用；不可用时 Key 会明文落盘，需要在设置页提示 */
@@ -66,6 +68,8 @@ export interface SettingsPatch {
   library?: {
     /** 空字符串表示恢复默认目录 */
     directory?: string
+    /** 导入后自动解析论文信息 */
+    autoAnalyze?: boolean
   }
 }
 
@@ -217,7 +221,11 @@ export const normalizeStoredSettings = (raw: unknown): StoredSettings => {
     theme: normalizeTheme(source.theme),
     language: normalizeLanguage(source.language),
     ai: { profiles, activeId: normalizeActiveId(ai.activeId, profiles) },
-    library: { directory: normalizeDirectory(library.directory) }
+    library: {
+      directory: normalizeDirectory(library.directory),
+      // 旧设置没有该字段，保持默认开启
+      autoAnalyze: library.autoAnalyze !== false
+    }
   }
 }
 
@@ -322,7 +330,10 @@ export const applySettingsPatch = (
       profiles: stored.ai.profiles.map((profile) => ({ ...profile })),
       activeId: stored.ai.activeId
     },
-    library: { directory: stored.library.directory }
+    library: {
+      directory: stored.library.directory,
+      autoAnalyze: stored.library.autoAnalyze
+    }
   }
 
   const source = objectOf(patch)
@@ -338,6 +349,9 @@ export const applySettingsPatch = (
       throw new Error('论文库存储位置需要是绝对路径')
     }
     next.library.directory = directory
+  }
+  if (libraryPatch && typeof libraryPatch.autoAnalyze === 'boolean') {
+    next.library.autoAnalyze = libraryPatch.autoAnalyze
   }
 
   const aiPatch = objectOf(source.ai)

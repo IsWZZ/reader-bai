@@ -7,7 +7,9 @@ import { createAgentRuntime } from './agent/runtime'
 import { createAiRequester } from './ai-request'
 import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
-import { readPdfPageText } from './pdf-text'
+import { lookupCrossref } from './crossref'
+import { createPaperAnalyzer } from './paper-analysis'
+import { readPdfIntroText, readPdfPageText } from './pdf-text'
 import { createPluginHost } from './plugins/host'
 import { createPluginRuntime } from './plugins/runtime'
 import { createPlatformToolRegistry } from './platform-tools'
@@ -72,6 +74,13 @@ app.whenReady().then(async () => {
   })
   // 单次 AI 请求：渲染进程（翻译）和 agent 宿主共用，Key 只在这里解密
   const requester = createAiRequester(settings, tools)
+  // 导入后的元数据解析：读取前几页交给 AI，再用 Crossref 校验补全
+  const paperAnalyzer = createPaperAnalyzer({
+    settings,
+    requester,
+    readIntroText: async (filePath) => (await readPdfIntroText(filePath)).text,
+    lookup: (input) => lookupCrossref(input)
+  })
   // agent loop 跑在独立的 utilityProcess 里；主进程只提供能力、预算和取消
   const agentRuntime = createAgentRuntime({
     hostScript: join(__dirname, 'agent-host.js'),
@@ -91,7 +100,7 @@ app.whenReady().then(async () => {
     onLog: (entry) => console.info(`[plugin:${entry.pluginId}] [${entry.level}] ${entry.message}`)
   })
 
-  registerLibraryIpc(library, annotations, settings)
+  registerLibraryIpc(library, annotations, settings, paperAnalyzer)
   registerAnnotationsIpc(annotations, library)
   registerAppIpc({ paths, library, settings, runtime })
   registerCacheIpc()

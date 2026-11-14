@@ -97,6 +97,7 @@ interface AgentEventPayload {
 
 interface LibrarySettings {
   directory: string
+  autoAnalyze: boolean
 }
 
 type KeyStorage = 'encrypted' | 'plaintext'
@@ -155,6 +156,7 @@ interface SettingsPatch {
   }
   library?: {
     directory?: string
+    autoAnalyze?: boolean
   }
 }
 
@@ -171,6 +173,8 @@ const api = {
   movePaper: (id: string, spaceId: string | null) =>
     ipcRenderer.invoke('library:movePaper', id, spaceId),
   removePaper: (id: string) => ipcRenderer.invoke('library:removePaper', id),
+  analyzePaper: (id: string, options?: { useWeb?: boolean }) =>
+    ipcRenderer.invoke('library:analyzePaper', id, options),
   readPaper: (filePath: string) => ipcRenderer.invoke('paper:read', filePath),
   listAnnotations: (filePath: string) => ipcRenderer.invoke('annotations:list', filePath),
   addAnnotation: (filePath: string, annotation: PaperAnnotation) =>

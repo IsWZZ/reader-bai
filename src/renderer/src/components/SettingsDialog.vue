@@ -88,12 +88,37 @@
               </div>
             </div>
 
+            <div class="space-y-2 border-t pt-4">
+              <div>
+                <h3 class="text-sm font-medium">{{ t('settings.basic.analysis.title') }}</h3>
+                <p class="text-muted-foreground mt-1 text-xs">
+                  {{ t('settings.basic.analysis.description') }}
+                </p>
+              </div>
+              <label class="flex items-start gap-2 text-xs" for="auto-analyze-papers">
+                <input
+                  id="auto-analyze-papers"
+                  type="checkbox"
+                  class="accent-primary mt-0.5 size-4"
+                  :checked="settingsStore.autoAnalyze"
+                  :disabled="settingsStore.saving"
+                  @change="toggleAutoAnalyze"
+                />
+                <span>
+                  <span class="font-medium">{{ t('settings.basic.analysis.toggle') }}</span>
+                  <span class="text-muted-foreground mt-0.5 block">
+                    {{ t('settings.basic.analysis.hint') }}
+                  </span>
+                </span>
+              </label>
+            </div>
+
             <div class="flex items-center gap-3">
               <span v-if="status === 'saved'" class="text-muted-foreground text-xs">
                 {{ t('common.saved') }}
               </span>
-              <span v-else-if="settingsStore.error" class="text-destructive text-xs">
-                {{ settingsStore.error }}
+              <span v-else-if="formError || settingsStore.error" class="text-destructive text-xs">
+                {{ formError || settingsStore.error }}
               </span>
             </div>
           </section>
@@ -590,6 +615,17 @@ const chooseLibraryDirectory = async (): Promise<void> => {
 }
 
 const resetLibraryDirectory = (): Promise<void> => saveLibraryDirectory('')
+
+const toggleAutoAnalyze = async (event: Event): Promise<void> => {
+  const enabled = (event.target as HTMLInputElement).checked
+  formError.value = ''
+  const saved = await settingsStore.setAutoAnalyze(enabled)
+  if (!saved) {
+    formError.value = settingsStore.error || t('settings.ai.error.saveFailed')
+    return
+  }
+  status.value = 'saved'
+}
 
 const clearCache = async (): Promise<void> => {
   if (clearingCache.value) return

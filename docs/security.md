@@ -37,6 +37,7 @@
 - 标注的新增和删除同样校验论文库归属。
 - AI 请求只在主进程发起（[ai.ts](../src/main/ai.ts)、[ipc/ai.ts](../src/main/ipc/ai.ts)），Key 不经过 `ai:chat` 参数；消息在进入主进程时校验角色、条数和总长度。
 - AI Base URL 只允许 HTTPS；仅 `localhost` / `127.0.0.1` / `[::1]` 可使用 HTTP，保存和发起请求时都会校验。
+- 论文元数据解析只在主进程发起：没有 AI 配置时不读取 PDF、不发外部请求；Crossref 请求固定访问 `https://api.crossref.org`，DOI 先做格式校验，标题检索有相似度阈值、超时和响应体积上限，失败时只保留 AI 结果。
 - Key 优先用 Electron `safeStorage` 加密后落盘，见 [settings-store.ts](../src/main/settings-store.ts)；系统安全存储不可用时 `settings:get` 返回 `keyStorage: 'plaintext'`，设置页会明确提示 Key 将以明文保存。
 - `settings:get` 只返回 `hasApiKey`，不返回明文或密文 Key；`settings:update` 中未带 `apiKey` 的配置保留原有 Key，新增配置必须填写。
 - 已有 Key 的配置一旦更改 origin（协议、主机、端口），`settings:update` 会先弹出主进程原生确认；取消则整体拒绝保存。

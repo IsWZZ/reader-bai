@@ -27,7 +27,8 @@ src/renderer/src/
 ```
 
 - `Home.vue` 只做外壳和面板编排；`PdfViewer.vue` 只负责阅读/选词/标注。
-- 书库检索：输入框在 `Toolbar.vue`，`Home.vue` 持有查询词并传给 `LibraryPanel.vue`，只按已加载的标题/文件名过滤；不要为此新增 IPC 或解析 PDF 全文（全文索引属于 B 层知识库）。
+- 书库检索：输入框在 `Toolbar.vue`，`Home.vue` 持有查询词并传给 `LibraryPanel.vue`，只按已加载的标题/文件名和 `paper.metadata`（作者、期刊、DOI、关键词等）过滤；不要为此新增 IPC 或解析 PDF 全文（全文索引属于 B 层知识库）。
+- 论文元数据：导入后由 `LibraryPanel.vue` 调 `window.api.analyzePaper(paperId)`，主进程负责读 PDF、调 AI 和 Crossref；渲染进程不解析全文、不发外部请求。`settings.library.autoAnalyze` 和 AI 配置共同决定是否自动解析，未配置 AI 时静默跳过。解析结果写入 `paper.metadata`，详情由 `PaperMetadataDialog.vue` 展示。
 - 新功能做成独立组件 + store，通过 props/事件与外壳通信；不要塞进 `Home.vue` 或 `PdfViewer.vue`。
 - 功能之间不互相 import store；需要共享时用平台 API、事件或独立 lib。
 - Pinia 使用 setup store；异步操作自己维护 `loading` / `error`，组件卸载或面板关闭时解除监听和计时器。

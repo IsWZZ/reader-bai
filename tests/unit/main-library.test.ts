@@ -87,6 +87,43 @@ describe('normalizeLibrary', () => {
       papers: []
     })
   })
+
+  it('normalizes stored paper metadata and drops invalid metadata', () => {
+    const state = normalizeLibrary({
+      papers: [
+        {
+          path: '/papers/attention.pdf',
+          metadata: {
+            title: 'Attention Is All You Need',
+            authors: ['Ashish Vaswani', 'Ashish Vaswani', 'Noam Shazeer'],
+            venue: 'NeurIPS',
+            venueType: 'conference',
+            year: 2017,
+            doi: 'https://doi.org/10.5555/ABC.123',
+            keywords: ['transformer'],
+            source: 'mixed',
+            analyzedAt: 123
+          }
+        },
+        { path: '/papers/broken.pdf', metadata: { authors: 'not-an-array' } },
+        { path: '/papers/missing.pdf', metadata: 'not-an-object' }
+      ]
+    })
+
+    expect(state.papers[0].metadata).toEqual({
+      title: 'Attention Is All You Need',
+      authors: ['Ashish Vaswani', 'Noam Shazeer'],
+      venue: 'NeurIPS',
+      venueType: 'conference',
+      year: 2017,
+      doi: '10.5555/ABC.123',
+      keywords: ['transformer'],
+      source: 'mixed',
+      analyzedAt: 123
+    })
+    expect(state.papers[1].metadata).toBeUndefined()
+    expect(state.papers[2].metadata).toBeUndefined()
+  })
 })
 
 describe('file helpers', () => {
@@ -196,5 +233,48 @@ describe('createLibraryStore', () => {
     await expect(store.read()).resolves.toEqual(state)
     await expect(store.hasPaperPath('/papers/attention.pdf')).resolves.toBe(true)
     await expect(store.hasPaperPath('/papers/other.pdf')).resolves.toBe(false)
+  })
+
+  it('serializes concurrent mutations without losing updates', async () => {
+    const store = createLibraryStore(libraryFile)
+
+    await Promise.all([
+      store.mutate(async (state) => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        state.spaces.push({ id: 'first', name: 'First', createdAt: 1 })
+      }),
+      store.mutate((state) => {
+        state.spaces.push({ id: 'second', name: 'Second', createdAt: 2 })
+      })
+    ])
+
+    await expect(store.read()).resolves.toMatchObject({
+      spaces: [
+        { id: 'first', name: 'First' },
+        { id: 'second', name: 'Second' }
+      ]
+    })
+  })
+
+  it('does not write when a mutation throws and keeps the queue usable', async () => {
+    const store = createLibraryStore(libraryFile)
+    const initial: LibraryState = { spaces: [], papers: [] }
+    await store.write(initial)
+
+    await expect(
+      store.mutate((state) => {
+        state.spaces.push({ id: 'broken', name: 'Broken', createdAt: 1 })
+        throw new Error('failed')
+      })
+    ).rejects.toThrow('failed')
+
+    await expect(store.read()).resolves.toEqual(initial)
+
+    await store.mutate((state) => {
+      state.spaces.push({ id: 'next', name: 'Next', createdAt: 2 })
+    })
+    await expect(store.read()).resolves.toMatchObject({
+      spaces: [{ id: 'next' }]
+    })
   })
 })

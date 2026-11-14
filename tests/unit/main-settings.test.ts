@@ -66,7 +66,7 @@ describe('normalizeStoredSettings', () => {
         ],
         activeId: 'a'
       },
-      library: { directory: '' }
+      library: { directory: '', autoAnalyze: true }
     })
   })
 
@@ -110,14 +110,26 @@ describe('normalizeStoredSettings', () => {
   it('keeps an absolute library directory and drops invalid ones', () => {
     expect(
       normalizeStoredSettings({ library: { directory: ` ${LIBRARY_DIRECTORY} ` } }).library
-    ).toEqual({ directory: LIBRARY_DIRECTORY })
+    ).toEqual({ directory: LIBRARY_DIRECTORY, autoAnalyze: true })
     expect(normalizeStoredSettings({ library: { directory: 'relative/papers' } }).library).toEqual({
-      directory: ''
+      directory: '',
+      autoAnalyze: true
     })
     expect(normalizeStoredSettings({ library: { directory: 42 } }).library).toEqual({
-      directory: ''
+      directory: '',
+      autoAnalyze: true
     })
-    expect(normalizeStoredSettings({}).library).toEqual({ directory: '' })
+    expect(normalizeStoredSettings({}).library).toEqual({ directory: '', autoAnalyze: true })
+  })
+
+  it('keeps the auto-analyze switch and defaults it to on', () => {
+    expect(normalizeStoredSettings({}).library.autoAnalyze).toBe(true)
+    expect(normalizeStoredSettings({ library: { autoAnalyze: false } }).library.autoAnalyze).toBe(
+      false
+    )
+    expect(normalizeStoredSettings({ library: { autoAnalyze: 'no' } }).library.autoAnalyze).toBe(
+      true
+    )
   })
 
   it('keeps an empty list when profiles are missing or empty', () => {
@@ -310,14 +322,25 @@ describe('applySettingsPatch', () => {
       { library: { directory: ` ${LIBRARY_DIRECTORY} ` } },
       plainEncode
     )
-    expect(moved.library).toEqual({ directory: LIBRARY_DIRECTORY })
+    expect(moved.library).toEqual({ directory: LIBRARY_DIRECTORY, autoAnalyze: true })
     expect(moved.ai).toEqual(base.ai)
 
     const reset = applySettingsPatch(moved, { library: { directory: '' } }, plainEncode)
-    expect(reset.library).toEqual({ directory: '' })
+    expect(reset.library).toEqual({ directory: '', autoAnalyze: true })
 
     // 只给 theme 时不动目录
     expect(applySettingsPatch(moved, { theme: 'dark' }, plainEncode).library).toEqual(moved.library)
+  })
+
+  it('updates auto-analyze without touching the library directory', () => {
+    const base = withProfiles()
+
+    const disabled = applySettingsPatch(base, { library: { autoAnalyze: false } }, plainEncode)
+    expect(disabled.library).toEqual({ directory: '', autoAnalyze: false })
+    expect(disabled.ai).toEqual(base.ai)
+
+    const ignored = applySettingsPatch(base, { library: { autoAnalyze: 'no' } }, plainEncode)
+    expect(ignored.library.autoAnalyze).toBe(true)
   })
 
   it('rejects a relative library directory', () => {

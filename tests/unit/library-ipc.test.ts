@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { AnnotationMap, AnnotationStore } from '../../src/main/annotations'
-import type { LibraryState, LibraryStore, PaperInfo } from '../../src/main/library'
+import type { LibraryState, LibraryStore, PaperInfo, PaperMetadata } from '../../src/main/library'
+import type { PaperAnalyzer } from '../../src/main/paper-analysis'
 import type { SettingsStore } from '../../src/main/settings-store'
 
 const electron = vi.hoisted(() => ({
@@ -46,7 +47,13 @@ const createLibrary = (papers: PaperInfo[]): FakeLibrary => {
       write: async (next) => {
         state = structuredClone(next)
       },
-      hasPaperPath: async (filePath) => state.papers.some((item) => item.path === filePath)
+      hasPaperPath: async (filePath) => state.papers.some((item) => item.path === filePath),
+      mutate: async (fn) => {
+        const next = structuredClone(state)
+        const result = await fn(next)
+        state = structuredClone(next)
+        return result
+      }
     },
     snapshot: () => structuredClone(state)
   }
@@ -111,5 +118,77 @@ describe('library:removePaper', () => {
     expect(state.papers).toEqual([paper])
     expect(annotations.removePaper).not.toHaveBeenCalled()
     expect(annotations.snapshot()).toEqual({ '/papers/a.pdf': [] })
+  })
+})
+
+const metadata: PaperMetadata = {
+  title: 'Attention Is All You Need',
+  authors: ['Ashish Vaswani'],
+  venue: 'NeurIPS',
+  year: 2017,
+  doi: '10.5555/ABC.123',
+  keywords: [],
+  source: 'mixed',
+  analyzedAt: 123
+}
+
+type AnalyzePaperHandler = (event: unknown, id: unknown, options?: unknown) => Promise<PaperInfo>
+
+const analyzePaperHandler = (): AnalyzePaperHandler =>
+  electron.handlers.get('library:analyzePaper') as AnalyzePaperHandler
+
+const registerAnalyze = (
+  papers: PaperInfo[]
+): {
+  library: FakeLibrary
+  analyzer: PaperAnalyzer
+  analyze: ReturnType<typeof vi.fn>
+} => {
+  const library = createLibrary(papers)
+  const analyze = vi.fn(async () => metadata)
+  const analyzer: PaperAnalyzer = { analyze }
+  registerLibraryIpc(library.store, createAnnotations({}).store, settings, analyzer)
+  return { library, analyzer, analyze }
+}
+
+describe('library:analyzePaper', () => {
+  it('stores metadata and keeps a user title', async () => {
+    const { library, analyze } = registerAnalyze([paper])
+
+    const updated = await analyzePaperHandler()({}, 'paper-1', { useWeb: false })
+
+    expect(analyze).toHaveBeenCalledWith(
+      { id: 'paper-1', path: '/papers/a.pdf', title: undefined },
+      { useWeb: false }
+    )
+    expect(updated.metadata).toEqual(metadata)
+    expect(updated.title).toBe('Paper A')
+    expect(updated.titleSource).toBe('user')
+    expect(library.snapshot().papers[0].metadata).toEqual(metadata)
+  })
+
+  it('applies the parsed title when it does not come from the user', async () => {
+    const filePaper: PaperInfo = { ...paper, title: 'a', titleSource: 'file' }
+    const { analyze } = registerAnalyze([filePaper])
+
+    const updated = await analyzePaperHandler()({}, 'paper-1')
+
+    expect(analyze).toHaveBeenCalledWith(
+      { id: 'paper-1', path: '/papers/a.pdf', title: 'a' },
+      { useWeb: true }
+    )
+    expect(updated.title).toBe('Attention Is All You Need')
+    expect(updated.titleSource).toBe('metadata')
+  })
+
+  it('rejects invalid ids, missing papers, and an unavailable analyzer', async () => {
+    const { library } = registerAnalyze([paper])
+    const handler = analyzePaperHandler()
+
+    await expect(handler({}, 42)).rejects.toThrow('论文不存在')
+    await expect(handler({}, 'missing')).rejects.toThrow('论文不存在')
+
+    registerLibraryIpc(library.store, createAnnotations({}).store, settings)
+    await expect(analyzePaperHandler()({}, 'paper-1')).rejects.toThrow('当前环境不支持 AI 解析')
   })
 })

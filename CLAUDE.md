@@ -20,7 +20,7 @@
 - **C 第三方插件**（宿主已实现，具体插件还未开发）：检索源、模型提供商、导出格式等，需要 manifest、权限和隔离。
 - **D 云端服务**（还未开发）：账号、同步、推荐、社区后端，可选。
 
-当前实现进度：A 层已有 PDF 导入/阅读、空间管理、单页标注、翻译、多 AI 配置、流式对话、平台工具和 agent run；C 层已有 manifest 校验、插件发现、启停、独立 `utilityProcess` 宿主和按权限放行的工具调用。B 层和 D 层全部还未开发；C 层的命令触发、participant 输出协议、安装/签名校验和具体插件类型也还未开发。插件宿主不是 OS 沙箱，只应安装可信插件。
+当前实现进度：A 层已有 PDF 导入/阅读、空间管理、单页标注、翻译、多 AI 配置、流式对话、导入时 AI 元数据解析（含 Crossref 补全）、平台工具和 agent run；C 层已有 manifest 校验、插件发现、启停、独立 `utilityProcess` 宿主和按权限放行的工具调用。B 层和 D 层全部还未开发；C 层的命令触发、participant 输出协议、安装/签名校验和具体插件类型也还未开发。插件宿主不是 OS 沙箱，只应安装可信插件。
 
 本地优先，云能力可选。定层、扩展点和路线见 [docs/architecture.md](docs/architecture.md)。
 
@@ -34,6 +34,7 @@ reader-bai/
 │  │  ├─ ipc/               # IPC handler（library/settings/ai/tools/runs/plugins）
 │  │  ├─ plugins/           # C 层插件宿主（manifest/发现/协议/utilityProcess）
 │  │  ├─ ai.ts / ai-run.ts  # AI 请求与 run 生命周期
+│  │  ├─ paper-analysis.ts  # 导入后的元数据解析（AI + Crossref）
 │  │  ├─ platform-tools.ts  # 平台工具注册
 │  │  └─ ...                # library/annotations/settings/pdf-text/window
 │  ├─ preload/              # window.api 桥接与类型声明

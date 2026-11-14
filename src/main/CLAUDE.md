@@ -15,7 +15,7 @@
 - 主进程把渲染进程传来的所有参数当作不可信输入：校验类型、非空、长度、枚举和数值范围；错误信息不要回显 Key、绝对路径或论文正文。
 - 新增 IPC 时同步：main handler → preload 方法（约定见 [src/preload/CLAUDE.md](../preload/CLAUDE.md)）→ `src/preload/index.d.ts` → 应用数据相关的 `src/renderer/src/types.ts`；补成功、非法输入和失败路径测试。
 - 通道命名 `<domain>:<action>`。现有通道：
-  - `library:*`：list / createSpace / renameSpace / deleteSpace / renamePaper / movePaper / removePaper
+  - `library:*`：list / createSpace / renameSpace / deleteSpace / renamePaper / movePaper / removePaper / analyzePaper
   - `dialog:importPaper`、`dialog:chooseDirectory`
   - `paper:read`
   - `annotations:list/add/remove`
@@ -30,7 +30,8 @@
 - 应用数据统一放在 `userData/Userdata`，与 Electron/Chromium 在 `userData` 根目录生成的缓存和配置分开；路径由 [user-data.ts](user-data.ts) 统一生成，启动时只负责创建目录。
 - `app:uninstall` 的清理逻辑在 [app-data.ts](app-data.ts)：只删除当前论文库目录内已登记的普通论文文件，再递归删除 `userData/Userdata`；自定义论文库目录本身、目录里的其他文件和符号链接都不动。确认框默认「取消」，文案必须明确提示本地论文会被删除。
 - 数据文件（`userData/Userdata` 下）：
-  - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；移除论文/空间不删除 PDF，但移除论文时要同步清空该论文在 `annotations.json` 中的标注。
+  - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；论文可带 `metadata`（作者、期刊/会议、年份、DOI、摘要、关键词等），读取时同样逐字段清洗。移除论文/空间不删除 PDF，但移除论文时要同步清空该论文在 `annotations.json` 中的标注。
+  - 书库的写入统一走 `library.mutate` 串行读改写；导入、重命名和 AI 解析可能并发，直接 `read` + `write` 会互相覆盖。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。
   - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory } }`；只接受 `ai.profiles` 数组格式。
 - `language` 使用 BCP 47 风格标签（`zh`、`en`、`zh-Hans`、`pt-BR`），主进程只校验格式、默认回退 `zh`，不维护语言白名单；实际支持哪些语言由渲染进程的 locale 注册表决定。
@@ -59,6 +60,8 @@
   - `run` 存在时先检查是否已中止，再调用 `recordStep` 计步；`run.signal` 和调用方 `signal` 都要能中止网络请求。
   - Key 只在这里解密并传给 `streamChat`，不进入聊天参数。
 - `ai:chat` 只供翻译使用，接收 `requestId`、`messages`、`profileId`，返回文本；流式增量通过 `ai:chunk` 推送，发送前检查 `event.sender.isDestroyed()`。
+- 论文元数据解析在 [paper-analysis.ts](paper-analysis.ts)：读取论文前几页（`readPdfIntroText`，默认 3 页 / 12000 字符），用当前 AI 配置输出 JSON，再由 [crossref.ts](crossref.ts) 用 DOI 或标题补全书目信息。没有 AI 配置时不读取 PDF、不发任何外部请求；Crossref 失败只降级，不影响 AI 结果。
+- Crossref 只访问固定的 `https://api.crossref.org`，DOI 必须通过格式校验，标题检索要求相似度达到阈值；请求有超时和响应体积上限。
 
 ## 平台工具与运行边界
 
@@ -90,7 +93,7 @@
 
 ## 测试
 
-- 纯逻辑模块（`ai.ts`、`ai-request.ts`、`ai-run.ts`、`agent/loop.ts`、`agent/protocol.ts`、`tool-registry.ts`、`platform-tools.ts`、`plugins/*`、`pdf-text.ts`、`settings.ts`、`library.ts`、`annotations.ts`）优先用 Vitest 直接测，尽量不启动 Electron。
+- 纯逻辑模块（`ai.ts`、`ai-request.ts`、`ai-run.ts`、`agent/loop.ts`、`agent/protocol.ts`、`tool-registry.ts`、`platform-tools.ts`、`plugins/*`、`pdf-text.ts`、`settings.ts`、`library.ts`、`annotations.ts`、`paper-metadata.ts`、`paper-analysis.ts`、`crossref.ts`）优先用 Vitest 直接测，尽量不启动 Electron。
 - 需要 Electron API 时在测试里 mock 或通过 E2E 的 `app.evaluate` 打桩（例如 `safeStorage`、`dialog.showMessageBox`、`dialog.showOpenDialog`）。
 - E2E 使用临时 `--user-data-dir`；写操作确认、非法输入、路径归属和 Key 不出现在返回值中都要覆盖。
 - 测试分层和命令见 [docs/testing.md](../../docs/testing.md)。

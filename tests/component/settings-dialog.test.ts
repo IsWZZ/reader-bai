@@ -42,7 +42,12 @@ const makeSettings = (
   settings: Omit<AppSettings, 'library' | 'keyStorage' | 'language'>,
   directory = DEFAULT_LIBRARY_DIRECTORY,
   language = 'zh'
-): AppSettings => ({ ...settings, language, library: { directory }, keyStorage: 'encrypted' })
+): AppSettings => ({
+  ...settings,
+  language,
+  library: { directory, autoAnalyze: true },
+  keyStorage: 'encrypted'
+})
 
 const BASE_SETTINGS = makeSettings({
   theme: 'light',
@@ -152,7 +157,8 @@ describe('SettingsDialog', () => {
           directory:
             patch.library?.directory === undefined
               ? current.library.directory
-              : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
+              : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY,
+          autoAnalyze: patch.library?.autoAnalyze ?? current.library.autoAnalyze
         },
         keyStorage: current.keyStorage
       }
@@ -186,6 +192,26 @@ describe('SettingsDialog', () => {
     expect(findButton('中文')).toBeDefined()
     expect(findButton('English')).toBeDefined()
     expect(document.body.textContent).toContain('界面语言')
+    expect(document.body.textContent).toContain('导入时解析论文信息')
+    wrapper.unmount()
+  })
+
+  it('toggles automatic paper analysis from the basic section', async () => {
+    const wrapper = await mountDialog()
+
+    const checkbox = findInput('#auto-analyze-papers')
+    expect(checkbox.element.checked).toBe(true)
+
+    await checkbox.setValue(false)
+    await flushPromises()
+
+    expect(updateSettings).toHaveBeenCalledWith({ library: { autoAnalyze: false } })
+    expect(useSettingsStore().autoAnalyze).toBe(false)
+
+    // 存储分区只负责目录和缓存，不再重复出现解析开关
+    await openLibrarySection()
+    expect(hasInput('#auto-analyze-papers')).toBe(false)
+
     wrapper.unmount()
   })
 

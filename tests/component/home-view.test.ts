@@ -27,7 +27,7 @@ const SETTINGS: AppSettings = {
   theme: 'light',
   language: 'zh',
   ai: { profiles: [PROFILE], activeId: 'a' },
-  library: { directory: '' },
+  library: { directory: '', autoAnalyze: true },
   keyStorage: 'encrypted'
 }
 

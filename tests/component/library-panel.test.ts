@@ -1,8 +1,10 @@
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import { readPdfTitle } from '@renderer/lib/pdf'
-import type { LibraryData, Paper, Space } from '@renderer/types'
+import { useSettingsStore } from '@renderer/store/settings'
+import type { LibraryData, Paper, PaperMetadata, Space } from '@renderer/types'
 
 // 避免在 jsdom 里加载 pdf.js 的 worker，只验证标题回填的调用流程
 vi.mock('@renderer/lib/pdf', () => ({ readPdfTitle: vi.fn() }))
@@ -18,7 +20,43 @@ const renamePaper =
 const movePaper = vi.fn<(id: string, spaceId: string | null) => Promise<LibraryData>>()
 const removePaper = vi.fn<(id: string) => Promise<LibraryData>>()
 const importPaper = vi.fn<(spaceId?: string | null) => Promise<Paper | null>>()
+const analyzePaper = vi.fn<(id: string) => Promise<Paper>>()
 const readPaper = vi.fn<(path: string) => Promise<Uint8Array>>()
+
+const METADATA: PaperMetadata = {
+  title: 'Attention Is All You Need',
+  authors: ['Ashish Vaswani', 'Noam Shazeer'],
+  venue: 'NeurIPS',
+  venueType: 'conference',
+  year: 2017,
+  doi: '10.5555/ABC.123',
+  keywords: ['transformer'],
+  source: 'mixed',
+  analyzedAt: 1
+}
+
+const configureAi = (autoAnalyze = true): void => {
+  useSettingsStore().$patch({
+    settings: {
+      theme: 'light',
+      language: 'zh',
+      ai: {
+        profiles: [
+          {
+            id: 'a',
+            provider: 'openai',
+            baseUrl: 'https://api.example.com/v1',
+            model: 'gpt-test',
+            hasApiKey: true
+          }
+        ],
+        activeId: 'a'
+      },
+      library: { directory: '', autoAnalyze },
+      keyStorage: 'encrypted'
+    }
+  })
+}
 
 const SPACE: Space = { id: 'space-ml', name: '机器学习', createdAt: 1 }
 const NLP_SPACE: Space = { id: 'space-nlp', name: '自然语言处理', createdAt: 2 }
@@ -43,12 +81,18 @@ const installApi = (): void => {
     movePaper,
     removePaper,
     importPaper,
+    analyzePaper,
     readPaper
   } as unknown as Api
 }
 
+let pinia: ReturnType<typeof createPinia>
+
 const mountPanel = (searchQuery?: string): VueWrapper =>
-  mount(LibraryPanel, { props: { width: 280, searchQuery } })
+  mount(LibraryPanel, {
+    props: { width: 280, searchQuery },
+    global: { plugins: [pinia] }
+  })
 
 const buttonByText = (wrapper: VueWrapper, text: string): DOMWrapper<Element> | undefined =>
   wrapper.findAll('button').find((button) => button.text().trim() === text)
@@ -61,6 +105,8 @@ const clickButton = async (wrapper: VueWrapper, text: string): Promise<void> => 
 
 describe('LibraryPanel', () => {
   beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
     listPapers.mockReset()
     createSpace.mockReset()
     renameSpace.mockReset()
@@ -69,6 +115,7 @@ describe('LibraryPanel', () => {
     movePaper.mockReset()
     removePaper.mockReset()
     importPaper.mockReset()
+    analyzePaper.mockReset()
     readPaper.mockReset()
     readPdfTitleMock.mockReset()
 
@@ -293,6 +340,70 @@ describe('LibraryPanel', () => {
 
     expect(importPaper).toHaveBeenCalledWith(null)
     expect(wrapper.text()).toContain('Imported')
+    // 没有配置 AI 时不发起解析请求
+    expect(analyzePaper).not.toHaveBeenCalled()
+  })
+
+  it('shows authors and venue from parsed metadata', async () => {
+    listPapers.mockResolvedValue({
+      spaces: [],
+      papers: [paper({ id: 'paper-1', title: 'Attention', metadata: METADATA })]
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Ashish Vaswani, Noam Shazeer')
+    expect(wrapper.text()).toContain('NeurIPS · 2017')
+  })
+
+  it('analyzes an imported paper when AI is configured', async () => {
+    configureAi()
+    const imported = paper({ id: 'paper-9', title: 'attention', titleSource: 'file' })
+    importPaper.mockResolvedValue(imported)
+    readPaper.mockRejectedValue(new Error('not needed'))
+    analyzePaper.mockResolvedValue({
+      ...imported,
+      title: 'Attention Is All You Need',
+      titleSource: 'metadata',
+      metadata: METADATA
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="导入论文"]').trigger('click')
+    await flushPromises()
+
+    expect(analyzePaper).toHaveBeenCalledWith('paper-9')
+    expect(wrapper.text()).toContain('Attention Is All You Need')
+    expect(wrapper.text()).toContain('NeurIPS · 2017')
+  })
+
+  it('does not analyze automatically when the setting is off', async () => {
+    configureAi(false)
+    importPaper.mockResolvedValue(paper({ id: 'paper-9', title: 'Imported', titleSource: 'user' }))
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="导入论文"]').trigger('click')
+    await flushPromises()
+
+    expect(analyzePaper).not.toHaveBeenCalled()
+  })
+
+  it('marks a paper when automatic analysis fails', async () => {
+    configureAi()
+    const imported = paper({ id: 'paper-9', title: 'Imported', titleSource: 'user' })
+    importPaper.mockResolvedValue(imported)
+    analyzePaper.mockRejectedValue(new Error('模型不可用'))
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="导入论文"]').trigger('click')
+    await flushPromises()
+
+    const icon = wrapper.get('[aria-label="论文信息解析失败"]')
+    expect(icon.attributes('title')).toBe('模型不可用')
   })
 
   it('backfills file-based titles from PDF metadata', async () => {

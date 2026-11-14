@@ -186,14 +186,34 @@
                       <SidebarMenuButton
                         :is-active="paper.id === currentPaperId"
                         draggable="true"
+                        class="h-auto min-h-8 items-start py-1.5"
                         :class="draggingPaperId === paper.id ? 'opacity-50' : ''"
                         @click="selectPaper(paper)"
                         @dblclick="startRenamePaper(paper)"
                         @dragstart="onPaperDragStart($event, paper)"
                         @dragend="onDragEnd"
                       >
-                        <FileText class="size-4" />
-                        <span class="truncate">{{ paper.title }}</span>
+                        <FileText class="mt-0.5 size-4" />
+                        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span class="truncate">{{ paper.title }}</span>
+                          <span
+                            v-if="paperSubtitle(paper)"
+                            class="text-muted-foreground truncate text-[10px] leading-tight"
+                          >
+                            {{ paperSubtitle(paper) }}
+                          </span>
+                        </span>
+                        <Loader2
+                          v-if="isAnalyzing(paper.id)"
+                          class="text-muted-foreground size-3 shrink-0 animate-spin"
+                          :aria-label="t('library.metadata.analyzing')"
+                        />
+                        <CircleAlert
+                          v-else-if="analysisError(paper.id)"
+                          class="text-destructive size-3 shrink-0"
+                          :title="analysisError(paper.id)"
+                          :aria-label="t('library.metadata.failed')"
+                        />
                       </SidebarMenuButton>
                       <DropdownMenu>
                         <DropdownMenuTrigger as-child>
@@ -211,6 +231,21 @@
                           <DropdownMenuItem @select="startRenamePaper(paper)">
                             <Pencil class="size-4" />
                             {{ t('library.rename') }}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem v-if="paper.metadata" @select="openMetadata(paper)">
+                            <Info class="size-4" />
+                            {{ t('library.metadata.view') }}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            :disabled="isAnalyzing(paper.id)"
+                            @select="analyzePaper(paper)"
+                          >
+                            <Sparkles class="size-4" />
+                            {{
+                              paper.metadata
+                                ? t('library.metadata.reanalyze')
+                                : t('library.metadata.analyze')
+                            }}
                           </DropdownMenuItem>
                           <DropdownMenuLabel>{{ t('library.moveToSpace') }}</DropdownMenuLabel>
                           <DropdownMenuItem
@@ -241,6 +276,14 @@
         </SidebarContent>
       </Sidebar>
     </SidebarProvider>
+
+    <PaperMetadataDialog
+      :paper="metadataPaper"
+      :open="metadataOpen"
+      :analyzing="metadataPaper ? isAnalyzing(metadataPaper.id) : false"
+      @update:open="onMetadataOpenChange"
+      @analyze="analyzePaper"
+    />
   </div>
 </template>
 
@@ -271,20 +314,26 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from '@renderer/components/ui/tooltip'
 import {
   ChevronDown,
+  CircleAlert,
   FilePlus,
   FileText,
   Folder,
   FolderPlus,
+  Info,
   LibraryBig,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
   SearchX,
+  Sparkles,
   Trash2
 } from 'lucide-vue-next'
+import PaperMetadataDialog from '@renderer/components/PaperMetadataDialog.vue'
 import { t } from '@renderer/lib/i18n'
 import { filterPapers } from '@renderer/lib/library-search'
 import { readPdfTitle } from '@renderer/lib/pdf'
+import { useSettingsStore } from '@renderer/store/settings'
 import type { LibraryData, Paper, Space } from '@renderer/types'
 
 const emit = defineEmits<{
@@ -314,6 +363,62 @@ const searchTerm = computed(() => (props.searchQuery ?? '').trim())
 const searching = computed(() => searchTerm.value.length > 0)
 const visiblePapers = computed(() => filterPapers(papers.value, props.searchQuery ?? ''))
 const hasSearchResults = computed(() => visiblePapers.value.length > 0)
+
+const settingsStore = useSettingsStore()
+
+interface AnalysisState {
+  status: 'running' | 'error'
+  message?: string
+}
+
+// 按论文记录解析状态；成功时删除条目，失败时保留错误供图标提示
+const analysis = ref<Record<string, AnalysisState>>({})
+const isAnalyzing = (id: string): boolean => analysis.value[id]?.status === 'running'
+const analysisError = (id: string): string => {
+  const state = analysis.value[id]
+  return state?.status === 'error' ? (state.message ?? t('library.metadata.failed')) : ''
+}
+
+const setAnalysis = (id: string, state: AnalysisState): void => {
+  analysis.value = { ...analysis.value, [id]: state }
+}
+
+const clearAnalysis = (id: string): void => {
+  const next = { ...analysis.value }
+  delete next[id]
+  analysis.value = next
+}
+
+const authorsLabel = (authors: string[]): string => {
+  if (authors.length <= 2) return authors.join(', ')
+  return t('library.metadata.authorsMore', { names: authors.slice(0, 2).join(', ') })
+}
+
+const paperSubtitle = (paper: Paper): string => {
+  const metadata = paper.metadata
+  if (!metadata) return ''
+  return [
+    metadata.authors.length > 0 ? authorsLabel(metadata.authors) : '',
+    metadata.venue ?? '',
+    metadata.year ? String(metadata.year) : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+// 元数据详情弹窗
+const metadataPaper = ref<Paper | null>(null)
+const metadataOpen = ref(false)
+
+const openMetadata = (paper: Paper): void => {
+  metadataPaper.value = paper
+  metadataOpen.value = true
+}
+
+const onMetadataOpenChange = (open: boolean): void => {
+  metadataOpen.value = open
+  if (!open) metadataPaper.value = null
+}
 
 // 新建/重命名空间的临时输入状态
 const creatingSpace = ref(false)
@@ -396,16 +501,47 @@ const onInlineEscape = (event: KeyboardEvent, cancel: () => void): void => {
 }
 
 // 读取 PDF 元数据里的标题，并更新“仍在使用文件名”的论文
-const autoTitlePaper = async (paper: Paper): Promise<void> => {
-  if (!window.api || paper.titleSource !== 'file') return
+const autoTitlePaper = async (paper: Paper): Promise<Paper> => {
+  if (!window.api || paper.titleSource !== 'file') return paper
   try {
     const data = await window.api.readPaper(paper.path)
     const title = await readPdfTitle(data)
-    if (!title || title === paper.title) return
-    applyState(await window.api.renamePaper(paper.id, title, 'metadata'))
+    if (!title || title === paper.title) return paper
+    const state = await window.api.renamePaper(paper.id, title, 'metadata')
+    applyState(state)
+    return state.papers.find((item) => item.id === paper.id) ?? paper
   } catch (error) {
-    console.warn(`解析论文标题失败: ${paper.path}`, error)
+    console.warn(`解析论文标题失败: ${paper.id}`, error)
+    return paper
   }
+}
+
+// 只替换列表中已有的论文；论文在解析期间被移除时不把它加回来
+const applyPaper = (updated: Paper): void => {
+  const index = papers.value.findIndex((item) => item.id === updated.id)
+  if (index !== -1) papers.value[index] = updated
+  if (metadataPaper.value?.id === updated.id) metadataPaper.value = updated
+}
+
+const analyzePaper = async (paper: Paper): Promise<void> => {
+  const api = window.api
+  if (!api?.analyzePaper || isAnalyzing(paper.id)) return
+
+  setAnalysis(paper.id, { status: 'running' })
+  try {
+    applyPaper(await api.analyzePaper(paper.id))
+    clearAnalysis(paper.id)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    setAnalysis(paper.id, { status: 'error', message })
+    console.warn(`解析论文信息失败: ${paper.id}`, error)
+  }
+}
+
+// 导入后自动解析；没有配置 AI 时静默跳过，不发起任何外发请求
+const maybeAutoAnalyze = async (paper: Paper): Promise<void> => {
+  if (!settingsStore.autoAnalyze || !settingsStore.isAiConfigured || paper.metadata) return
+  await analyzePaper(paper)
 }
 
 // 启动时补齐旧论文库中仍以文件名命名的标题
@@ -448,8 +584,10 @@ const importPaper = async (spaceId: string | null = null): Promise<void> => {
     } else {
       papers.value[index] = paper
     }
-    // 默认名称先取文件名，随后用 PDF 里解析出的标题替换
-    void autoTitlePaper(paper)
+    // 默认名称先取文件名，随后用 PDF 元数据 / AI 解析出的标题替换
+    const titled = await autoTitlePaper(paper)
+    applyPaper(titled)
+    void maybeAutoAnalyze(titled)
   } catch (error) {
     console.error('导入论文失败:', error)
   }

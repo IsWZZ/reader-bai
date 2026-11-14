@@ -41,6 +41,7 @@ describe('preload bridge', () => {
       [
         'abortChat',
         'addAnnotation',
+        'analyzePaper',
         'cancelAgent',
         'chat',
         'chooseDirectory',
@@ -111,6 +112,11 @@ describe('preload bridge', () => {
 
     await api.movePaper('p1', null)
     expect(electron.invoke).toHaveBeenLastCalledWith('library:movePaper', 'p1', null)
+
+    await api.analyzePaper('p1', { useWeb: false })
+    expect(electron.invoke).toHaveBeenLastCalledWith('library:analyzePaper', 'p1', {
+      useWeb: false
+    })
 
     await api.removePaper('p1')
     expect(electron.invoke).toHaveBeenLastCalledWith('library:removePaper', 'p1')

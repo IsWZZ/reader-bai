@@ -36,7 +36,7 @@ const makeSettings = (
 ): AppSettings => ({
   ...settings,
   language,
-  library: { directory: '' },
+  library: { directory: '', autoAnalyze: true },
   keyStorage: 'encrypted'
 })
 

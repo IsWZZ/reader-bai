@@ -10,7 +10,7 @@ const BASE_SETTINGS: AppSettings = {
   theme: 'light',
   language: 'zh',
   ai: { profiles: [], activeId: '' },
-  library: { directory: '/tmp/reader-bai-papers' },
+  library: { directory: '/tmp/reader-bai-papers', autoAnalyze: true },
   keyStorage: 'encrypted'
 }
 

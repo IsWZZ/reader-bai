@@ -36,7 +36,7 @@ const makeSettings = (
 ): AppSettings => ({
   ...settings,
   language,
-  library: { directory: '' },
+  library: { directory: '', autoAnalyze: true },
   keyStorage: 'encrypted'
 })
 
@@ -162,7 +162,7 @@ describe('assistant store', () => {
         profiles: toPublicProfiles(patch, CONFIGURED.ai.profiles),
         activeId: patch.ai?.activeId ?? CONFIGURED.ai.activeId
       },
-      library: { directory: '' },
+      library: { directory: '', autoAnalyze: true },
       keyStorage: CONFIGURED.keyStorage
     }))
 

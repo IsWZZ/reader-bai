@@ -71,7 +71,10 @@ export const createSettingsStore = (
         hasApiKey: profile.apiKey !== ''
       }))
     },
-    library: { directory: resolveLibraryDirectory(stored) },
+    library: {
+      directory: resolveLibraryDirectory(stored),
+      autoAnalyze: stored.library.autoAnalyze
+    },
     keyStorage: safeStorage.isEncryptionAvailable() ? 'encrypted' : 'plaintext'
   })
 

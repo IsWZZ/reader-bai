@@ -3,7 +3,7 @@ import { mkdtemp, open, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { readPdfPageText } from '../../src/main/pdf-text'
+import { readPdfIntroText, readPdfPageText } from '../../src/main/pdf-text'
 
 // 最小可解析 PDF；对象偏移量按真实字节计算，pdf.js 才能定位交叉引用表。
 const buildPdf = (pages: string[]): Buffer => {
@@ -83,6 +83,39 @@ describe('readPdfPageText', () => {
     const corrupt = join(dir, 'corrupt.pdf')
     await writeFile(corrupt, 'not a pdf')
     await expect(readPdfPageText(corrupt, 1)).rejects.toThrow()
+  })
+
+  it('extracts the first pages for metadata analysis', async () => {
+    const path = join(dir, 'sample.pdf')
+    await writeFile(path, buildPdf(['First page text', 'Second page text', 'Third page text']))
+
+    await expect(readPdfIntroText(path, { maxPages: 2 })).resolves.toEqual({
+      text: 'First page text\n\nSecond page text',
+      pageCount: 3,
+      pagesRead: 2
+    })
+  })
+
+  it('stops at the character limit and reports how many pages were read', async () => {
+    const path = join(dir, 'sample.pdf')
+    await writeFile(path, buildPdf(['First page text', 'Second page text', 'Third page text']))
+
+    const result = await readPdfIntroText(path, { maxPages: 3, maxChars: 20 })
+
+    expect(result.pagesRead).toBe(2)
+    expect(result.text).toBe('First page text\n\nSec')
+    expect(result.pageCount).toBe(3)
+  })
+
+  it('clamps intro page and character limits to safe ranges', async () => {
+    const path = join(dir, 'sample.pdf')
+    await writeFile(path, buildPdf(['Only page']))
+
+    const result = await readPdfIntroText(path, { maxPages: 0, maxChars: 0 })
+
+    // maxPages 至少 1，maxChars 至少 1
+    expect(result.pagesRead).toBe(1)
+    expect(result.text).toBe('O')
   })
 
   it('rejects files larger than the size limit before parsing', async () => {

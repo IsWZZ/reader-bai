@@ -25,7 +25,12 @@ const makeSettings = (
   settings: Omit<AppSettings, 'library' | 'keyStorage' | 'language'>,
   directory = DEFAULT_LIBRARY_DIRECTORY,
   language = 'zh'
-): AppSettings => ({ ...settings, language, library: { directory }, keyStorage: 'encrypted' })
+): AppSettings => ({
+  ...settings,
+  language,
+  library: { directory, autoAnalyze: true },
+  keyStorage: 'encrypted'
+})
 
 const BASE_SETTINGS = makeSettings({
   theme: 'light',
@@ -69,7 +74,8 @@ const mergePatch = (patch: SettingsPatch): AppSettings => {
       directory:
         patch.library?.directory === undefined
           ? current.library.directory
-          : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
+          : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY,
+      autoAnalyze: patch.library?.autoAnalyze ?? current.library.autoAnalyze
     },
     keyStorage: current.keyStorage
   }
@@ -406,6 +412,22 @@ describe('settings store', () => {
     expect(saved).toBe(true)
     expect(updateSettings).toHaveBeenCalledWith({ library: { directory: '' } })
     expect(store.libraryDirectory).toBe(DEFAULT_LIBRARY_DIRECTORY)
+  })
+
+  it('exposes and saves the auto-analyze switch', async () => {
+    installSettings({
+      ...makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }),
+      library: { directory: DEFAULT_LIBRARY_DIRECTORY, autoAnalyze: false }
+    })
+    const store = useSettingsStore()
+    await store.initialize()
+
+    expect(store.autoAnalyze).toBe(false)
+
+    await expect(store.setAutoAnalyze(true)).resolves.toBe(true)
+
+    expect(updateSettings).toHaveBeenCalledWith({ library: { autoAnalyze: true } })
+    expect(store.autoAnalyze).toBe(true)
   })
 
   it('rolls back the library directory when saving fails', async () => {
