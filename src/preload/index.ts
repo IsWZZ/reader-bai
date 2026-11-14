@@ -28,6 +28,7 @@ interface AiProfile {
   baseUrl: string
   model: string
   hasApiKey: boolean
+  enabled: boolean
 }
 
 interface AiProfilePatch {
@@ -38,6 +39,8 @@ interface AiProfilePatch {
   model: string
   /** 留空表示保留已保存的 Key */
   apiKey?: string
+  /** 省略时沿用原状态；新增配置默认启用 */
+  enabled?: boolean
 }
 
 interface AiSettings {

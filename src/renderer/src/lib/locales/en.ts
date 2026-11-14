@@ -72,6 +72,9 @@ export const en = {
   'settings.ai.empty': 'No configurations yet. Click "Add model" to start.',
   'settings.ai.noBaseUrl': 'Base URL not set',
   'settings.ai.inUse': 'In use',
+  'settings.ai.disabled': 'Disabled',
+  'settings.ai.disable': 'Disable',
+  'settings.ai.enable': 'Enable',
   'settings.ai.add': 'Add model',
   'settings.ai.editTitle': 'Edit model',
   'settings.ai.provider.openai': 'OpenAI compatible',
@@ -162,6 +165,7 @@ export const en = {
   'assistant.useTools': 'Use tools',
   'assistant.tools': 'Tools',
   'assistant.setupHint': 'Add and complete a configuration in Settings → AI Services first.',
+  'assistant.noEnabledHint': 'All AI profiles are disabled. Enable one in Settings → AI Services.',
   'assistant.incompleteHint':
     'The selected AI service is missing a Base URL, API key or model. Complete it in Settings.',
   'assistant.translation': 'Translation',

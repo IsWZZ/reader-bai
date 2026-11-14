@@ -29,7 +29,8 @@ const PROFILE: StoredAiProfile = {
   baseUrl: 'https://api.example.com/v1',
   apiKey: 'encrypted-key',
   apiKeyEncrypted: true,
-  model: 'test-model'
+  model: 'test-model',
+  enabled: true
 }
 
 const storedSettings = (profiles = [PROFILE]): StoredSettings => ({
@@ -156,6 +157,17 @@ describe('createAiRequester', () => {
 
     options.onDelta('你')
     expect(request.onDelta).toHaveBeenCalledWith('你')
+  })
+
+  it('rejects a disabled profile before decrypting the key or calling the model', async () => {
+    const settings = makeSettings([{ ...PROFILE, enabled: false }])
+    const requester = createAiRequester(settings, makeTools())
+
+    await expect(requester.chat(baseRequest())).rejects.toThrow(
+      '所选 AI 配置已禁用，请启用或选择其他配置'
+    )
+    expect(vi.mocked(settings.decodeApiKey)).not.toHaveBeenCalled()
+    expect(streamChatMock).not.toHaveBeenCalled()
   })
 
   it('routes anthropic profiles to the Messages API gateway', async () => {

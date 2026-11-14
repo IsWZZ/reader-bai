@@ -68,7 +68,8 @@ export const createSettingsStore = (
         provider: profile.provider,
         baseUrl: profile.baseUrl,
         model: profile.model,
-        hasApiKey: profile.apiKey !== ''
+        hasApiKey: profile.apiKey !== '',
+        enabled: profile.enabled
       }))
     },
     library: {

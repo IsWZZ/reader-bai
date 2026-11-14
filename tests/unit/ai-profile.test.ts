@@ -9,6 +9,7 @@ const profile = (overrides: Partial<AiProfile> = {}): AiProfile => ({
   baseUrl: 'https://api.example.com/v1',
   model: 'gpt-test',
   hasApiKey: true,
+  enabled: true,
   ...overrides
 })
 

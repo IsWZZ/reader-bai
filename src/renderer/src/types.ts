@@ -65,6 +65,8 @@ export interface AiProfile {
   model: string
   /** 是否已在主进程保存 Key；渲染进程拿不到 Key 本身 */
   hasApiKey: boolean
+  /** 禁用后不会被选中，也不能发起请求 */
+  enabled: boolean
 }
 
 export interface AiProfilePatch {
@@ -75,6 +77,8 @@ export interface AiProfilePatch {
   model: string
   /** 留空或省略时保留该 id 已保存的 Key；新增配置必须填写 */
   apiKey?: string
+  /** 省略时沿用原状态；新增配置默认启用 */
+  enabled?: boolean
 }
 
 export interface AiSettings {

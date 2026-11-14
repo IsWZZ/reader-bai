@@ -33,7 +33,7 @@
   - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；论文可带 `metadata`（作者、期刊/会议、年份、DOI、摘要、关键词等），读取时同样逐字段清洗。移除论文/空间不删除 PDF，但移除论文时要同步清空该论文在 `annotations.json` 中的标注。
   - 书库的写入统一走 `library.mutate` 串行读改写；导入、重命名和 AI 解析可能并发，直接 `read` + `write` 会互相覆盖。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。
-  - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory } }`；只接受 `ai.profiles` 数组格式。
+  - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory, autoAnalyze } }`；只接受 `ai.profiles` 数组格式，profile 的 `enabled` 缺省为 `true`。
 - `language` 使用 BCP 47 风格标签（`zh`、`en`、`zh-Hans`、`pt-BR`），主进程只校验格式、默认回退 `zh`，不维护语言白名单；实际支持哪些语言由渲染进程的 locale 注册表决定。
 - 导入 PDF 时复制到论文库目录，同名自动加 ` (2)` 等后缀；`path` 指向副本，`sourcePath` 记录原文件用于去重；已在目录内的文件不重复复制。
 - `titleSource`（`file` | `metadata` | `user`）防止元数据回填覆盖用户重命名。
@@ -55,6 +55,8 @@
 - `ai-anthropic.ts` 负责 Anthropic Messages API：把内部的 OpenAI 风格消息/工具定义转成 `system` + `tool_use` / `tool_result` 内容块，解析 `/v1/messages` 的 SSE 事件，并归一化成与 `ai.ts` 相同的 `StreamChatResult`。
 - `ai-request.ts` 是单次模型请求的执行边界：解析 `profileId`、解密 Key、校验 Base URL、解析工具 schema、计步和取消都集中在这里，并按 `profile.provider`（`openai` / `anthropic`）选择网关。
 - 配置里的 `provider` 缺省为 `openai`，保证旧设置文件继续可用；渲染进程保存时必须回传每份配置的 `provider`。
+- 配置里的 `enabled` 缺省为 `true`；禁用后 `ai-request.ts` 在执行边界直接拒绝，不能只靠渲染进程隐藏选项。`activeId` 只能指向启用的配置，全部禁用时为空字符串。
+- 论文元数据解析会跳过禁用配置；如果还有启用的配置就继续使用，全部禁用时返回可读错误。
   - `messages` 先经 `normalizeChatMessages` 校验角色、结构、条数和总长度。
   - `toolNames` 只能引用工具注册表中已注册且 `exposeToAi` 的工具，schema 由主进程解析。
   - `run` 存在时先检查是否已中止，再调用 `recordStep` 计步；`run.signal` 和调用方 `signal` 都要能中止网络请求。

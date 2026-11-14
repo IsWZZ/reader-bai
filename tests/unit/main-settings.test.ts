@@ -61,7 +61,8 @@ describe('normalizeStoredSettings', () => {
             baseUrl: 'https://api.example.com/v1',
             apiKey: 'sk-test',
             apiKeyEncrypted: false,
-            model: 'gpt-test'
+            model: 'gpt-test',
+            enabled: true
           }
         ],
         activeId: 'a'
@@ -171,6 +172,33 @@ describe('normalizeStoredSettings', () => {
     expect(collision.ai.profiles.map((profile) => profile.id)).toEqual(['profile-2', 'profile-2-2'])
   })
 
+  it('defaults profiles to enabled and skips disabled ones when choosing activeId', () => {
+    const result = normalizeStoredSettings({
+      ai: {
+        profiles: [
+          { id: 'a', baseUrl: 'https://a', model: 'm' },
+          { id: 'b', baseUrl: 'https://b', model: 'm', enabled: false }
+        ],
+        activeId: 'b'
+      }
+    })
+
+    expect(result.ai.profiles.map((profile) => profile.enabled)).toEqual([true, false])
+    expect(result.ai.activeId).toBe('a')
+  })
+
+  it('leaves activeId empty when every profile is disabled', () => {
+    const result = normalizeStoredSettings({
+      ai: {
+        profiles: [{ id: 'a', baseUrl: 'https://a', model: 'm', enabled: false }],
+        activeId: 'a'
+      }
+    })
+
+    expect(result.ai.profiles[0].enabled).toBe(false)
+    expect(result.ai.activeId).toBe('')
+  })
+
   it('does not truncate encrypted keys but caps plaintext keys', () => {
     const cipher = 'c'.repeat(1000)
     const result = normalizeStoredSettings({
@@ -234,7 +262,8 @@ describe('applySettingsPatch', () => {
         baseUrl: 'https://c.example/v1',
         apiKey: 'enc:secret',
         apiKeyEncrypted: true,
-        model: 'model-c'
+        model: 'model-c',
+        enabled: true
       }
     ])
     // 原 activeId b 已不存在，回退到剩余第一条
@@ -262,6 +291,29 @@ describe('applySettingsPatch', () => {
 
     expect(encode).not.toHaveBeenCalled()
     expect(next.ai.profiles).toEqual(base.ai.profiles)
+    expect(next.ai.activeId).toBe('a')
+  })
+
+  it('preserves enabled when editing and can disable the active profile', () => {
+    const base = withProfiles()
+
+    const next = applySettingsPatch(
+      base,
+      {
+        ai: {
+          profiles: [
+            { id: 'a', baseUrl: 'https://a.example/v1', model: 'model-a' },
+            { id: 'b', baseUrl: 'https://b.example/v1', model: 'model-b', enabled: false }
+          ]
+        }
+      },
+      plainEncode
+    )
+
+    // 未提供 enabled 时沿用原状态
+    expect(next.ai.profiles[0].enabled).toBe(true)
+    expect(next.ai.profiles[1].enabled).toBe(false)
+    // 原激活的 b 已禁用，回退到 a
     expect(next.ai.activeId).toBe('a')
   })
 
@@ -372,7 +424,8 @@ describe('applySettingsPatch', () => {
       baseUrl: 'https://a.example/v2',
       apiKey: 'sk-a',
       apiKeyEncrypted: false,
-      model: 'model-a2'
+      model: 'model-a2',
+      enabled: true
     })
     // 未提交的配置被移除，其 Key 也不会带回来
     expect(next.ai.profiles).toHaveLength(1)
@@ -394,7 +447,8 @@ describe('applySettingsPatch', () => {
       baseUrl: 'https://new.example/v1',
       apiKey: '',
       apiKeyEncrypted: false,
-      model: 'm'
+      model: 'm',
+      enabled: true
     })
   })
 

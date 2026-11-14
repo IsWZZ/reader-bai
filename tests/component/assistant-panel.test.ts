@@ -19,7 +19,8 @@ const PROFILE_A: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
-  model: 'gpt-test'
+  model: 'gpt-test',
+  enabled: true
 }
 
 const PROFILE_B: AiProfile = {
@@ -27,7 +28,8 @@ const PROFILE_B: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
-  model: 'model-b'
+  model: 'model-b',
+  enabled: true
 }
 
 const makeSettings = (
@@ -174,7 +176,8 @@ describe('AssistantPanel', () => {
               provider: 'openai',
               baseUrl: 'https://api3.example.com/v1',
               hasApiKey: true,
-              model: ''
+              model: '',
+              enabled: true
             }
           ],
           activeId: 'a'
@@ -191,6 +194,46 @@ describe('AssistantPanel', () => {
       'gpt-test',
       'https://api3.example.com/v1'
     ])
+    wrapper.unmount()
+  })
+
+  it('hides disabled profiles from the model picker', async () => {
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: {
+          profiles: [PROFILE_A, { ...PROFILE_B, enabled: false }],
+          activeId: 'a'
+        }
+      })
+    )
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = mountPanel()
+    const options = selectModels(wrapper).findAll('option')
+
+    expect(options.map((option) => option.text())).toEqual(['gpt-test'])
+    wrapper.unmount()
+  })
+
+  it('explains when every profile is disabled', async () => {
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: {
+          profiles: [{ ...PROFILE_A, enabled: false }],
+          activeId: ''
+        }
+      })
+    )
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = mountPanel()
+
+    expect(wrapper.find('select[aria-label="选择模型"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('所有 AI 配置都已禁用')
     wrapper.unmount()
   })
 

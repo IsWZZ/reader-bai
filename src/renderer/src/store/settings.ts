@@ -35,11 +35,17 @@ export const useSettingsStore = defineStore('settings', () => {
   const error = ref('')
 
   const aiProfiles = computed<AiProfile[]>(() => settings.value.ai.profiles)
+  /** 只有启用的配置能被选择或用于翻译、对话和元数据解析 */
+  const enabledAiProfiles = computed<AiProfile[]>(() =>
+    settings.value.ai.profiles.filter((profile) => profile.enabled)
+  )
   const libraryDirectory = computed<string>(() => settings.value.library.directory)
   const autoAnalyze = computed<boolean>(() => settings.value.library.autoAnalyze)
   const activeAiProfile = computed<AiProfile | null>(() => {
     const { profiles, activeId } = settings.value.ai
-    return profiles.find((profile) => profile.id === activeId) ?? profiles[0] ?? null
+    const active = profiles.find((profile) => profile.id === activeId)
+    if (active?.enabled) return active
+    return profiles.find((profile) => profile.enabled) ?? null
   })
   const isAiConfigured = computed(() => {
     const profile = activeAiProfile.value
@@ -96,17 +102,26 @@ export const useSettingsStore = defineStore('settings', () => {
             provider: profile.provider ?? existing?.provider ?? 'openai',
             baseUrl: profile.baseUrl,
             model: profile.model,
-            hasApiKey: Boolean(profile.apiKey?.trim()) || (existing?.hasApiKey ?? false)
+            hasApiKey: Boolean(profile.apiKey?.trim()) || (existing?.hasApiKey ?? false),
+            enabled: profile.enabled ?? existing?.enabled ?? true
           }
         })
       : previous.ai.profiles.map((profile) => ({ ...profile }))
+    // 禁用当前配置或全部禁用时，立即把 activeId 归一到可用的配置
+    const requestedActiveId = aiPatch?.activeId ?? previous.ai.activeId
+    const activeStillEnabled = optimisticProfiles.some(
+      (profile) => profile.id === requestedActiveId && profile.enabled
+    )
+    const optimisticActiveId = activeStillEnabled
+      ? requestedActiveId
+      : (optimisticProfiles.find((profile) => profile.enabled)?.id ?? '')
     const optimistic: AppSettings = {
       theme: patch.theme ?? previous.theme,
       language: patch.language ?? previous.language,
       ai: {
         // 只切换 activeId 时也要保留完整列表
         profiles: optimisticProfiles,
-        activeId: aiPatch?.activeId ?? previous.ai.activeId
+        activeId: optimisticActiveId
       },
       library: {
         directory: patch.library?.directory ?? previous.library.directory,
@@ -155,13 +170,14 @@ export const useSettingsStore = defineStore('settings', () => {
    * 因此编辑时不需要、也无法把已保存的 Key 回填到表单。
    */
   const saveAiProfiles = (profiles: AiProfilePatch[], activeId?: string): Promise<boolean> => {
-    const next = profiles.map(({ id, provider, baseUrl, model, apiKey }) => {
+    const next = profiles.map(({ id, provider, baseUrl, model, apiKey, enabled }) => {
       const entry: AiProfilePatch = {
         id,
         baseUrl: baseUrl.trim(),
         model: model.trim()
       }
       if (provider) entry.provider = provider
+      if (enabled !== undefined) entry.enabled = enabled
       const trimmedKey = apiKey?.trim()
       if (trimmedKey) entry.apiKey = trimmedKey
       return entry
@@ -171,7 +187,13 @@ export const useSettingsStore = defineStore('settings', () => {
     })
   }
 
-  const setActiveAiProfile = (id: string): Promise<boolean> => persist({ ai: { activeId: id } })
+  const setActiveAiProfile = (id: string): Promise<boolean> => {
+    // 禁用配置不能成为当前模型；主进程也会再校验一次
+    if (!aiProfiles.value.some((profile) => profile.id === id && profile.enabled)) {
+      return Promise.resolve(false)
+    }
+    return persist({ ai: { activeId: id } })
+  }
 
   const setLibraryDirectory = (directory: string): Promise<boolean> =>
     persist({ library: { directory: directory.trim() } })
@@ -191,6 +213,7 @@ export const useSettingsStore = defineStore('settings', () => {
     theme,
     language,
     aiProfiles,
+    enabledAiProfiles,
     activeAiProfile,
     isAiConfigured,
     libraryDirectory,

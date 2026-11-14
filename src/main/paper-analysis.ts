@@ -44,9 +44,15 @@ export interface PaperAnalyzer {
 
 const resolveProfile = async (deps: PaperAnalyzerDeps): Promise<StoredAiProfile> => {
   const stored = await deps.settings.read()
-  const profile =
-    stored.ai.profiles.find((item) => item.id === stored.ai.activeId) ?? stored.ai.profiles[0]
-  if (!profile) throw new Error('请先在设置中配置 AI 服务，再解析论文信息')
+  const active = stored.ai.profiles.find((item) => item.id === stored.ai.activeId)
+  // 自动解析会跳过禁用配置；如果还有启用的配置就继续用
+  const profile = active?.enabled ? active : stored.ai.profiles.find((item) => item.enabled)
+  if (!profile) {
+    if (stored.ai.profiles.length === 0) {
+      throw new Error('请先在设置中配置 AI 服务，再解析论文信息')
+    }
+    throw new Error('所有 AI 配置都已禁用，请启用一个后再解析论文信息')
+  }
   if (!profile.baseUrl || !profile.model) {
     throw new Error('请先补全 AI 服务的 Base URL、API Key 和模型')
   }

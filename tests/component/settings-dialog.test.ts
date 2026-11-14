@@ -10,7 +10,8 @@ const PROFILE_A: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
-  model: 'model-a'
+  model: 'model-a',
+  enabled: true
 }
 
 const PROFILE_B: AiProfile = {
@@ -18,7 +19,8 @@ const PROFILE_B: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
-  model: 'model-b'
+  model: 'model-b',
+  enabled: true
 }
 
 const PROFILE_ANTHROPIC: AiProfile = {
@@ -26,7 +28,8 @@ const PROFILE_ANTHROPIC: AiProfile = {
   provider: 'anthropic',
   baseUrl: 'https://api.anthropic.com',
   hasApiKey: true,
-  model: 'claude-test'
+  model: 'claude-test',
+  enabled: true
 }
 
 /** 表单里填写的草稿：Key 是本次新输入的，不会来自已保存配置 */
@@ -142,7 +145,8 @@ describe('SettingsDialog', () => {
               provider: profile.provider ?? existing?.provider ?? 'openai',
               baseUrl: profile.baseUrl,
               model: profile.model,
-              hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
+              hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey),
+              enabled: profile.enabled ?? existing?.enabled ?? true
             }
           })
         : current.ai.profiles.map((profile) => ({ ...profile }))
@@ -462,7 +466,8 @@ describe('SettingsDialog', () => {
         id: 'a',
         provider: 'openai',
         baseUrl: 'https://api.example.com/v1',
-        model: 'model-a2'
+        model: 'model-a2',
+        enabled: true
       }
     ])
     expect(patch.ai?.activeId).toBe('a')
@@ -491,7 +496,8 @@ describe('SettingsDialog', () => {
         provider: 'openai',
         baseUrl: 'https://api.example.com/v1',
         model: 'model-a',
-        apiKey: 'sk-rotated'
+        apiKey: 'sk-rotated',
+        enabled: true
       }
     ])
     wrapper.unmount()
@@ -526,6 +532,33 @@ describe('SettingsDialog', () => {
     wrapper.unmount()
   })
 
+  it('disables a profile and moves the active model to another enabled one', async () => {
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'a' } })
+    )
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = await mountDialog()
+    await openAiSection()
+
+    expect(findButtons('禁用')).toHaveLength(2)
+    await findButtons('禁用')[0].trigger('click')
+    await flushPromises()
+
+    const patch = updateSettings.mock.calls[0][0]
+    expect(patch.ai?.profiles).toEqual([
+      expect.objectContaining({ id: 'a', enabled: false }),
+      expect.objectContaining({ id: 'b', enabled: true })
+    ])
+    expect(patch.ai?.activeId).toBe('b')
+    expect(useSettingsStore().activeAiProfile?.id).toBe('b')
+    // 禁用后可重新启用
+    expect(findButton('启用')).toBeDefined()
+    expect(document.body.textContent).toContain('已禁用')
+    wrapper.unmount()
+  })
+
   it('deletes the active profile and moves the active id to the remaining one', async () => {
     installSettings(
       makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A, PROFILE_B], activeId: 'b' } })
@@ -548,7 +581,8 @@ describe('SettingsDialog', () => {
         id: 'a',
         provider: 'openai',
         baseUrl: 'https://api.example.com/v1',
-        model: 'model-a'
+        model: 'model-a',
+        enabled: true
       }
     ])
     expect(patch.ai?.activeId).toBe('a')

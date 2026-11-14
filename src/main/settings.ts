@@ -24,6 +24,8 @@ export interface AiProfilePatch {
   baseUrl: string
   model: string
   apiKey?: string
+  /** 省略时沿用该 id 原有状态；新增配置默认启用 */
+  enabled?: boolean
 }
 
 /** 回给渲染进程的配置：永不包含明文或密文 Key */
@@ -33,6 +35,8 @@ export interface PublicAiProfile {
   baseUrl: string
   model: string
   hasApiKey: boolean
+  /** 禁用的配置不能被选中，也不能发起请求 */
+  enabled: boolean
 }
 
 export interface AiSettings {
@@ -81,6 +85,8 @@ export interface StoredAiProfile {
   apiKey: string
   apiKeyEncrypted: boolean
   model: string
+  /** 禁用后平台不会再用该配置发起请求 */
+  enabled: boolean
 }
 
 export interface StoredAiSettings {
@@ -179,9 +185,12 @@ const normalizeId = (value: unknown, index: number, used: Set<string>): string =
   return candidate
 }
 
+/** activeId 只能指向已启用的配置；全部禁用时返回空字符串 */
 const normalizeActiveId = (value: unknown, profiles: StoredAiProfile[]): string => {
   const id = asString(value, MAX_ID)
-  return profiles.some((profile) => profile.id === id) ? id : (profiles[0]?.id ?? '')
+  const active = profiles.find((profile) => profile.id === id)
+  if (active?.enabled) return id
+  return profiles.find((profile) => profile.enabled)?.id ?? ''
 }
 
 const objectOf = (value: unknown): Record<string, unknown> | null =>
@@ -200,7 +209,9 @@ const normalizeStoredProfile = (
     baseUrl: asString(raw.baseUrl, MAX_BASE_URL),
     apiKey,
     apiKeyEncrypted: encrypted && apiKey !== '',
-    model: asString(raw.model, MAX_MODEL)
+    model: asString(raw.model, MAX_MODEL),
+    // 旧设置没有该字段，默认启用
+    enabled: raw.enabled !== false
   }
 }
 
@@ -308,7 +319,9 @@ const encodeStoredProfile = (
     baseUrl,
     apiKey: encoded.apiKey,
     apiKeyEncrypted: encoded.apiKeyEncrypted && encoded.apiKey !== '',
-    model: asString(raw.model, MAX_MODEL)
+    model: asString(raw.model, MAX_MODEL),
+    // 未显式提供时沿用原状态，避免编辑 Base URL/模型时意外重新启用
+    enabled: raw.enabled === undefined ? (previous?.enabled ?? true) : raw.enabled === true
   }
 }
 

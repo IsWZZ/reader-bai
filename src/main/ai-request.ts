@@ -91,6 +91,8 @@ export const createAiRequester = (settings: SettingsStore, tools: ToolRegistry):
       const stored = await settings.read()
       const profile = stored.ai.profiles.find((item) => item.id === request.profileId)
       if (!profile) throw new Error('所选 AI 配置不存在，请重新选择')
+      // 禁用状态由主进程强制执行，不能靠渲染进程隐藏选项来绕过
+      if (!profile.enabled) throw new Error('所选 AI 配置已禁用，请启用或选择其他配置')
 
       const apiKey = settings.decodeApiKey(profile)
       if (!profile.baseUrl || !profile.model) {

@@ -20,7 +20,8 @@ const PROFILE: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
-  model: 'gpt-test'
+  model: 'gpt-test',
+  enabled: true
 }
 
 const SETTINGS: AppSettings = {

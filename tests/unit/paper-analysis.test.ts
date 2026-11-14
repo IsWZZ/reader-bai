@@ -17,7 +17,8 @@ const storedSettings = (withProfile = true): StoredSettings => ({
             baseUrl: 'https://api.example.com/v1',
             apiKey: 'sk-test',
             apiKeyEncrypted: false,
-            model: 'gpt-test'
+            model: 'gpt-test',
+            enabled: true
           }
         ]
       : [],
@@ -148,6 +149,39 @@ describe('createPaperAnalyzer', () => {
     await expect(analyzer.analyze(paper)).rejects.toThrow('请先在设置中配置 AI 服务')
     expect(readIntroText).not.toHaveBeenCalled()
     expect(lookup).not.toHaveBeenCalled()
+  })
+
+  it('skips a disabled active profile and uses another enabled one', async () => {
+    const settings = storedSettings()
+    const profile = settings.ai.profiles[0]
+    settings.ai.profiles = [
+      { ...profile, enabled: false },
+      { ...profile, id: 'b', enabled: true }
+    ]
+    settings.ai.activeId = 'a'
+    const chat = vi.fn(async () => ({
+      text: aiJson(),
+      toolCalls: [],
+      finishReason: 'stop' as const
+    }))
+    const analyzer = createPaperAnalyzer(createDeps({ settings, chat }))
+
+    await analyzer.analyze(paper)
+
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ profileId: 'b' }))
+  })
+
+  it('rejects when every AI profile is disabled without reading the PDF', async () => {
+    const settings = storedSettings()
+    settings.ai.profiles = settings.ai.profiles.map((profile) => ({
+      ...profile,
+      enabled: false
+    }))
+    const readIntroText = vi.fn(async () => 'text')
+    const analyzer = createPaperAnalyzer(createDeps({ settings, readIntroText }))
+
+    await expect(analyzer.analyze(paper)).rejects.toThrow('所有 AI 配置都已禁用')
+    expect(readIntroText).not.toHaveBeenCalled()
   })
 
   it('rejects unreadable PDFs with a readable error', async () => {

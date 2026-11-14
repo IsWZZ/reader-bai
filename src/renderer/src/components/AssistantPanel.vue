@@ -20,7 +20,7 @@
     </header>
 
     <div
-      v-if="settingsStore.aiProfiles.length > 0"
+      v-if="settingsStore.enabledAiProfiles.length > 0"
       class="flex items-center gap-2 border-b px-3 py-2"
     >
       <select
@@ -30,7 +30,11 @@
         :disabled="store.chatLoading || settingsStore.saving"
         @change="handleProfileChange"
       >
-        <option v-for="profile in settingsStore.aiProfiles" :key="profile.id" :value="profile.id">
+        <option
+          v-for="profile in settingsStore.enabledAiProfiles"
+          :key="profile.id"
+          :value="profile.id"
+        >
           {{ profile.model || profile.baseUrl || t('common.untitledProfile') }}
         </option>
       </select>
@@ -55,6 +59,12 @@
       class="text-muted-foreground border-b px-3 py-2 text-xs leading-relaxed"
     >
       {{ t('assistant.setupHint') }}
+    </p>
+    <p
+      v-else-if="settingsStore.enabledAiProfiles.length === 0"
+      class="text-muted-foreground border-b px-3 py-2 text-xs leading-relaxed"
+    >
+      {{ t('assistant.noEnabledHint') }}
     </p>
     <p
       v-else-if="!store.isConfigured"

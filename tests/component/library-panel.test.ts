@@ -47,7 +47,8 @@ const configureAi = (autoAnalyze = true): void => {
             provider: 'openai',
             baseUrl: 'https://api.example.com/v1',
             model: 'gpt-test',
-            hasApiKey: true
+            hasApiKey: true,
+            enabled: true
           }
         ],
         activeId: 'a'

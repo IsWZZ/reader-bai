@@ -266,6 +266,7 @@
                 v-for="profile in profiles"
                 :key="profile.id"
                 class="flex items-center gap-2 px-3 py-2"
+                :class="profile.enabled ? '' : 'opacity-60'"
               >
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-sm">{{ aiProfileLabel(profile) }}</p>
@@ -274,7 +275,13 @@
                   </p>
                 </div>
                 <span
-                  v-if="profile.id === settingsStore.activeAiProfile?.id"
+                  v-if="!profile.enabled"
+                  class="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px]"
+                >
+                  {{ t('settings.ai.disabled') }}
+                </span>
+                <span
+                  v-else-if="profile.id === settingsStore.activeAiProfile?.id"
                   class="bg-accent text-accent-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px]"
                 >
                   {{ t('settings.ai.inUse') }}
@@ -287,6 +294,15 @@
                   @click="startEdit(profile)"
                 >
                   {{ t('common.edit') }}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="settingsStore.saving"
+                  @click="toggleProfileEnabled(profile)"
+                >
+                  {{ profile.enabled ? t('settings.ai.disable') : t('settings.ai.enable') }}
                 </Button>
                 <Button
                   type="button"
@@ -715,13 +731,18 @@ const saveProfile = async (): Promise<void> => {
     id: profile.id,
     provider: profile.provider,
     baseUrl: profile.baseUrl,
-    model: profile.model
+    model: profile.model,
+    enabled: profile.enabled
   }))
   const entry: AiProfilePatch = {
     id,
     provider: provider.value,
     baseUrl: normalized,
-    model: trimmedModel
+    model: trimmedModel,
+    // 编辑禁用配置时保持禁用；新增配置默认启用
+    enabled: editingIsNew.value
+      ? true
+      : (profiles.value.find((profile) => profile.id === id)?.enabled ?? true)
   }
   if (typedKey) entry.apiKey = typedKey
   const index = next.findIndex((profile) => profile.id === id)
@@ -731,11 +752,12 @@ const saveProfile = async (): Promise<void> => {
     next.push(entry)
   }
 
-  // 当前激活的配置仍存在就保留，否则切到第一条（新增第一条时自动激活）
+  // 当前激活的配置仍启用就保留，否则切到第一条启用配置
   const currentActiveId = settingsStore.activeAiProfile?.id
-  const nextActiveId = next.some((profile) => profile.id === currentActiveId)
+  const enabled = next.filter((profile) => profile.enabled)
+  const nextActiveId = enabled.some((profile) => profile.id === currentActiveId)
     ? currentActiveId
-    : (next[0]?.id ?? '')
+    : (enabled[0]?.id ?? '')
 
   const saved = await settingsStore.saveAiProfiles(next, nextActiveId)
   if (!saved) {
@@ -754,12 +776,14 @@ const removeProfile = async (profile: AiProfile): Promise<void> => {
       id: item.id,
       provider: item.provider,
       baseUrl: item.baseUrl,
-      model: item.model
+      model: item.model,
+      enabled: item.enabled
     }))
   const currentActiveId = settingsStore.activeAiProfile?.id
-  const nextActiveId = next.some((item) => item.id === currentActiveId)
+  const enabled = next.filter((item) => item.enabled)
+  const nextActiveId = enabled.some((item) => item.id === currentActiveId)
     ? currentActiveId
-    : (next[0]?.id ?? '')
+    : (enabled[0]?.id ?? '')
 
   const saved = await settingsStore.saveAiProfiles(next, nextActiveId)
   if (!saved) {
@@ -767,6 +791,29 @@ const removeProfile = async (profile: AiProfile): Promise<void> => {
     return
   }
   if (editingId.value === profile.id) resetForm()
+  status.value = 'saved'
+}
+
+const toggleProfileEnabled = async (profile: AiProfile): Promise<void> => {
+  formError.value = ''
+  const next: AiProfilePatch[] = profiles.value.map((item) => ({
+    id: item.id,
+    provider: item.provider,
+    baseUrl: item.baseUrl,
+    model: item.model,
+    enabled: item.id === profile.id ? !item.enabled : item.enabled
+  }))
+  const currentActiveId = settingsStore.activeAiProfile?.id
+  const enabled = next.filter((item) => item.enabled)
+  const nextActiveId = enabled.some((item) => item.id === currentActiveId)
+    ? currentActiveId
+    : (enabled[0]?.id ?? '')
+
+  const saved = await settingsStore.saveAiProfiles(next, nextActiveId)
+  if (!saved) {
+    formError.value = settingsStore.error || t('settings.ai.error.saveFailed')
+    return
+  }
   status.value = 'saved'
 }
 </script>

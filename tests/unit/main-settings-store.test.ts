@@ -92,7 +92,8 @@ describe('createSettingsStore', () => {
         provider: 'openai',
         baseUrl: 'https://api.example.com/v1',
         model: 'model-a',
-        hasApiKey: true
+        hasApiKey: true,
+        enabled: true
       }
     ])
 

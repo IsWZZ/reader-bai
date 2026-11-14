@@ -8,7 +8,8 @@ const PROFILE_A: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
-  model: 'model-a'
+  model: 'model-a',
+  enabled: true
 }
 
 const PROFILE_B: AiProfile = {
@@ -16,7 +17,8 @@ const PROFILE_B: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
-  model: 'model-b'
+  model: 'model-b',
+  enabled: true
 }
 
 const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
@@ -59,7 +61,8 @@ const mergePatch = (patch: SettingsPatch): AppSettings => {
           provider: profile.provider ?? existing?.provider ?? 'openai',
           baseUrl: profile.baseUrl,
           model: profile.model,
-          hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
+          hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey),
+          enabled: profile.enabled ?? existing?.enabled ?? true
         }
       })
     : current.ai.profiles.map((profile) => ({ ...profile }))
@@ -259,7 +262,8 @@ describe('settings store', () => {
       provider: 'openai',
       baseUrl: 'https://api.example.com/v1/',
       hasApiKey: true,
-      model: 'm'
+      model: 'm',
+      enabled: true
     })
     expect(store.activeAiProfile?.id).toBe('a')
   })
@@ -286,7 +290,8 @@ describe('settings store', () => {
       provider: 'openai',
       baseUrl: 'https://api.example.com/v2',
       hasApiKey: true,
-      model: 'model-a2'
+      model: 'model-a2',
+      enabled: true
     })
   })
 
@@ -384,6 +389,41 @@ describe('settings store', () => {
     )
     await expect(pending).resolves.toBe(true)
     expect(store.activeAiProfile?.id).toBe('b')
+  })
+
+  it('ignores disabled profiles when resolving and switching the active model', async () => {
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: {
+          profiles: [{ ...PROFILE_A, enabled: false }, PROFILE_B],
+          activeId: 'a'
+        }
+      })
+    )
+    const store = useSettingsStore()
+    await store.initialize()
+
+    expect(store.enabledAiProfiles.map((profile) => profile.id)).toEqual(['b'])
+    expect(store.activeAiProfile?.id).toBe('b')
+
+    await expect(store.setActiveAiProfile('a')).resolves.toBe(false)
+    expect(updateSettings).not.toHaveBeenCalled()
+  })
+
+  it('reports no configured AI when every profile is disabled', async () => {
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: { profiles: [{ ...PROFILE_A, enabled: false }], activeId: '' }
+      })
+    )
+    const store = useSettingsStore()
+    await store.initialize()
+
+    expect(store.enabledAiProfiles).toEqual([])
+    expect(store.activeAiProfile).toBeNull()
+    expect(store.isAiConfigured).toBe(false)
   })
 
   it('loads the effective library directory and saves a custom one', async () => {

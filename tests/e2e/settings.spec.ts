@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { access, mkdir } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
@@ -24,6 +24,7 @@ interface StoredAiProfile {
   apiKey: string
   apiKeyEncrypted: boolean
   model: string
+  enabled?: boolean
 }
 
 interface StoredSettings {
@@ -219,6 +220,77 @@ test('saves AI settings, encrypting the API key when available', async () => {
     apiType: typeof (globalThis as { api?: unknown }).api
   }))
   expect(bridge).toEqual({ hasElectron: false, apiType: 'object' })
+  await reader.app.close()
+})
+
+test('disabled AI profiles are persisted and rejected by the main process', async () => {
+  await writeFile(
+    settingsFile(),
+    JSON.stringify({
+      theme: 'light',
+      ai: {
+        profiles: [
+          {
+            id: 'p1',
+            baseUrl: 'http://127.0.0.1:9/v1',
+            model: 'stub-model',
+            apiKey: 'sk-e2e-test',
+            apiKeyEncrypted: false,
+            enabled: false
+          }
+        ],
+        activeId: 'p1'
+      },
+      library: { autoAnalyze: true }
+    }),
+    'utf8'
+  )
+
+  const reader = await launchReader(userDataDir)
+  const settings = await reader.page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        api: {
+          getSettings: () => Promise<{
+            ai: { profiles: { enabled: boolean }[]; activeId: string }
+          }>
+        }
+      }
+    ).api
+    return api.getSettings()
+  })
+
+  expect(settings.ai.profiles[0]).toMatchObject({ enabled: false })
+  // activeId 不能指向禁用配置
+  expect(settings.ai.activeId).toBe('')
+
+  const error = await reader.page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        api: {
+          chat: (
+            requestId: string,
+            messages: { role: string; content: string }[],
+            profileId: string
+          ) => Promise<string>
+        }
+      }
+    ).api
+    try {
+      await api.chat('req-1', [{ role: 'user', content: 'hi' }], 'p1')
+      return ''
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e)
+    }
+  })
+  expect(error).toContain('所选 AI 配置已禁用')
+
+  // 助手面板不提供禁用模型，并提示启用一个
+  await reader.page.getByRole('button', { name: '辅助面板', exact: true }).click()
+  const panel = reader.page.locator('aside[aria-label="辅助面板"]')
+  await expect(panel).toContainText('所有 AI 配置都已禁用')
+  await expect(panel.getByRole('combobox', { name: '选择模型' })).toHaveCount(0)
+
   await reader.app.close()
 })
 

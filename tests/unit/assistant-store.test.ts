@@ -19,7 +19,8 @@ const PROFILE_A: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
-  model: 'gpt-test'
+  model: 'gpt-test',
+  enabled: true
 }
 
 const PROFILE_B: AiProfile = {
@@ -27,7 +28,8 @@ const PROFILE_B: AiProfile = {
   provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
-  model: 'model-b'
+  model: 'model-b',
+  enabled: true
 }
 
 const makeSettings = (
@@ -55,7 +57,8 @@ const toPublicProfiles = (patch: SettingsPatch | undefined, base: AiProfile[]): 
       provider: profile.provider ?? existing?.provider ?? 'openai',
       baseUrl: profile.baseUrl,
       model: profile.model,
-      hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
+      hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey),
+      enabled: profile.enabled ?? existing?.enabled ?? true
     }
   })
 }
