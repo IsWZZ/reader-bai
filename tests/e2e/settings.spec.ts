@@ -96,6 +96,12 @@ test('switches the interface language and restores it after relaunch', async () 
     'true'
   )
 
+  // 关闭设置后，弹窗之外的主界面也已经是英文
+  await englishDialog.getByRole('button', { name: 'Close' }).click()
+  await expect(reader.page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible()
+  await expect(reader.page.getByRole('button', { name: 'Library', exact: true })).toBeVisible()
+  await expect(reader.page.getByRole('button', { name: 'Assistant', exact: true })).toBeVisible()
+
   await reader.app.close()
 
   reader = await launchReader(userDataDir)
