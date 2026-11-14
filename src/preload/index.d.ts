@@ -123,6 +123,37 @@ declare global {
     isError?: boolean
   }
 
+  type PluginPermission = 'documents:read' | 'annotations:write' | 'network' | 'storage'
+
+  interface PluginCommand {
+    id: string
+    title: string
+    description?: string
+  }
+
+  interface PluginInfo {
+    id: string
+    name: string
+    version: string
+    description?: string
+    /** manifest 中声明的权限，不代表已经授予 */
+    permissions: PluginPermission[]
+    commands: PluginCommand[]
+    /** 用户已启用且与当前宿主版本兼容 */
+    enabled: boolean
+    compatible: boolean
+  }
+
+  interface PluginIssue {
+    directoryName: string
+    message: string
+  }
+
+  interface PluginListResult {
+    plugins: PluginInfo[]
+    issues: PluginIssue[]
+  }
+
   interface LibrarySettings {
     /** 当前生效的论文库目录 */
     directory: string
@@ -182,6 +213,10 @@ declare global {
     listTools: () => Promise<ToolInfo[]>
     /** 执行一个已注册工具；写操作由主进程弹出确认 */
     executeTool: (name: string, input: unknown) => Promise<ToolResult>
+    /** 列出已发现插件和 manifest 问题 */
+    listPlugins: () => Promise<PluginListResult>
+    /** 启用或关闭插件；不兼容的插件会被主进程拒绝 */
+    setPluginEnabled: (id: string, enabled: boolean) => Promise<PluginInfo>
   }
 
   interface Window {

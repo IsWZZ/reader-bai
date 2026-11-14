@@ -58,6 +58,35 @@ interface AppSettings {
   library: LibrarySettings
 }
 
+type PluginPermission = 'documents:read' | 'annotations:write' | 'network' | 'storage'
+
+interface PluginCommand {
+  id: string
+  title: string
+  description?: string
+}
+
+interface PluginInfo {
+  id: string
+  name: string
+  version: string
+  description?: string
+  permissions: PluginPermission[]
+  commands: PluginCommand[]
+  enabled: boolean
+  compatible: boolean
+}
+
+interface PluginIssue {
+  directoryName: string
+  message: string
+}
+
+interface PluginListResult {
+  plugins: PluginInfo[]
+  issues: PluginIssue[]
+}
+
 interface SettingsPatch {
   theme?: AppTheme
   ai?: {
@@ -106,6 +135,9 @@ const api = {
   },
   listTools: () => ipcRenderer.invoke('tools:list'),
   executeTool: (name: string, input: unknown) => ipcRenderer.invoke('tools:execute', name, input),
+  listPlugins: (): Promise<PluginListResult> => ipcRenderer.invoke('plugins:list'),
+  setPluginEnabled: (id: string, enabled: boolean): Promise<PluginInfo> =>
+    ipcRenderer.invoke('plugins:setEnabled', id, enabled),
   onAiChunk: (callback: (payload: AiChunk) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, payload: AiChunk): void => {
       callback(payload)

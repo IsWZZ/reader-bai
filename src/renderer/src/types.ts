@@ -96,6 +96,37 @@ export interface ToolResult {
   isError?: boolean
 }
 
+export type PluginPermission = 'documents:read' | 'annotations:write' | 'network' | 'storage'
+
+export interface PluginCommand {
+  id: string
+  title: string
+  description?: string
+}
+
+export interface PluginInfo {
+  id: string
+  name: string
+  version: string
+  description?: string
+  /** manifest 中声明的权限，不代表已经授予 */
+  permissions: PluginPermission[]
+  commands: PluginCommand[]
+  /** 用户已启用且与当前宿主版本兼容 */
+  enabled: boolean
+  compatible: boolean
+}
+
+export interface PluginIssue {
+  directoryName: string
+  message: string
+}
+
+export interface PluginListResult {
+  plugins: PluginInfo[]
+  issues: PluginIssue[]
+}
+
 /** 主进程流式返回的增量片段 */
 export interface AiChunk {
   requestId: string

@@ -43,12 +43,13 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 - `views/Home.vue` 外壳；`LibraryPanel.vue` 书库；`PdfViewer.vue` 渲染/选词/标注（改动前读 [docs/pdf-viewer.md](docs/pdf-viewer.md)）。
 - `AssistantPanel.vue` + `store/assistant.ts` 翻译与 AI 对话；`lib/agent-loop.ts` 是第一方 agent 循环，通过 `window.api.chatWithTools` 和 `executeTool` 使用平台能力。`SettingsDialog.vue` + `store/settings.ts` 主题、多 AI 配置与论文库存储位置。
 - `src/main/platform-tools.ts` 注册平台工具（`library.list`、`paper.get`、`paper.readPage`、`annotations.list/add/remove`）；`src/main/ipc/tools.ts` 提供 `tools:list/execute`，写/删除操作由主进程在执行边界确认；`src/main/pdf-text.ts` 负责主进程侧的 PDF 单页文本提取。
+- `src/main/plugins/` 是 C 层插件宿主的基础：`manifest.ts` 校验 manifest，`discovery.ts` 扫描 `userData/plugins`，`host.ts` 管理启用状态（默认关闭、写入 `plugins.json`）；`ipc/plugins.ts` 提供 `plugins:list/setEnabled`。目前只发现和启停，不执行插件代码。
 - `components/ui/**` 为 shadcn-vue 生成代码；`lib/pdf.ts` 管 worker 与元数据；`types.ts` 是渲染侧类型副本。
 - 测试：`tests/unit|component`（Vitest，mock `window.api`）、`tests/e2e`（Playwright，独立 `--user-data-dir`）；约定见 [docs/testing.md](docs/testing.md)。
 
 ### IPC 与数据
 
-通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`dialog:chooseDirectory`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId, toolNames?）、`ai:abort`、`ai:chunk`、`tools:list`、`tools:execute`。
+通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`dialog:chooseDirectory`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId, toolNames?）、`ai:abort`、`ai:chunk`、`tools:list`、`tools:execute`、`plugins:list`、`plugins:setEnabled`。
 
 - `settings.json` 为 `{ theme, ai: { profiles: [{ id, baseUrl, apiKey, apiKeyEncrypted, model }], activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`（不回写）；`settings:update` 接受部分补丁；`library.directory` 只接受绝对路径，空字符串表示默认的 `userData/papers`。
 - `library.json` 为 `{ spaces, papers }`，保持 `normalizeLibrary` 旧格式迁移；`annotations.json` 以论文路径为键；移除论文/空间不删 PDF。
