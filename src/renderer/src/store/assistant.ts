@@ -238,7 +238,17 @@ export const useAssistantStore = defineStore('assistant', () => {
   const setAutoTranslate = (enabled: boolean): void => {
     if (autoTranslate === enabled) return
     autoTranslate = enabled
-    if (enabled && pendingSource) scheduleTranslation(pendingSource)
+
+    if (enabled) {
+      if (pendingSource) scheduleTranslation(pendingSource)
+      return
+    }
+
+    // 关闭面板时取消还没发出的防抖请求；选区保留，重新打开后再翻译
+    if (translateTimer) {
+      clearTimeout(translateTimer)
+      translateTimer = undefined
+    }
   }
 
   /** 切换论文时清空译文和待翻译选区，聊天记录保留 */

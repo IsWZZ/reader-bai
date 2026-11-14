@@ -440,6 +440,55 @@ describe('assistant store', () => {
     expect(chat).toHaveBeenCalledTimes(1)
   })
 
+  it('translates only the latest selection when they arrive within the debounce', async () => {
+    pendingChat()
+    const store = useAssistantStore()
+    store.initialize()
+    store.setAutoTranslate(true)
+
+    store.handleSelection('first')
+    await vi.advanceTimersByTimeAsync(100)
+    store.handleSelection('second')
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect(chat.mock.calls[0][1][1]).toEqual({ role: 'user', content: 'second' })
+  })
+
+  it('cancels a pending translation when the panel closes and retries on reopen', async () => {
+    pendingChat()
+    const store = useAssistantStore()
+    store.initialize()
+    store.setAutoTranslate(true)
+
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(100)
+    store.setAutoTranslate(false)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).not.toHaveBeenCalled()
+
+    store.setAutoTranslate(true)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect(chat.mock.calls[0][1][1]).toEqual({ role: 'user', content: 'hello' })
+  })
+
+  it('cancels a pending translation when the paper changes', async () => {
+    const store = useAssistantStore()
+    store.initialize()
+    store.setAutoTranslate(true)
+
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(100)
+    store.resetTranslation()
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).not.toHaveBeenCalled()
+    expect(store.translation).toBeNull()
+  })
+
   it('drops the remembered selection when the paper changes', async () => {
     const store = useAssistantStore()
     store.initialize()

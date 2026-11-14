@@ -21,6 +21,7 @@ const importPaper = vi.fn<(spaceId?: string | null) => Promise<Paper | null>>()
 const readPaper = vi.fn<(path: string) => Promise<Uint8Array>>()
 
 const SPACE: Space = { id: 'space-ml', name: '机器学习', createdAt: 1 }
+const NLP_SPACE: Space = { id: 'space-nlp', name: '自然语言处理', createdAt: 2 }
 const EMPTY: LibraryData = { spaces: [], papers: [] }
 
 const paper = (overrides: Partial<Paper> & Pick<Paper, 'id' | 'title'>): Paper => ({
@@ -46,7 +47,8 @@ const installApi = (): void => {
   } as unknown as Api
 }
 
-const mountPanel = (): VueWrapper => mount(LibraryPanel, { props: { width: 280 } })
+const mountPanel = (searchQuery?: string): VueWrapper =>
+  mount(LibraryPanel, { props: { width: 280, searchQuery } })
 
 const buttonByText = (wrapper: VueWrapper, text: string): DOMWrapper<Element> | undefined =>
   wrapper.findAll('button').find((button) => button.text().trim() === text)
@@ -104,6 +106,72 @@ describe('LibraryPanel', () => {
     await clickButton(wrapper, 'Paper A')
 
     expect(wrapper.emitted('selectPaper')?.[0]).toEqual([target])
+  })
+
+  it('filters papers by title or file name and hides empty spaces', async () => {
+    const attention = paper({
+      id: 'paper-1',
+      title: 'Attention Is All You Need',
+      fileName: '1706.03762.pdf',
+      spaceId: SPACE.id
+    })
+    const bert = paper({
+      id: 'paper-2',
+      title: 'BERT',
+      fileName: 'bert-pretraining.pdf',
+      spaceId: NLP_SPACE.id
+    })
+    listPapers.mockResolvedValue({ spaces: [SPACE, NLP_SPACE], papers: [attention, bert] })
+
+    const wrapper = mountPanel('attention')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Attention Is All You Need')
+    expect(wrapper.text()).not.toContain('BERT')
+    expect(wrapper.text()).not.toContain('自然语言处理')
+
+    await wrapper.setProps({ searchQuery: 'bert-pretraining' })
+    expect(wrapper.text()).toContain('BERT')
+    expect(wrapper.text()).not.toContain('Attention Is All You Need')
+    expect(wrapper.text()).not.toContain('机器学习')
+
+    await clickButton(wrapper, 'BERT')
+    expect(wrapper.emitted('selectPaper')?.[0]).toEqual([bert])
+  })
+
+  it('shows the no-results state for a query without matches', async () => {
+    listPapers.mockResolvedValue({
+      spaces: [SPACE],
+      papers: [paper({ id: 'paper-1', title: 'Attention Is All You Need', spaceId: SPACE.id })]
+    })
+
+    const wrapper = mountPanel('quantum')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('没有匹配“quantum”的论文')
+
+    await wrapper.setProps({ searchQuery: '' })
+    expect(wrapper.text()).toContain('Attention Is All You Need')
+  })
+
+  it('expands collapsed spaces while searching', async () => {
+    const target = paper({ id: 'paper-1', title: 'Paper A', spaceId: SPACE.id })
+    listPapers.mockResolvedValue({ spaces: [SPACE], papers: [target] })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    const spaceToggle = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes(SPACE.name))
+    if (!spaceToggle) throw new Error('space toggle not found')
+    await spaceToggle.trigger('click')
+
+    // v-show 加在分组内容容器上；jsdom 的 getComputedStyle 不会继承父级 display
+    const content = wrapper.get('[data-slot="sidebar-group-content"]')
+    expect(content.attributes('style')).toContain('display: none')
+
+    await wrapper.setProps({ searchQuery: 'paper' })
+    expect(content.attributes('style') ?? '').not.toContain('display: none')
   })
 
   it('creates a space from the inline input', async () => {

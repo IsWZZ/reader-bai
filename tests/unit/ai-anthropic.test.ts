@@ -12,6 +12,7 @@ interface FakeResponseInit {
   status?: number
   contentType?: string
   text?: string
+  textRejects?: boolean
   json?: unknown
   chunks?: string[]
 }
@@ -37,7 +38,10 @@ const fakeResponse = (init: FakeResponseInit = {}): Response => {
       get: (name: string) =>
         name.toLowerCase() === 'content-type' ? (init.contentType ?? 'text/event-stream') : null
     },
-    text: async () => init.text ?? '',
+    text: async () => {
+      if (init.textRejects) throw new Error('stream closed')
+      return init.text ?? ''
+    },
     json: async () => init.json,
     body
   } as unknown as Response
@@ -152,6 +156,24 @@ describe('toAnthropicMessages', () => {
     })
   })
 
+  it('skips empty messages and handles tool results without content', () => {
+    const converted = toAnthropicMessages([
+      { role: 'assistant', content: '' },
+      { role: 'user', content: '' },
+      { role: 'tool', content: null, tool_call_id: 'toolu_1' },
+      { role: 'tool', content: 'orphan result' }
+    ])
+
+    expect(converted).toEqual({
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '' }]
+        }
+      ]
+    })
+  })
+
   it('merges adjacent same-role messages and keeps assistant text', () => {
     const converted = toAnthropicMessages([
       { role: 'user', content: 'first' },
@@ -203,6 +225,17 @@ describe('toAnthropicTools', () => {
         }
       }
     ])
+  })
+
+  it('omits an empty description', () => {
+    expect(
+      toAnthropicTools([
+        {
+          type: 'function',
+          function: { name: 'paper.readPage', parameters: { type: 'object' } }
+        }
+      ])
+    ).toEqual([{ name: 'paper.readPage', input_schema: { type: 'object' } }])
   })
 })
 
@@ -265,6 +298,119 @@ describe('streamAnthropic', () => {
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(JSON.parse(String(init.body))).toMatchObject({ max_tokens: 4096 })
+  })
+
+  it('rejects a blank base URL before calling fetch', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(streamAnthropic({ ...baseOptions(), baseUrl: '   ' })).rejects.toThrow(
+      'AI 服务地址未配置'
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts text delivered in content_block_start', async () => {
+    const deltas: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            sse({ type: 'content_block_start', index: 0 }),
+            sse({
+              type: 'content_block_start',
+              content_block: { type: 'text', text: '开头' }
+            }),
+            sse({
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: '结尾' }
+            }),
+            MESSAGE_STOP
+          ]
+        })
+      )
+    )
+
+    const result = await streamAnthropic({
+      ...baseOptions(),
+      onDelta: (delta) => deltas.push(delta)
+    })
+
+    expect(result.text).toBe('开头结尾')
+    expect(deltas).toEqual(['开头', '结尾'])
+  })
+
+  it('reads stop_reason from message_start', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            sse({ type: 'message_start', message: { stop_reason: 'max_tokens' } }),
+            MESSAGE_STOP
+          ]
+        })
+      )
+    )
+
+    const result = await streamAnthropic(baseOptions())
+
+    expect(result.finishReason).toBe('length')
+  })
+
+  it('ignores comments, malformed JSON, event lines and [DONE]', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            ': keep-alive\n\n',
+            'event: content_block_delta\n\n',
+            'data: not-json\n\n',
+            'data: [DONE]\n\n',
+            sse({ type: 'content_block_delta' }),
+            sse({
+              type: 'content_block_start',
+              index: 1,
+              content_block: { type: 'tool_use' }
+            }),
+            sse({
+              type: 'content_block_delta',
+              delta: { type: 'input_json_delta', partial_json: '{}' }
+            }),
+            sse({
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: 'ok' }
+            }),
+            MESSAGE_STOP
+          ]
+        })
+      )
+    )
+
+    const result = await streamAnthropic(baseOptions())
+
+    expect(result.text).toBe('ok')
+  })
+
+  it('keeps a final event that arrives without a trailing newline', async () => {
+    const finalLine = `data: ${JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: 'tail' }
+    })}`
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => fakeResponse({ chunks: [finalLine] }))
+    )
+
+    const result = await streamAnthropic(baseOptions())
+
+    expect(result.text).toBe('tail')
+    expect(result.finishReason).toBe('stop')
   })
 
   it('streams text deltas until message_stop', async () => {
@@ -382,6 +528,36 @@ describe('streamAnthropic', () => {
     expect(result.toolCalls.map((call) => call.id)).toEqual(['toolu_a', 'toolu_b'])
   })
 
+  it('generates an id when content_block_start omits one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            sse({
+              type: 'content_block_start',
+              index: 0,
+              content_block: { type: 'tool_use', name: 'library.search' }
+            }),
+            sse({
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'input_json_delta', partial_json: '{"query":"x"}' }
+            }),
+            sse({ type: 'message_delta', delta: { stop_reason: 'tool_use' } }),
+            MESSAGE_STOP
+          ]
+        })
+      )
+    )
+
+    const result = await streamAnthropic(baseOptions())
+
+    expect(result.toolCalls).toEqual([
+      { id: 'toolu_0', name: 'library.search', arguments: '{"query":"x"}' }
+    ])
+  })
+
   it('falls back to a non-streaming JSON response', async () => {
     vi.stubGlobal(
       'fetch',
@@ -412,6 +588,55 @@ describe('streamAnthropic', () => {
       { id: 'toolu_2', name: 'paper.readPage', arguments: '{"page":3}' }
     ])
     expect(deltas).toEqual(['完整回复'])
+  })
+
+  it('finalizes non-stream tool calls without ids or arguments', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          contentType: 'application/json',
+          json: {
+            type: 'message',
+            content: [
+              { type: 'tool_use', name: 'paper.readPage', input: { page: 3 } },
+              { type: 'tool_use', name: 'library.search' },
+              { type: 'tool_use', input: { query: 'x' } }
+            ],
+            stop_reason: 'tool_use'
+          }
+        })
+      )
+    )
+
+    const result = await streamAnthropic(baseOptions())
+
+    expect(result.toolCalls).toEqual([
+      { id: 'toolu_0', name: 'paper.readPage', arguments: '{"page":3}' },
+      { id: 'toolu_1', name: 'library.search', arguments: '{}' }
+    ])
+    expect(result.finishReason).toBe('tool_calls')
+  })
+
+  it('downgrades tool_use when no valid tool call remains', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          contentType: 'application/json',
+          json: {
+            type: 'message',
+            content: [{ type: 'tool_use', input: {} }],
+            stop_reason: 'tool_use'
+          }
+        })
+      )
+    )
+
+    const result = await streamAnthropic(baseOptions())
+
+    expect(result.toolCalls).toEqual([])
+    expect(result.finishReason).toBe('stop')
   })
 
   it('maps max_tokens to a length finish reason', async () => {
@@ -449,6 +674,21 @@ describe('streamAnthropic', () => {
     expect((error as Error).message).not.toContain('sk-ant-secret')
   })
 
+  it('falls back to the error type and then to a generic message', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        fakeResponse({ chunks: [sse({ type: 'error', error: { type: 'overloaded_error' } })] })
+      )
+      .mockResolvedValueOnce(fakeResponse({ chunks: [sse({ type: 'error' })] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(streamAnthropic(baseOptions())).rejects.toThrow(
+      'AI 服务返回错误：overloaded_error'
+    )
+    await expect(streamAnthropic(baseOptions())).rejects.toThrow('AI 服务返回错误：未知错误')
+  })
+
   it('reports HTTP errors without leaking the key', async () => {
     vi.stubGlobal(
       'fetch',
@@ -460,6 +700,33 @@ describe('streamAnthropic', () => {
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).message).toContain('AI 服务返回 401')
     expect((error as Error).message).not.toContain('sk-ant-secret')
+  })
+
+  it('reports the status when the error body cannot be read', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => fakeResponse({ status: 500, textRejects: true }))
+    )
+
+    await expect(streamAnthropic(baseOptions())).rejects.toThrow('AI 服务返回 500:')
+  })
+
+  it('returns an aborted result when the caller signal is already aborted', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            if (init.signal?.aborted) reject(new DOMException('Aborted', 'AbortError'))
+          })
+      )
+    )
+
+    await expect(streamAnthropic({ ...baseOptions(), signal: controller.signal })).resolves.toEqual(
+      { text: '', toolCalls: [], finishReason: 'aborted' }
+    )
   })
 
   it('returns the partial text when the caller aborts', async () => {

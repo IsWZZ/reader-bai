@@ -1,6 +1,6 @@
 <template>
   <div class="flex flex-col h-screen bg-background overflow-hidden p-2 gap-1">
-    <Toolbar />
+    <Toolbar v-model:search-query="searchQuery" />
     <div class="flex flex-1 overflow-hidden gap-0.5">
       <ActivityBar
         :is-library-open="isLibraryOpen"
@@ -12,6 +12,7 @@
         v-if="isLibraryOpen"
         v-model:width="libraryWidth"
         :current-paper-id="currentPaper?.id"
+        :search-query="searchQuery"
         @select-paper="handleSelectPaper"
       />
       <!-- 拖拽分隔符 -->
@@ -62,6 +63,8 @@ const libraryWidth = ref(256)
 const minWidth = 200
 const maxWidth = 500
 const currentPaper = ref<Paper | null>(null)
+// 顶部搜索框控制书库面板的过滤
+const searchQuery = ref('')
 
 const assistantStore = useAssistantStore()
 const isAssistantOpen = ref(false)
@@ -75,6 +78,11 @@ onMounted(() => {
 
 // 面板关闭时只记录选区；打开后再翻译最近一次选区
 watch(isAssistantOpen, (open) => assistantStore.setAutoTranslate(open), { immediate: true })
+
+// 检索时确保书库可见，否则结果无处展示
+watch(searchQuery, (query) => {
+  if (query.trim()) isLibraryOpen.value = true
+})
 
 // 切换论文时清空译文，聊天记录保留
 watch(

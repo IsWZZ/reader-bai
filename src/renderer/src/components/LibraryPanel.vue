@@ -67,6 +67,20 @@
               <p class="text-xs text-muted-foreground/70 mt-1">{{ t('library.emptyHint') }}</p>
             </div>
 
+            <!-- 检索无结果 -->
+            <div
+              v-else-if="loaded && searching && !hasSearchResults"
+              class="flex flex-col items-center justify-center h-full text-center p-6"
+            >
+              <SearchX class="size-12 text-muted-foreground/40 mb-3" />
+              <p class="text-sm text-muted-foreground">
+                {{ t('library.search.empty', { query: searchTerm }) }}
+              </p>
+              <p class="text-xs text-muted-foreground/70 mt-1">
+                {{ t('library.search.emptyHint') }}
+              </p>
+            </div>
+
             <!-- 空间与论文 -->
             <SidebarGroup
               v-for="group in groups"
@@ -265,17 +279,13 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  SearchX,
   Trash2
 } from 'lucide-vue-next'
 import { t } from '@renderer/lib/i18n'
+import { filterPapers } from '@renderer/lib/library-search'
 import { readPdfTitle } from '@renderer/lib/pdf'
 import type { LibraryData, Paper, Space } from '@renderer/types'
-
-// 从父组件接收宽度
-defineProps<{
-  width: number
-  currentPaperId?: string | null
-}>()
 
 const emit = defineEmits<{
   selectPaper: [paper: Paper]
@@ -294,6 +304,16 @@ const spaces = ref<Space[]>([])
 const papers = ref<Paper[]>([])
 // 折叠的空间（按分组 key 记录）
 const collapsedGroups = ref(new Set<string>())
+// 检索词来自顶部搜索栏；这里只过滤已加载的标题/文件名，不请求主进程
+const props = defineProps<{
+  width: number
+  currentPaperId?: string | null
+  searchQuery?: string
+}>()
+const searchTerm = computed(() => (props.searchQuery ?? '').trim())
+const searching = computed(() => searchTerm.value.length > 0)
+const visiblePapers = computed(() => filterPapers(papers.value, props.searchQuery ?? ''))
+const hasSearchResults = computed(() => visiblePapers.value.length > 0)
 
 // 新建/重命名空间的临时输入状态
 const creatingSpace = ref(false)
@@ -312,9 +332,9 @@ const groups = computed<PaperGroup[]>(() => {
     key: space.id,
     space,
     name: space.name,
-    papers: papers.value.filter((paper) => paper.spaceId === space.id)
+    papers: visiblePapers.value.filter((paper) => paper.spaceId === space.id)
   }))
-  const unassigned = papers.value.filter(
+  const unassigned = visiblePapers.value.filter(
     (paper) => !paper.spaceId || !spaces.value.some((space) => space.id === paper.spaceId)
   )
   if (unassigned.length > 0) {
@@ -325,7 +345,8 @@ const groups = computed<PaperGroup[]>(() => {
       papers: unassigned
     })
   }
-  return result
+  // 检索时只保留有命中的空间，避免整列空分组
+  return searching.value ? result.filter((group) => group.papers.length > 0) : result
 })
 
 const moveTargets = computed<{ id: string | null; name: string }[]>(() => [
@@ -338,7 +359,8 @@ const applyState = (state: LibraryData): void => {
   papers.value = state.papers
 }
 
-const isCollapsed = (key: string): boolean => collapsedGroups.value.has(key)
+// 检索时强制展开，否则命中结果可能被折叠的空间挡住
+const isCollapsed = (key: string): boolean => !searching.value && collapsedGroups.value.has(key)
 
 const toggleGroup = (key: string): void => {
   const next = new Set(collapsedGroups.value)

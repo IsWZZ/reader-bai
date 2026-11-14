@@ -11,6 +11,7 @@ import Home from '@renderer/views/Home.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
+import Toolbar from '@renderer/components/Toolbar.vue'
 import { useSettingsStore } from '@renderer/store/settings'
 import type { AiProfile, AppSettings, ChatMessage, Paper } from '@renderer/types'
 
@@ -59,6 +60,44 @@ const openAssistant = async (wrapper: VueWrapper): Promise<void> => {
   wrapper.findComponent(ActivityBar).vm.$emit('toggle-assistant')
   await wrapper.vm.$nextTick()
 }
+
+const setSearch = async (wrapper: VueWrapper, value: string): Promise<void> => {
+  wrapper.findComponent(Toolbar).vm.$emit('update:searchQuery', value)
+  await wrapper.vm.$nextTick()
+}
+
+describe('Home search wiring', () => {
+  beforeEach(async () => {
+    setActivePinia(createPinia())
+    window.api = {
+      getSettings: vi.fn(async () => structuredClone(SETTINGS)),
+      updateSettings: vi.fn(),
+      onAiChunk: vi.fn(() => vi.fn()),
+      onAgentEvent: vi.fn(() => vi.fn())
+    } as unknown as Api
+    await useSettingsStore().initialize()
+  })
+
+  it('passes the toolbar query to the library panel', async () => {
+    const wrapper = mountHome()
+
+    await setSearch(wrapper, 'attention')
+
+    expect(wrapper.findComponent(LibraryPanel).props('searchQuery')).toBe('attention')
+  })
+
+  it('opens the library when a query is entered', async () => {
+    const wrapper = mountHome()
+    wrapper.findComponent(ActivityBar).vm.$emit('toggle-library')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent(LibraryPanel).exists()).toBe(false)
+
+    await setSearch(wrapper, 'attention')
+
+    expect(wrapper.findComponent(LibraryPanel).exists()).toBe(true)
+    expect(wrapper.findComponent(LibraryPanel).props('searchQuery')).toBe('attention')
+  })
+})
 
 describe('Home selection wiring', () => {
   beforeEach(async () => {

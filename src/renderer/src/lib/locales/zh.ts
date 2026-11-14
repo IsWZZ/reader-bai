@@ -90,6 +90,8 @@ export const zh = {
   'home.empty': '选择论文开始阅读',
 
   'library.title': '论文库',
+  'library.search.empty': '没有匹配“{query}”的论文',
+  'library.search.emptyHint': '试试标题或文件名中的其他关键词',
   'library.newSpace': '新建空间',
   'library.importPaper': '导入论文',
   'library.spaceNamePlaceholder': '空间名称',
@@ -164,6 +166,8 @@ export const zh = {
   'plugins.error.update': '更新插件状态失败',
 
   'toolbar.search': '搜索论文…',
+  'toolbar.searchLabel': '搜索论文',
+  'toolbar.clearSearch': '清除搜索',
   'toolbar.home': '首页',
   'toolbar.reading': '阅读'
 } as const

@@ -101,6 +101,8 @@ export const en = {
   'home.empty': 'Select a paper to start reading',
 
   'library.title': 'Library',
+  'library.search.empty': 'No papers match “{query}”',
+  'library.search.emptyHint': 'Try another keyword from the title or file name',
   'library.newSpace': 'New space',
   'library.importPaper': 'Import paper',
   'library.spaceNamePlaceholder': 'Space name',
@@ -177,6 +179,8 @@ export const en = {
   'plugins.error.update': 'Could not update the plugin state',
 
   'toolbar.search': 'Search papers…',
+  'toolbar.searchLabel': 'Search papers',
+  'toolbar.clearSearch': 'Clear search',
   'toolbar.home': 'Home',
   'toolbar.reading': 'Reading'
 } satisfies LocaleMessages

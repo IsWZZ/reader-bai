@@ -27,6 +27,7 @@ src/renderer/src/
 ```
 
 - `Home.vue` 只做外壳和面板编排；`PdfViewer.vue` 只负责阅读/选词/标注。
+- 书库检索：输入框在 `Toolbar.vue`，`Home.vue` 持有查询词并传给 `LibraryPanel.vue`，只按已加载的标题/文件名过滤；不要为此新增 IPC 或解析 PDF 全文（全文索引属于 B 层知识库）。
 - 新功能做成独立组件 + store，通过 props/事件与外壳通信；不要塞进 `Home.vue` 或 `PdfViewer.vue`。
 - 功能之间不互相 import store；需要共享时用平台 API、事件或独立 lib。
 - Pinia 使用 setup store；异步操作自己维护 `loading` / `error`，组件卸载或面板关闭时解除监听和计时器。
