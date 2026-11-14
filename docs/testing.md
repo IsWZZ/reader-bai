@@ -30,10 +30,10 @@ npm run test:all         # lint + typecheck + 单元测试 + E2E
 - **始终针对构建产物**：`npm run test:e2e` 会先执行 `npm run build`，Playwright 启动 `out/main/index.js`。改完代码后不要直接跑 `npx playwright test`，除非确认 `out/` 是最新的。
 - **数据隔离**：`tests/e2e/helpers.ts` 的 `launchReader()` 会为每个测试创建临时 `userData` 目录，并通过 `--user-data-dir` 传入。禁止让测试读写 `~/Library/Application Support/reader-bai` 等真实用户目录。
 - 环境变量 `ELECTRON_RUN_AS_NODE` 会让 Electron 以 Node 模式运行，`launchReader()` 会主动剔除；手动启动时也要用 `env -u ELECTRON_RUN_AS_NODE`。
-- 测试数据用 `writeSamplePdf()` 现场生成最小 PDF，再用 `userData/data/library.json` 播种论文库；不要依赖仓库外部的 PDF 文件。
+- 测试数据用 `writeSamplePdf()` 现场生成最小 PDF，再用 `userData/Userdata/library.json` 播种论文库；不要依赖仓库外部的 PDF 文件。
 - 原生文件选择框无法直接点击：需要测试导入流程时，用 `electronApp.evaluate(({ dialog }) => { ... })` 替换 `dialog.showOpenDialog`，再触发 UI。
 - 断言优先使用角色和可见文本（`getByRole`、`getByLabel`、对话框的 `role="dialog"`）；图标按钮必须提供 `aria-label`。
-- 主题、AI 配置等持久化断言：先 `expect.poll` 读取 `userData/data` 下的 JSON 文件，再重启应用验证回填，避免只测内存状态。
+- 主题、AI 配置等持久化断言：先 `expect.poll` 读取 `userData/Userdata` 下的 JSON 文件，再重启应用验证回填，避免只测内存状态。
 - CI（`.github/workflows/ci.yml`）在 Linux 上依次执行 lint、typecheck、build、单元测试，并用 `xvfb-run -a npx playwright test` 跑 E2E；`launchReader()` 在 CI 下会自动追加 `--no-sandbox`。
 
 ## 新增功能时

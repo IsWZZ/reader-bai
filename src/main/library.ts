@@ -63,12 +63,11 @@ const normalizePaper = (raw: unknown): PaperInfo | null => {
   return paper
 }
 
-// 兼容旧版 library.json（纯论文数组），并补齐新增字段
+// 校验 library.json 结构，补齐缺失字段并丢弃无效条目
 export const normalizeLibrary = (parsed: unknown): LibraryState => {
-  const legacyPapers = Array.isArray(parsed) ? parsed : null
   const state = (parsed && typeof parsed === 'object' ? parsed : {}) as Partial<LibraryState>
   const spaces: SpaceInfo[] = []
-  if (!legacyPapers && Array.isArray(state.spaces)) {
+  if (Array.isArray(state.spaces)) {
     spaces.push(
       ...state.spaces.filter(
         (space): space is SpaceInfo =>
@@ -77,7 +76,7 @@ export const normalizeLibrary = (parsed: unknown): LibraryState => {
     )
   }
   const spaceIds = new Set(spaces.map((space) => space.id))
-  const rawPapers = legacyPapers ?? (Array.isArray(state.papers) ? state.papers : [])
+  const rawPapers = Array.isArray(state.papers) ? state.papers : []
   const papers = rawPapers.map(normalizePaper).filter((paper): paper is PaperInfo => paper !== null)
   for (const paper of papers) {
     if (paper.spaceId && !spaceIds.has(paper.spaceId)) paper.spaceId = null

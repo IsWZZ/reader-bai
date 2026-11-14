@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog } from 'electron'
+import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import packageJson from '../../package.json'
@@ -10,7 +11,7 @@ import { createPluginHost } from './plugins/host'
 import { createPluginRuntime } from './plugins/runtime'
 import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
-import { createUserDataPaths, migrateLegacyUserData } from './user-data'
+import { createUserDataPaths } from './user-data'
 import { createWindow } from './window'
 import { registerAiIpc } from './ipc/ai'
 import { registerAnnotationsIpc } from './ipc/annotations'
@@ -38,12 +39,12 @@ app.whenReady().then(async () => {
   const userData = app.getPath('userData')
   const paths = createUserDataPaths(userData)
   try {
-    await migrateLegacyUserData(userData)
+    await mkdir(paths.dataRoot, { recursive: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     dialog.showErrorBox(
-      '无法迁移用户数据',
-      `应用无法把旧数据迁移到 ${paths.dataRoot}，将退出以避免读写不完整的数据。\n\n${message}`
+      '无法创建用户数据目录',
+      `应用无法创建 ${paths.dataRoot}，将退出以避免读写不完整的数据。\n\n${message}`
     )
     app.quit()
     return

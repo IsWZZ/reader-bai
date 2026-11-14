@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { access, mkdir, writeFile } from 'node:fs/promises'
+import { access, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
@@ -50,7 +50,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const settingsFile = (): string => join(userDataDir, 'data', 'settings.json')
+const settingsFile = (): string => join(userDataDir, 'Userdata', 'settings.json')
 
 const openSettings = async (page: ReaderInstance['page']): Promise<Locator> => {
   await page.getByRole('button', { name: '设置' }).click()
@@ -115,7 +115,7 @@ test('copies imported PDFs into the configured library directory', async () => {
 
   // 未配置时显示应用数据目录下的默认位置
   await expect(dialog.locator('#library-directory')).toHaveValue(
-    join(userDataDir, 'data', 'papers')
+    join(userDataDir, 'Userdata', 'papers')
   )
 
   await stubOpenDirectoryDialog(reader.app, customDirectory)
@@ -134,8 +134,8 @@ test('copies imported PDFs into the configured library directory', async () => {
   await expect
     .poll(
       async () =>
-        (await readJsonFile<StoredLibrary>(join(userDataDir, 'data', 'library.json')))?.papers[0]
-          ?.path
+        (await readJsonFile<StoredLibrary>(join(userDataDir, 'Userdata', 'library.json')))
+          ?.papers[0]?.path
     )
     .toBe(storedPath)
   await expect(access(storedPath)).resolves.toBeUndefined()
@@ -259,53 +259,6 @@ test('stores multiple AI profiles without losing the active one', async () => {
   await reader.app.close()
 })
 
-test('rewrites legacy AI settings into profiles when saved', async () => {
-  await writeFile(
-    settingsFile(),
-    JSON.stringify(
-      {
-        theme: 'light',
-        ai: {
-          baseUrl: 'https://legacy.example/v1',
-          apiKey: 'sk-legacy',
-          apiKeyEncrypted: false,
-          model: 'legacy-model'
-        }
-      },
-      null,
-      2
-    ),
-    'utf8'
-  )
-
-  const reader = await launchReader(userDataDir)
-  const dialog = await openSettings(reader.page)
-  await dialog.getByRole('button', { name: 'AI 服务' }).click()
-
-  // 旧格式在内存中迁移成一条配置，直接出现在列表里
-  await expect(dialog.getByText('legacy-model · legacy.example')).toBeVisible()
-  await dialog.getByRole('button', { name: '编辑' }).click()
-  await expect(dialog.locator('#ai-base-url')).toHaveValue('https://legacy.example/v1')
-  await expect(dialog.locator('#ai-model')).toHaveValue('legacy-model')
-
-  await dialog.getByRole('button', { name: '保存' }).click()
-  await expect(dialog.getByText('已保存')).toBeVisible()
-
-  await expect
-    .poll(async () => (await readJsonFile<StoredSettings>(settingsFile()))?.ai.profiles?.length)
-    .toBe(1)
-
-  const stored = await readJsonFile<StoredSettings>(settingsFile())
-  expect(stored?.ai.profiles?.[0]).toMatchObject({
-    id: 'default',
-    baseUrl: 'https://legacy.example/v1',
-    apiKey: 'sk-legacy',
-    model: 'legacy-model'
-  })
-  expect(stored?.ai.activeId).toBe('default')
-  await reader.app.close()
-})
-
 test('warns when the system key store is unavailable', async () => {
   const reader = await launchReader(userDataDir)
 
@@ -408,7 +361,7 @@ test('rejects an invalid Base URL', async () => {
 })
 
 test('deletes local papers only after confirming uninstall', async () => {
-  const papersDirectory = join(userDataDir, 'data', 'papers')
+  const papersDirectory = join(userDataDir, 'Userdata', 'papers')
   await mkdir(papersDirectory, { recursive: true })
   const paperPath = join(papersDirectory, 'paper.pdf')
   await writeSamplePdf(paperPath)
@@ -416,13 +369,13 @@ test('deletes local papers only after confirming uninstall', async () => {
 
   const reader = await launchReader(userDataDir)
   const dialog = await openSettings(reader.page)
-  await dialog.getByRole('button', { name: '存储' }).click()
+  await dialog.getByRole('button', { name: '卸载' }).click()
 
   // 默认按钮是取消：论文和书库都保留
   await stubMessageBox(reader.app, 0)
   await dialog.getByRole('button', { name: '卸载并清除数据' }).click()
   await expect(access(paperPath)).resolves.toBeUndefined()
-  await expect(access(join(userDataDir, 'data', 'library.json'))).resolves.toBeUndefined()
+  await expect(access(join(userDataDir, 'Userdata', 'library.json'))).resolves.toBeUndefined()
   await expect(dialog.getByRole('button', { name: '卸载并清除数据' })).toBeEnabled()
 
   // 明确确认后删除论文和全部应用数据，并退出应用
@@ -437,7 +390,7 @@ test('deletes local papers only after confirming uninstall', async () => {
       return false
     }
   }
-  await expect.poll(() => exists(join(userDataDir, 'data'))).toBe(false)
+  await expect.poll(() => exists(join(userDataDir, 'Userdata'))).toBe(false)
   try {
     await reader.app.close()
   } catch {

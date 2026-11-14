@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { access, writeFile } from 'node:fs/promises'
+import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
@@ -46,7 +46,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const libraryFile = (): string => join(userDataDir, 'data', 'library.json')
+const libraryFile = (): string => join(userDataDir, 'Userdata', 'library.json')
 const readLibrary = (): Promise<StoredLibrary | null> => readJsonFile<StoredLibrary>(libraryFile())
 
 const createPaperPdf = async (name = 'paper.pdf'): Promise<string> => {
@@ -242,36 +242,6 @@ test('rejects invalid library operations', async () => {
   expect(listError).toContain('Paper not found in library')
   // 超长空间名会被截断到 60 个字符
   expect((await readLibrary())?.spaces[0]?.name).toHaveLength(60)
-
-  await reader.app.close()
-})
-
-test('migrates the legacy array-only library on the next write', async () => {
-  const pdfPath = join(userDataDir, 'legacy-sample.pdf')
-  await writeSamplePdf(pdfPath)
-  // 旧版本只存一个论文数组
-  await writeFile(libraryFile(), JSON.stringify([{ path: pdfPath }]), 'utf8')
-
-  const reader = await launchReader(userDataDir)
-  await expect(
-    reader.page.getByRole('button', { name: 'legacy-sample', exact: true })
-  ).toBeVisible()
-
-  await reader.page.getByRole('button', { name: '新建空间' }).click()
-  const input = reader.page.getByPlaceholder('空间名称')
-  await input.fill('Legacy Space')
-  await input.press('Enter')
-
-  await expect.poll(async () => (await readLibrary())?.papers[0]?.id).toBeTruthy()
-  const library = await readLibrary()
-  expect(library?.spaces).toHaveLength(1)
-  expect(library?.papers[0]).toMatchObject({
-    title: 'legacy-sample',
-    fileName: 'legacy-sample.pdf',
-    path: pdfPath,
-    spaceId: null,
-    titleSource: 'file'
-  })
 
   await reader.app.close()
 })

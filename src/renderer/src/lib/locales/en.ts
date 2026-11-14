@@ -15,11 +15,13 @@ export const en = {
   'common.resetDefault': 'Reset to default',
 
   'settings.title': 'Settings',
-  'settings.description': 'Manage appearance, language, AI services, library and plugins',
+  'settings.description':
+    'Manage appearance, language, AI services, library and plugins, or uninstall the app',
   'settings.section.basic': 'General',
   'settings.section.libraryStorage': 'Storage',
   'settings.section.ai': 'AI Services',
   'settings.section.plugins': 'Plugins',
+  'settings.section.uninstall': 'Uninstall',
   'settings.basic.appearance.title': 'Appearance',
   'settings.basic.appearance.description': 'Choose a light or dark interface.',
   'settings.basic.theme.light': 'Light',
@@ -37,7 +39,7 @@ export const en = {
   'settings.library.error.pickerUnavailable':
     'Folder selection is not available in this environment',
   'settings.library.error.pickerFailed': 'Could not choose a folder',
-  'settings.storage.title': 'Electron cache',
+  'settings.storage.title': 'Clear cache',
   'settings.storage.description':
     'Clears the Chromium web cache, code cache and DNS cache. Library, annotations, settings and API keys are not deleted.',
   'settings.storage.clear': 'Clear cache',

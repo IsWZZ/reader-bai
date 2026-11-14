@@ -1,4 +1,4 @@
-// 设置文件的纯逻辑：清洗、旧格式迁移与 patch 合并。
+// 设置文件的纯逻辑：清洗与 patch 合并。
 // 刻意不依赖 electron，方便在 Vitest 中直接测试。
 
 import { isAbsolute } from 'node:path'
@@ -186,38 +186,16 @@ const normalizeStoredProfile = (
   }
 }
 
-/** 旧版 settings.json 只有一份 ai 配置，迁移成 id 为 default 的 profile */
-const normalizeLegacyProfile = (raw: Record<string, unknown>): StoredAiProfile | null => {
-  const encrypted = raw.apiKeyEncrypted === true
-  const apiKey = asString(raw.apiKey, encrypted ? MAX_STORED_KEY : MAX_API_KEY)
-  const profile: StoredAiProfile = {
-    id: 'default',
-    baseUrl: asString(raw.baseUrl, MAX_BASE_URL),
-    apiKey,
-    apiKeyEncrypted: encrypted && apiKey !== '',
-    model: asString(raw.model, MAX_MODEL)
-  }
-  if (!profile.baseUrl && !profile.apiKey && !profile.model) return null
-  return profile
-}
-
 export const normalizeStoredSettings = (raw: unknown): StoredSettings => {
   const source = objectOf(raw) ?? {}
   const ai = objectOf(source.ai) ?? {}
 
-  let profiles: StoredAiProfile[]
-  if (Array.isArray(ai.profiles)) {
-    const used = new Set<string>()
-    profiles = ai.profiles
-      .slice(0, MAX_PROFILES)
-      .map(objectOf)
-      .filter((item): item is Record<string, unknown> => item !== null)
-      .map((item, index) => normalizeStoredProfile(item, index, used))
-  } else {
-    // 只有没有 profiles 数组时才算旧格式；显式空数组不能回退到旧字段
-    const legacy = normalizeLegacyProfile(ai)
-    profiles = legacy ? [legacy] : []
-  }
+  const used = new Set<string>()
+  const profiles = (Array.isArray(ai.profiles) ? ai.profiles : [])
+    .slice(0, MAX_PROFILES)
+    .map(objectOf)
+    .filter((item): item is Record<string, unknown> => item !== null)
+    .map((item, index) => normalizeStoredProfile(item, index, used))
 
   const library = objectOf(source.library) ?? {}
 

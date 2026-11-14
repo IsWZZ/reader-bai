@@ -17,7 +17,7 @@ test('lists a library paper and renders it in the PDF viewer', async () => {
   const pdfPath = join(userDataDir, 'sample.pdf')
   await writeSamplePdf(pdfPath)
   await writeFile(
-    join(userDataDir, 'data', 'library.json'),
+    join(userDataDir, 'Userdata', 'library.json'),
     JSON.stringify({
       spaces: [],
       papers: [
@@ -58,7 +58,7 @@ test('creates a space from the library panel', async () => {
 
   await expect(page.getByText('机器学习')).toBeVisible()
 
-  const library = JSON.parse(await readFile(join(userDataDir, 'data', 'library.json'), 'utf8'))
+  const library = JSON.parse(await readFile(join(userDataDir, 'Userdata', 'library.json'), 'utf8'))
   expect(library.spaces).toHaveLength(1)
   expect(library.spaces[0].name).toBe('机器学习')
 

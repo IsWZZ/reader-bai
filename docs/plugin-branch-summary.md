@@ -88,7 +88,7 @@
 
 ### manifest 与发现
 
-插件放在 `userData/data/plugins/<目录>/manifest.json`，由 [manifest.ts](../src/main/plugins/manifest.ts) 与 [discovery.ts](../src/main/plugins/discovery.ts) 处理。
+插件放在 `userData/Userdata/plugins/<目录>/manifest.json`，由 [manifest.ts](../src/main/plugins/manifest.ts) 与 [discovery.ts](../src/main/plugins/discovery.ts) 处理。
 
 支持的 manifest 字段：
 
@@ -114,7 +114,7 @@
 - 未知字段一律拒绝，避免隐藏配置。
 - 权限白名单：`documents:read`、`annotations:write`、`network`、`storage`。
 - 发现阶段跳过符号链接；单个插件损坏只记录 issue，不影响其他插件和主程序启动。
-- 第三方插件默认关闭；启用状态写入 `userData/data/plugins.json`；版本不兼容时不能启用。
+- 第三方插件默认关闭；启用状态写入 `userData/Userdata/plugins.json`；版本不兼容时不能启用。
 
 ### 扩展宿主进程
 
@@ -205,7 +205,7 @@ interface PluginModule {
 - **插件宿主不是 OS 沙箱**：宿主进程仍有完整 Node 权限，manifest 权限只约束平台工具调用。当前决定是继续使用独立 `utilityProcess` 作为隔离边界，进一步限制放到后续阶段；在此之前只应安装可信插件。
 - **命令触发未接入**：`onCommand` 已在协议中保留，但宿主目前只激活 `onStartup`。
 - **participant 输出协议未接入**：插件还不能向聊天 UI 输出结构化消息、工具卡片或进度。
-- **安装流程未完成**：目前通过把插件目录放入 `userData/data/plugins` 安装，还没有市场、签名、哈希校验或权限安装确认。
+- **安装流程未完成**：目前通过把插件目录放入 `userData/Userdata/plugins` 安装，还没有市场、签名、哈希校验或权限安装确认。
 - **第一方 agent loop 仍在渲染进程**：它是模块化的第一方实现，还没有作为插件加载；后续可用于验证“loop 在插件、能力在平台”。
 - **B 层内置模块尚未落地**：当前新增的是平台能力、C 层宿主和第一方 agent 循环。
 

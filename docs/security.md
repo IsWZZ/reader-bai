@@ -33,7 +33,7 @@
 - `session.setPermissionRequestHandler` / `setPermissionCheckHandler` 默认拒绝摄像头、麦克风、通知、剪贴板等权限。
 - Preload 只暴露 `window.api`，不暴露 `electronAPI`、Node 或文件系统。
 - `paper:read` 校验路径属于论文库；`dialog:importPaper` 只接受文件对话框的结果，不接受渲染进程指定任意路径。
-- 导入时把文件复制到论文库目录（默认 `userData/data/papers`），目录只能通过 `dialog:chooseDirectory` 的原生对话框选择；`library.directory` 在主进程校验为绝对路径，非法值拒绝写入。
+- 导入时把文件复制到论文库目录（默认 `userData/Userdata/papers`），目录只能通过 `dialog:chooseDirectory` 的原生对话框选择；`library.directory` 在主进程校验为绝对路径，非法值拒绝写入。
 - 标注的新增和删除同样校验论文库归属。
 - AI 请求只在主进程发起（[ai.ts](../src/main/ai.ts)、[ipc/ai.ts](../src/main/ipc/ai.ts)），Key 不经过 `ai:chat` 参数；消息在进入主进程时校验角色、条数和总长度。
 - AI Base URL 只允许 HTTPS；仅 `localhost` / `127.0.0.1` / `[::1]` 可使用 HTTP，保存和发起请求时都会校验。
@@ -57,7 +57,7 @@
 6. **默认权限请求已拒绝。**
 7. **AI Base URL 已要求 HTTPS。** 只有本机回环地址可以使用 HTTP。
 8. **更改已有 Key 的配置地址需要原生确认。** 渲染进程无法绕过主进程的确认框把 Key 引到新主机；路径变化不触发确认。
-9. **卸载入口需要主进程原生确认。** `app:uninstall` 默认按钮为「取消」，文案明确提示本地论文副本、标注、设置和 Key 会被永久删除；确认后只删除当前论文库目录内已登记的普通文件，再清理 `userData/data` 和会话数据，导入前的原始 PDF 保留。符号链接和自定义论文库目录中的其他文件不会被删除。
+9. **卸载入口需要主进程原生确认。** `app:uninstall` 默认按钮为「取消」，文案明确提示本地论文副本、标注、设置和 Key 会被永久删除；确认后只删除当前论文库目录内已登记的普通文件，再清理 `userData/Userdata` 和会话数据，导入前的原始 PDF 保留。符号链接和自定义论文库目录中的其他文件不会被删除。
 10. **`annotations:list` 已补上论文库归属校验。** 与 `add` / `remove` 一致，非书库路径一律拒绝。
 11. **标注写入与读取都已逐字段校验。** id、类型、颜色、页码、文本长度和归一化坐标在主进程校验；读盘时坏条目被跳过，不会拖垮整个标注库。
 12. **`safeStorage` 明文降级已对用户可见。** 系统安全存储不可用时设置页提示 Key 将以明文保存；该设置文件仍不应纳入任何同步。

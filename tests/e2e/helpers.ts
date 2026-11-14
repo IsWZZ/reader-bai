@@ -18,11 +18,11 @@ const mainEntry = join(process.cwd(), 'out/main/index.js')
 /**
  * 每个测试使用独立的 userData 目录，避免污染真实用户数据和相互串扰。
  * macOS 的 /var 是 /private/var 的符号链接，Electron 返回真实路径，先统一掉。
- * 预先创建 data 目录，测试可以在启动应用前直接播种 library/settings 等文件。
+ * 预先创建 Userdata 目录，测试可以在启动应用前直接播种 library/settings 等文件。
  */
 export const createUserDataDir = async (): Promise<string> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'reader-bai-e2e-')))
-  await mkdir(join(dir, 'data'), { recursive: true })
+  await mkdir(join(dir, 'Userdata'), { recursive: true })
   return dir
 }
 
@@ -131,7 +131,7 @@ export async function seedLibrary(
     createdAt: paper.createdAt ?? Date.now()
   }))
   await writeFile(
-    join(userDataDir, 'data', 'library.json'),
+    join(userDataDir, 'Userdata', 'library.json'),
     JSON.stringify({ spaces, papers }, null, 2),
     'utf8'
   )

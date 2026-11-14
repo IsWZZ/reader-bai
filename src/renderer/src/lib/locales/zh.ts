@@ -15,11 +15,12 @@ export const zh = {
   'common.resetDefault': '恢复默认',
 
   'settings.title': '设置',
-  'settings.description': '调整应用外观、语言、AI 服务、论文库与插件',
+  'settings.description': '调整应用外观、语言、AI 服务、论文库与插件，或卸载应用',
   'settings.section.basic': '基础设置',
   'settings.section.libraryStorage': '存储',
   'settings.section.ai': 'AI 服务',
   'settings.section.plugins': '插件',
+  'settings.section.uninstall': '卸载',
   'settings.basic.appearance.title': '外观',
   'settings.basic.appearance.description': '选择界面的明暗风格。',
   'settings.basic.theme.light': '浅色',
@@ -33,7 +34,7 @@ export const zh = {
   'settings.library.removeNote': '从书库移除论文只会删除记录，不会删除此目录中的文件。',
   'settings.library.error.pickerUnavailable': '当前环境无法选择文件夹',
   'settings.library.error.pickerFailed': '选择文件夹失败',
-  'settings.storage.title': 'Electron 缓存',
+  'settings.storage.title': '清除缓存',
   'settings.storage.description':
     '清理 Chromium 的网页缓存、代码缓存和 DNS 缓存；不会删除书库、标注、设置或 API Key。',
   'settings.storage.clear': '清理缓存',

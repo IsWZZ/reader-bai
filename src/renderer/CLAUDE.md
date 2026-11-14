@@ -77,9 +77,9 @@ src/renderer/src/
 
 ## 设置与插件界面
 
-- `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：基础设置（外观、语言）、存储、AI 配置和插件分区；默认打开「基础设置」。
-- 「存储」分区上方管理论文库目录，中间通过 `window.api.clearCache()` 清理 Electron 的 HTTP、代码和 DNS 缓存；只展示成功/失败状态，不要在渲染进程推断文件系统缓存。
-- 「存储」分区底部是卸载入口：点击后调用 `window.api.uninstallApp()`，由主进程弹出原生确认框并说明本地论文会被删除；不要在渲染进程自行确认或直接调用文件操作。确认成功后主进程退出，取消则恢复按钮。
+- `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：基础设置（外观、语言）、存储、AI 配置、插件和卸载分区；默认打开「基础设置」。
+- 「存储」分区上方管理论文库目录，下方通过 `window.api.clearCache()` 清理 Electron 的 HTTP、代码和 DNS 缓存；只展示成功/失败状态，不要在渲染进程推断文件系统缓存。
+- 「卸载」是独立分区（不放在存储里）：点击后调用 `window.api.uninstallApp()`，由主进程弹出原生确认框并说明本地论文会被删除；不要在渲染进程自行确认或直接调用文件操作。确认成功后主进程退出，取消则恢复按钮。
 - Base URL 校验与主进程一致：默认 HTTPS，仅 `localhost` / `127.0.0.1` / `[::1]` 可用 HTTP；新增配置必须有 Key。
 - `settings.keyStorage === 'plaintext'` 时明确提示 Key 会以明文落盘。
 - `PluginSettings.vue` + [store/plugins.ts](src/store/plugins.ts)：

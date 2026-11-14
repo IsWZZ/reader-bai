@@ -34,7 +34,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const libraryFile = (): string => join(userDataDir, 'data', 'library.json')
+const libraryFile = (): string => join(userDataDir, 'Userdata', 'library.json')
 const readLibrary = (): Promise<StoredLibrary | null> => readJsonFile<StoredLibrary>(libraryFile())
 
 test('imports a PDF and backfills the metadata title', async () => {
@@ -52,7 +52,7 @@ test('imports a PDF and backfills the metadata title', async () => {
   ).toBeVisible()
   await expect.poll(async () => (await readLibrary())?.papers[0]?.titleSource).toBe('metadata')
   // 导入时把 PDF 复制到默认论文库目录，原文件保留
-  const storedPath = join(userDataDir, 'data', 'papers', 'sample.pdf')
+  const storedPath = join(userDataDir, 'Userdata', 'papers', 'sample.pdf')
   expect((await readLibrary())?.papers[0]).toMatchObject({
     title: 'Metadata Title',
     path: storedPath,
@@ -113,7 +113,9 @@ test('imports a paper directly into the requested space', async () => {
 
   await expect(reader.page.getByRole('button', { name: 'sample', exact: true })).toBeVisible()
   await expect.poll(async () => (await readLibrary())?.papers[0]?.spaceId).toBe('space-ml')
-  await expect(access(join(userDataDir, 'data', 'papers', 'sample.pdf'))).resolves.toBeUndefined()
+  await expect(
+    access(join(userDataDir, 'Userdata', 'papers', 'sample.pdf'))
+  ).resolves.toBeUndefined()
   await expect(access(pdfPath)).resolves.toBeUndefined()
 
   await reader.app.close()

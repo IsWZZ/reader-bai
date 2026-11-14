@@ -55,7 +55,7 @@ const writePlugin = async (
   directoryName: string,
   manifest: Record<string, unknown>
 ): Promise<void> => {
-  const directory = join(userDataDir, 'data', 'plugins', directoryName)
+  const directory = join(userDataDir, 'Userdata', 'plugins', directoryName)
   await mkdir(directory, { recursive: true })
   await writeFile(join(directory, 'manifest.json'), JSON.stringify(manifest))
 }
@@ -100,7 +100,7 @@ test('discovers plugins disabled by default and persists the enabled state', asy
   await expect(
     setPluginEnabled(first.page, 'reader-bai.arxiv-source', true)
   ).resolves.toMatchObject({ enabled: true })
-  expect(await readJsonFile(join(userDataDir, 'data', 'plugins.json'))).toEqual({
+  expect(await readJsonFile(join(userDataDir, 'Userdata', 'plugins.json'))).toEqual({
     enabled: { 'reader-bai.arxiv-source': true }
   })
   await first.app.close()
@@ -108,7 +108,7 @@ test('discovers plugins disabled by default and persists the enabled state', asy
   const second = await launchReader(userDataDir)
   expect((await listPlugins(second.page)).plugins[0].enabled).toBe(true)
   await setPluginEnabled(second.page, 'reader-bai.arxiv-source', false)
-  expect(await readJsonFile(join(userDataDir, 'data', 'plugins.json'))).toEqual({ enabled: {} })
+  expect(await readJsonFile(join(userDataDir, 'Userdata', 'plugins.json'))).toEqual({ enabled: {} })
   await second.app.close()
 })
 
@@ -128,7 +128,7 @@ test('manages plugins from the settings dialog', async () => {
   await toggle.check()
 
   await expect
-    .poll(async () => readJsonFile(join(userDataDir, 'data', 'plugins.json')))
+    .poll(async () => readJsonFile(join(userDataDir, 'Userdata', 'plugins.json')))
     .toEqual({
       enabled: { 'reader-bai.arxiv-source': true }
     })
@@ -158,7 +158,7 @@ test('reports broken manifests, incompatible plugins and invalid requests', asyn
   expect(await setPluginEnabledError(page, 'reader-bai.future', true)).toContain(
     '插件与当前版本不兼容'
   )
-  expect(await readJsonFile(join(userDataDir, 'data', 'plugins.json'))).toBeNull()
+  expect(await readJsonFile(join(userDataDir, 'Userdata', 'plugins.json'))).toBeNull()
 
   await app.close()
 })

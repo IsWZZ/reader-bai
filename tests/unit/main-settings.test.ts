@@ -100,43 +100,12 @@ describe('normalizeStoredSettings', () => {
     expect(normalizeStoredSettings({}).library).toEqual({ directory: '' })
   })
 
-  it('migrates a legacy single config into a default profile', () => {
-    const result = normalizeStoredSettings({
-      theme: 'light',
-      ai: {
-        baseUrl: 'https://legacy.example/v1',
-        apiKey: 'sk-legacy',
-        apiKeyEncrypted: false,
-        model: 'legacy-model'
-      }
-    })
-
-    expect(result.theme).toBe('light')
-    expect(result.ai.profiles).toEqual([
-      {
-        id: 'default',
-        baseUrl: 'https://legacy.example/v1',
-        apiKey: 'sk-legacy',
-        apiKeyEncrypted: false,
-        model: 'legacy-model'
-      }
-    ])
-    expect(result.ai.activeId).toBe('default')
-  })
-
-  it('keeps an empty list for empty legacy settings and explicit empty profiles', () => {
+  it('keeps an empty list when profiles are missing or empty', () => {
     expect(normalizeStoredSettings({ ai: {} }).ai).toEqual({ profiles: [], activeId: '' })
-    expect(
-      normalizeStoredSettings({
-        ai: {
-          profiles: [],
-          baseUrl: 'https://legacy.example/v1',
-          apiKey: 'sk-legacy',
-          apiKeyEncrypted: false,
-          model: 'legacy-model'
-        }
-      }).ai
-    ).toEqual({ profiles: [], activeId: '' })
+    expect(normalizeStoredSettings({ ai: { profiles: [] } }).ai).toEqual({
+      profiles: [],
+      activeId: ''
+    })
   })
 
   it('generates stable ids for missing or duplicate ids', () => {

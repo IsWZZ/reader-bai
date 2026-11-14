@@ -206,7 +206,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const settingsFile = (): string => join(userDataDir, 'data', 'settings.json')
+const settingsFile = (): string => join(userDataDir, 'Userdata', 'settings.json')
 
 const seedAiProfiles = async (profiles: StoredAiProfile[], activeId: string): Promise<void> => {
   await writeFile(
@@ -221,17 +221,6 @@ const seedSingleProfile = (url: string, model = 'stub-model'): Promise<void> =>
     [{ id: 'default', baseUrl: url, model, apiKey: 'sk-e2e-test', apiKeyEncrypted: false }],
     'default'
   )
-
-/** 旧版单配置格式，启动时应在内存中迁移为一条 profile */
-const seedLegacyAiSettings = async (url: string, model?: string): Promise<void> => {
-  const ai: Record<string, unknown> = {
-    baseUrl: url,
-    apiKey: 'sk-e2e-test',
-    apiKeyEncrypted: false
-  }
-  if (model) ai.model = model
-  await writeFile(settingsFile(), JSON.stringify({ theme: 'light', ai }, null, 2), 'utf8')
-}
 
 const seedPaper = async (): Promise<void> => {
   const pdfPath = join(userDataDir, 'sample.pdf')
@@ -373,41 +362,6 @@ test('shows a readable error when the AI service is unreachable', async () => {
   await clickWord(reader.page, reader.page.locator('[data-page="1"]'), 'Hello')
 
   await expect(panel).toContainText('无法连接到 AI 服务', { timeout: 10_000 })
-  await reader.app.close()
-})
-
-test('migrates a legacy single AI config so it can translate', async () => {
-  await seedPaper()
-  await seedLegacyAiSettings(primary.baseUrl, 'legacy-model')
-  const reader = await launchReader(userDataDir)
-  await openPaper(reader.page, 'Sample Paper')
-  const panel = await openAssistant(reader.page)
-
-  await expect(modelSelect(panel)).toHaveValue('default')
-  await clickWord(reader.page, reader.page.locator('[data-page="1"]'), 'Hello')
-
-  await expect(panel).toContainText('这是译文', { timeout: 10_000 })
-  expect(captured[0].body.model).toBe('legacy-model')
-
-  // 只读迁移不会回写文件
-  const stored = await readJsonFile<StoredSettings>(settingsFile())
-  expect(stored?.ai.profiles).toBeUndefined()
-  await reader.app.close()
-})
-
-test('reads legacy settings without a model and asks the user to complete it', async () => {
-  await seedLegacyAiSettings(primary.baseUrl)
-
-  const reader = await launchReader(userDataDir)
-  const panel = await openAssistant(reader.page)
-
-  await expect(modelSelect(panel)).toHaveValue('default')
-  await expect(panel).toContainText('所选 AI 服务的 Base URL、API Key 或模型不完整')
-
-  const stored = await readJsonFile<StoredSettings>(settingsFile())
-  expect(stored?.ai.profiles).toBeUndefined()
-  expect(stored?.ai.model).toBeUndefined()
-
   await reader.app.close()
 })
 

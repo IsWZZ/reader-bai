@@ -43,7 +43,7 @@
                   type="button"
                   :disabled="settingsStore.saving"
                   :class="[
-                    'flex flex-col items-center gap-2 rounded-lg border p-4 text-xs transition-colors disabled:opacity-50',
+                    'flex h-20 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-sm transition-colors disabled:opacity-50',
                     settingsStore.theme === option.value
                       ? 'border-primary bg-accent text-accent-foreground'
                       : 'hover:bg-accent/60'
@@ -76,7 +76,7 @@
                   :lang="option.code"
                   :aria-pressed="settingsStore.language === option.code"
                   :class="[
-                    'rounded-lg border px-4 py-3 text-sm transition-colors disabled:opacity-50',
+                    'flex h-20 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-sm transition-colors disabled:opacity-50',
                     settingsStore.language === option.code
                       ? 'border-primary bg-accent text-accent-foreground'
                       : 'hover:bg-accent/60'
@@ -180,37 +180,37 @@
                 {{ t('settings.storage.note') }}
               </p>
             </div>
+          </section>
 
-            <div class="space-y-4 border-t pt-4">
-              <div>
-                <h3 class="text-destructive text-sm font-medium">
-                  {{ t('settings.uninstall.title') }}
-                </h3>
-                <p class="text-muted-foreground mt-1 text-xs">
-                  {{ t('settings.uninstall.description') }}
-                </p>
-              </div>
-
-              <p class="text-destructive text-xs">
-                {{ t('settings.uninstall.warning') }}
+          <section v-else-if="activeSection === 'uninstall'" class="space-y-4">
+            <div>
+              <h3 class="text-destructive text-sm font-medium">
+                {{ t('settings.uninstall.title') }}
+              </h3>
+              <p class="text-muted-foreground mt-1 text-xs">
+                {{ t('settings.uninstall.description') }}
               </p>
+            </div>
 
-              <div class="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  :disabled="uninstalling"
-                  @click="uninstallApp"
-                >
-                  {{
-                    uninstalling ? t('settings.uninstall.working') : t('settings.uninstall.action')
-                  }}
-                </Button>
-                <span v-if="uninstallError" class="text-destructive text-xs">
-                  {{ uninstallError }}
-                </span>
-              </div>
+            <p class="text-destructive text-xs">
+              {{ t('settings.uninstall.warning') }}
+            </p>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                :disabled="uninstalling"
+                @click="uninstallApp"
+              >
+                {{
+                  uninstalling ? t('settings.uninstall.working') : t('settings.uninstall.action')
+                }}
+              </Button>
+              <span v-if="uninstallError" class="text-destructive text-xs">
+                {{ uninstallError }}
+              </span>
             </div>
           </section>
 
@@ -406,7 +406,8 @@ import {
   Puzzle,
   SlidersHorizontal,
   Sparkles,
-  Sun
+  Sun,
+  Trash2
 } from 'lucide-vue-next'
 
 const props = defineProps<{ open: boolean }>()
@@ -414,14 +415,15 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const settingsStore = useSettingsStore()
 
-type SectionId = 'basic' | 'ai' | 'library' | 'plugins'
+type SectionId = 'basic' | 'ai' | 'library' | 'plugins' | 'uninstall'
 type IconComponent = typeof SlidersHorizontal
 
 const sections = computed<{ id: SectionId; label: string; icon: IconComponent }[]>(() => [
   { id: 'basic', label: t('settings.section.basic'), icon: SlidersHorizontal },
   { id: 'library', label: t('settings.section.libraryStorage'), icon: FolderOpen },
   { id: 'ai', label: t('settings.section.ai'), icon: Sparkles },
-  { id: 'plugins', label: t('settings.section.plugins'), icon: Puzzle }
+  { id: 'plugins', label: t('settings.section.plugins'), icon: Puzzle },
+  { id: 'uninstall', label: t('settings.section.uninstall'), icon: Trash2 }
 ])
 
 const themeOptions = computed<{ value: AppTheme; label: string; icon: IconComponent }[]>(() => [

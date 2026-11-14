@@ -21,18 +21,18 @@
   - `annotations:list/add/remove`
   - `settings:get/update`
   - `cache:clear`：清理 Electron 的 HTTP、代码和 DNS 缓存，不碰 Cookie、书库或设置
-  - `app:uninstall`：原生确认后删除本地论文副本、`userData/data` 和会话数据并退出；导入前的原始 PDF 保留
+  - `app:uninstall`：原生确认后删除本地论文副本、`userData/Userdata` 和会话数据并退出；导入前的原始 PDF 保留
   - `ai:chat`、`ai:abort`、`ai:chunk`
   - `runs:start/finish/cancel`
   - `tools:list/execute`
   - `plugins:list/runtime/setEnabled`，以及主进程推送的 `plugins:runtime-changed`
-- 文件访问只允许书库中已登记的路径；导入只接受系统对话框的结果；`library.directory` 只接受绝对路径或空字符串（默认 `userData/data/papers`）。
-- 应用数据统一放在 `userData/data`，与 Electron/Chromium 在 `userData` 根目录生成的缓存和配置分开；路径由 [user-data.ts](user-data.ts) 统一生成，迁移逻辑也在那里。
-- `app:uninstall` 的清理逻辑在 [app-data.ts](app-data.ts)：只删除当前论文库目录内已登记的普通论文文件，再递归删除 `userData/data`；自定义论文库目录本身、目录里的其他文件和符号链接都不动。确认框默认「取消」，文案必须明确提示本地论文会被删除。
-- 数据文件（`userData/data` 下）：
-  - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 兼容旧格式；移除论文/空间不删除 PDF。
+- 文件访问只允许书库中已登记的路径；导入只接受系统对话框的结果；`library.directory` 只接受绝对路径或空字符串（默认 `userData/Userdata/papers`）。
+- 应用数据统一放在 `userData/Userdata`，与 Electron/Chromium 在 `userData` 根目录生成的缓存和配置分开；路径由 [user-data.ts](user-data.ts) 统一生成，启动时只负责创建目录。
+- `app:uninstall` 的清理逻辑在 [app-data.ts](app-data.ts)：只删除当前论文库目录内已登记的普通论文文件，再递归删除 `userData/Userdata`；自定义论文库目录本身、目录里的其他文件和符号链接都不动。确认框默认「取消」，文案必须明确提示本地论文会被删除。
+- 数据文件（`userData/Userdata` 下）：
+  - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；移除论文/空间不删除 PDF。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。
-  - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`，不回写。
+  - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory } }`；只接受 `ai.profiles` 数组格式。
 - `language` 使用 BCP 47 风格标签（`zh`、`en`、`zh-Hans`、`pt-BR`），主进程只校验格式、默认回退 `zh`，不维护语言白名单；实际支持哪些语言由渲染进程的 locale 注册表决定。
 - 导入 PDF 时复制到论文库目录，同名自动加 ` (2)` 等后缀；`path` 指向副本，`sourcePath` 记录原文件用于去重；已在目录内的文件不重复复制。
 - `titleSource`（`file` | `metadata` | `user`）防止元数据回填覆盖用户重命名。
@@ -75,8 +75,8 @@
 ## 插件宿主
 
 - `plugins/manifest.ts`：manifest 校验。id 固定 `publisher.name`，版本 semver，`engines.readerBai` 限制宿主版本，`activationEvents` 支持 `onStartup` / `onCommand:<id>`，`contributes.commands`，权限白名单为 `documents:read` / `annotations:write` / `network` / `storage`；未知字段一律拒绝。
-- `plugins/discovery.ts`：扫描 `userData/data/plugins` 的真实子目录，跳过符号链接；单个插件损坏只记录 issue，不影响其他插件和主程序启动。
-- `plugins/host.ts`：管理启用状态，默认关闭，写入 `userData/data/plugins.json`；版本不兼容的插件不能启用；`runtimePlugins()` 只返回已启用、兼容且声明了 `main` 的入口。
+- `plugins/discovery.ts`：扫描 `userData/Userdata/plugins` 的真实子目录，跳过符号链接；单个插件损坏只记录 issue，不影响其他插件和主程序启动。
+- `plugins/host.ts`：管理启用状态，默认关闭，写入 `userData/Userdata/plugins.json`；版本不兼容的插件不能启用；`runtimePlugins()` 只返回已启用、兼容且声明了 `main` 的入口。
 - `plugins/runtime.ts`：用 `utilityProcess.fork` 启动 `out/main/plugin-host.js`；插件启停后整体重载宿主；崩溃、启动失败和退出都反映为运行状态；按 manifest 权限放行工具调用，写操作仍走主进程确认。
 - `plugins/host-process.ts`：独立宿主入口，动态 import 插件 `main`；只激活声明了 `onStartup` 的插件（`onCommand` 暂未接入）；激活/停用有 10 秒超时；向插件注入 `pluginId`、`permissions`、`log` 和受限的 `tools` API。
 - `plugins/protocol.ts`：校验宿主消息（`ready` / `status` / `log` / `api-request` / `stopped`），API 方法限定为 `tools.list` / `tools.execute`，字段和参数体积有上限。

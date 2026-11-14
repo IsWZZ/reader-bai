@@ -20,7 +20,7 @@ export const managedPaperFiles = (libraryDirectory: string, paperPaths: string[]
 }
 
 export interface ClearAppDataOptions {
-  /** userData/data，包含设置、书库、标注、插件和默认论文目录 */
+  /** userData/Userdata，包含设置、书库、标注、插件和默认论文目录 */
   dataRoot: string
   /** 当前生效的论文库目录，可能是用户自定义目录 */
   libraryDirectory: string

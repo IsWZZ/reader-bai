@@ -93,6 +93,12 @@ const openLibrarySection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
   return button
 }
 
+const openUninstallSection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
+  const button = findButton('卸载')
+  await button.trigger('click')
+  return button
+}
+
 const fillProfile = async (profile: ProfileDraft): Promise<void> => {
   await findInput('#ai-base-url').setValue(profile.baseUrl)
   await findInput('#ai-model').setValue(profile.model)
@@ -162,6 +168,8 @@ describe('SettingsDialog', () => {
     // 论文库和存储合并为一个分区，侧栏名称保留「存储」
     expect(findButton('存储')).toBeDefined()
     expect(() => findButton('论文库')).toThrow()
+    // 卸载是独立分区，不再放在存储里
+    expect(findButton('卸载')).toBeDefined()
     expect(findButton('浅色')).toBeDefined()
     expect(findButton('深色')).toBeDefined()
     expect(findButton('中文')).toBeDefined()
@@ -533,7 +541,7 @@ describe('SettingsDialog', () => {
     const wrapper = await mountDialog()
     await openLibrarySection()
 
-    expect(document.body.textContent).toContain('Electron 缓存')
+    expect(document.body.textContent).toContain('清除缓存')
     await findButton('清理缓存').trigger('click')
     await flushPromises()
 
@@ -556,7 +564,7 @@ describe('SettingsDialog', () => {
 
   it('warns that uninstalling deletes local papers before it runs', async () => {
     const wrapper = await mountDialog()
-    await openLibrarySection()
+    await openUninstallSection()
 
     expect(document.body.textContent).toContain('卸载应用')
     expect(document.body.textContent).toContain(
@@ -576,7 +584,7 @@ describe('SettingsDialog', () => {
   it('keeps the uninstall button disabled after the user confirms', async () => {
     uninstallApp.mockResolvedValueOnce({ canceled: false })
     const wrapper = await mountDialog()
-    await openLibrarySection()
+    await openUninstallSection()
 
     await findButton('卸载并清除数据').trigger('click')
     await flushPromises()
@@ -589,7 +597,7 @@ describe('SettingsDialog', () => {
   it('reports an uninstall failure', async () => {
     uninstallApp.mockRejectedValueOnce(new Error('无法删除论文文件'))
     const wrapper = await mountDialog()
-    await openLibrarySection()
+    await openUninstallSection()
 
     await findButton('卸载并清除数据').trigger('click')
     await flushPromises()
@@ -602,7 +610,7 @@ describe('SettingsDialog', () => {
   it('reports when uninstalling is unavailable', async () => {
     window.api = { getSettings, updateSettings, chooseDirectory, clearCache } as unknown as Api
     const wrapper = await mountDialog()
-    await openLibrarySection()
+    await openUninstallSection()
 
     await findButton('卸载并清除数据').trigger('click')
     await flushPromises()

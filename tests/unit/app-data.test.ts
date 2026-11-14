@@ -17,7 +17,7 @@ let libraryDirectory: string
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'reader-bai-app-data-'))
-  dataRoot = join(root, 'data')
+  dataRoot = join(root, 'Userdata')
   libraryDirectory = join(root, 'papers')
   await mkdir(dataRoot, { recursive: true })
   await mkdir(libraryDirectory, { recursive: true })

@@ -25,21 +25,23 @@ afterEach(async () => {
 })
 
 describe('normalizeLibrary', () => {
-  it('migrates the legacy paper array format', () => {
-    const state = normalizeLibrary([
-      { path: '/papers/attention.pdf' },
-      { title: 'ignored without path' },
-      null,
-      {
-        id: 'kept',
-        title: 'User title',
-        path: 'C:\\papers\\bert.PDF',
-        fileName: 'bert.PDF',
-        spaceId: 'missing-space',
-        titleSource: 'user',
-        createdAt: 1
-      }
-    ])
+  it('normalizes papers and drops invalid entries', () => {
+    const state = normalizeLibrary({
+      papers: [
+        { path: '/papers/attention.pdf' },
+        { title: 'ignored without path' },
+        null,
+        {
+          id: 'kept',
+          title: 'User title',
+          path: 'C:\\papers\\bert.PDF',
+          fileName: 'bert.PDF',
+          spaceId: 'missing-space',
+          titleSource: 'user',
+          createdAt: 1
+        }
+      ]
+    })
 
     expect(state.spaces).toEqual([])
     expect(state.papers).toHaveLength(2)
@@ -78,6 +80,10 @@ describe('normalizeLibrary', () => {
   it('returns an empty library for invalid input', () => {
     expect(normalizeLibrary(null)).toEqual({ spaces: [], papers: [] })
     expect(normalizeLibrary('broken')).toEqual({ spaces: [], papers: [] })
+    expect(normalizeLibrary([{ path: '/papers/attention.pdf' }])).toEqual({
+      spaces: [],
+      papers: []
+    })
   })
 })
 
