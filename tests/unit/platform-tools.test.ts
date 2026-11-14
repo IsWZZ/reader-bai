@@ -421,6 +421,90 @@ describe('platform tools', () => {
     ).rejects.toThrow('标注 id 不正确')
   })
 
+  it('does not write when no requested annotation ids exist', async () => {
+    const { registry, annotations } = setup()
+    const write = vi.spyOn(annotations, 'write')
+
+    const result = await registry.execute(
+      'annotations.remove',
+      { paperId: 'paper-1', ids: ['missing'] },
+      context()
+    )
+
+    expect(parse(result.content)).toEqual({ removed: [] })
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('rejects oversized tool inputs', async () => {
+    const { registry, confirm } = setup()
+
+    await expect(
+      registry.execute('library.list', { query: 'x'.repeat(201) }, context())
+    ).rejects.toThrow('参数 query 过长')
+
+    await expect(
+      registry.execute(
+        'annotations.add',
+        {
+          paperId: 'paper-1',
+          page: 1,
+          text: 'x',
+          rects: Array.from({ length: 51 }, () => ({ x: 0, y: 0, width: 0.1, height: 0.1 }))
+        },
+        context()
+      )
+    ).rejects.toThrow('标注区域不能超过 50 个')
+
+    await expect(
+      registry.execute(
+        'annotations.add',
+        {
+          paperId: 'paper-1',
+          page: 1,
+          text: 'x',
+          rects: [{ x: 0, y: 0, width: 0, height: 0.1 }]
+        },
+        context()
+      )
+    ).rejects.toThrow('标注区域不能为空')
+
+    await expect(
+      registry.execute(
+        'annotations.add',
+        {
+          paperId: 'paper-1',
+          text: 'x',
+          rects: [{ x: 0, y: 0, width: 0.1, height: 0.1 }]
+        },
+        context()
+      )
+    ).rejects.toThrow('缺少参数 page')
+
+    await expect(
+      registry.execute(
+        'annotations.remove',
+        {
+          paperId: 'paper-1',
+          ids: Array.from({ length: 101 }, (_, index) => `a-${index}`)
+        },
+        context()
+      )
+    ).rejects.toThrow('一次最多删除 100 条标注')
+
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('rejects calls whose context is already aborted', async () => {
+    const { registry, confirm } = setup()
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(
+      registry.execute('library.list', {}, { source: 'ai', signal: controller.signal })
+    ).rejects.toThrow('操作已取消')
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
   it('does not ask for confirmation on read tools', async () => {
     const { registry, confirm } = setup()
 

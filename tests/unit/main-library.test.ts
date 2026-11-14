@@ -35,6 +35,7 @@ describe('normalizeLibrary', () => {
           id: 'kept',
           title: 'User title',
           path: 'C:\\papers\\bert.PDF',
+          sourcePath: 'C:\\downloads\\bert.PDF',
           fileName: 'bert.PDF',
           spaceId: 'missing-space',
           titleSource: 'user',
@@ -56,6 +57,7 @@ describe('normalizeLibrary', () => {
       id: 'kept',
       title: 'User title',
       path: 'C:\\papers\\bert.PDF',
+      sourcePath: 'C:\\downloads\\bert.PDF',
       spaceId: null,
       titleSource: 'user'
     })
@@ -151,6 +153,12 @@ describe('library directory helpers', () => {
     const storedPath = await copyIntoLibraryDirectory(source, libraryDir)
 
     await expect(access(storedPath)).resolves.toBeUndefined()
+  })
+
+  it('propagates copy failures that are not name conflicts', async () => {
+    const libraryDir = join(dir, 'papers')
+
+    await expect(copyIntoLibraryDirectory(join(dir, 'missing.pdf'), libraryDir)).rejects.toThrow()
   })
 })
 

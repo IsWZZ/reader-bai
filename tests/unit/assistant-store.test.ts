@@ -336,6 +336,59 @@ describe('assistant store', () => {
     expect(chat.mock.calls[0][2]).toBe('b')
   })
 
+  it('shows a translation error and allows retrying the same text', async () => {
+    chat.mockRejectedValueOnce(
+      new Error("Error invoking remote method 'ai:chat': Error: 翻译服务不可用")
+    )
+    const store = useAssistantStore()
+    store.initialize()
+
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(store.translation).toEqual({
+      source: 'hello',
+      text: '',
+      loading: false,
+      error: '翻译服务不可用'
+    })
+
+    pendingChat()
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).toHaveBeenCalledTimes(2)
+    resolveChat('你好')
+    await flush()
+    expect(store.translation).toMatchObject({ text: '你好', error: '' })
+  })
+
+  it('uses the fallback message for non-Error translation failures', async () => {
+    chat.mockRejectedValueOnce('offline')
+    const store = useAssistantStore()
+    store.initialize()
+
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(store.translation?.error).toBe('翻译失败，请稍后重试')
+  })
+
+  it('reports a missing platform bridge', async () => {
+    window.api = undefined
+    const store = useAssistantStore()
+    store.initialize()
+
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(store.translation?.error).toBe('当前环境无法调用 AI 服务')
+
+    await store.sendChat('hello')
+    expect(store.chatError).toBe('当前环境无法调用 AI 服务')
+    expect(store.messages).toHaveLength(0)
+  })
+
   it('rejects an oversized selection without calling the API', async () => {
     const store = useAssistantStore()
     store.initialize()
@@ -377,6 +430,79 @@ describe('assistant store', () => {
     resolveReply(replyResult('回复内容'))
     await promise
     expect(reply.content).toBe('回复内容')
+    expect(store.chatLoading).toBe(false)
+  })
+
+  it('uses the final reply when no stream chunks arrive', async () => {
+    chatWithTools.mockResolvedValueOnce(replyResult('最终回复'))
+    const store = useAssistantStore()
+    store.initialize()
+
+    await store.sendChat('hello')
+
+    expect(store.messages).toHaveLength(2)
+    expect(store.messages[1]).toMatchObject({ role: 'assistant', content: '最终回复' })
+    expect(store.chatLoading).toBe(false)
+  })
+
+  it('ignores blank input and concurrent submissions', async () => {
+    pendingReply()
+    const store = useAssistantStore()
+    store.initialize()
+
+    await store.sendChat('   ')
+    expect(store.messages).toHaveLength(0)
+
+    const first = store.sendChat('hello')
+    await store.sendChat('again')
+
+    expect(chatWithTools).toHaveBeenCalledTimes(1)
+    expect(store.messages.map((entry) => entry.content)).toEqual(['hello', ''])
+
+    resolveReply(replyResult('ok'))
+    await first
+  })
+
+  it('continues without tools when listing tools fails', async () => {
+    listTools.mockRejectedValueOnce(new Error('registry unavailable'))
+    chatWithTools.mockResolvedValueOnce(replyResult('ok'))
+    const store = useAssistantStore()
+    store.initialize()
+    store.agentMode = true
+
+    await store.sendChat('hello')
+
+    expect(chatWithTools.mock.calls[0][3]).toEqual([])
+    expect(chatWithTools.mock.calls[0][1][0].content).toContain('学术阅读助手')
+    expect(finishRun).toHaveBeenCalledWith('run-1')
+  })
+
+  it('cancels the run when stopped before the first model request', async () => {
+    listTools.mockResolvedValue([readTool('library.list')])
+    let resolveRun: ((value: AgentRunInfo) => void) | undefined
+    startRun.mockImplementation(
+      () =>
+        new Promise<AgentRunInfo>((resolve) => {
+          resolveRun = resolve
+        })
+    )
+    const store = useAssistantStore()
+    store.initialize()
+    store.agentMode = true
+
+    const promise = store.sendChat('hello')
+    await flush()
+
+    expect(startRun).toHaveBeenCalledTimes(1)
+    expect(resolveRun).toBeDefined()
+
+    store.stopChat()
+    resolveRun?.({ id: 'run-9' })
+    await promise
+
+    expect(chatWithTools).not.toHaveBeenCalled()
+    expect(cancelRun).toHaveBeenCalledWith('run-9')
+    expect(finishRun).not.toHaveBeenCalled()
     expect(store.chatLoading).toBe(false)
   })
 
@@ -479,6 +605,31 @@ describe('assistant store', () => {
 
     expect(store.chatError).toBe('服务不可用')
     expect(store.chatLoading).toBe(false)
+    // 失败的空白回复要移除，只保留用户消息
+    expect(store.messages).toHaveLength(1)
+    expect(store.messages[0]).toMatchObject({ role: 'user', content: 'hello' })
+  })
+
+  it('aborts pending translation and chat requests when disposed', async () => {
+    pendingChat()
+    const store = useAssistantStore()
+    store.initialize()
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(250)
+    const translationId = chat.mock.calls[0][0]
+
+    pendingReply()
+    const chatPromise = store.sendChat('question')
+    await flush()
+    const requestId = chatWithTools.mock.calls[0][0]
+
+    store.$dispose()
+
+    expect(abortChat).toHaveBeenCalledWith(translationId)
+    expect(abortChat).toHaveBeenCalledWith(requestId)
+
+    resolveReply(replyResult('部分'))
+    await chatPromise
   })
 
   it('clears the translation when the paper changes', async () => {

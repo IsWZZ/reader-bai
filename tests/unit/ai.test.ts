@@ -166,6 +166,30 @@ describe('normalizeChatMessages', () => {
     ])
   })
 
+  it('rejects non-object messages, null content and non-array tool calls', () => {
+    expect(() => normalizeChatMessages([null])).toThrow('消息格式不正确')
+    expect(() => normalizeChatMessages([{ role: 'user', content: null }])).toThrow('消息格式不正确')
+    expect(() =>
+      normalizeChatMessages([{ role: 'assistant', content: 'x', tool_calls: 'not a list' }])
+    ).toThrow('消息格式不正确')
+    expect(() =>
+      normalizeChatMessages([
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'library.search', arguments: '{}' }
+            },
+            null
+          ]
+        }
+      ])
+    ).toThrow('消息格式不正确')
+  })
+
   it('rejects malformed tool calls and tool messages', () => {
     expect(() =>
       normalizeChatMessages([
@@ -355,6 +379,56 @@ describe('streamChat tool calls', () => {
 
     expect(result.finishReason).toBe('tool_calls')
   })
+
+  it('ignores malformed SSE payloads and chunks without choices', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: ['data: not-json\n\n', ssePayload({}), sseFrame('ok'), 'data: [DONE]\n\n']
+        })
+      )
+    )
+
+    const result = await streamChat({ ...baseOptions(), tools: TOOLS })
+
+    expect(result).toEqual({ text: 'ok', toolCalls: [], finishReason: 'stop' })
+  })
+
+  it('ignores malformed tool call deltas and empty tool-call finishes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            toolFrame('not a list'),
+            toolFrame([null]),
+            toolFrame([], 'tool_calls'),
+            'data: [DONE]\n\n'
+          ]
+        })
+      )
+    )
+
+    const result = await streamChat({ ...baseOptions(), tools: TOOLS })
+
+    // 没有有效的工具调用时不能让调用方误以为还需要继续循环
+    expect(result.toolCalls).toEqual([])
+    expect(result.finishReason).toBe('stop')
+  })
+
+  it('sends optional temperature and output token limits', async () => {
+    const fetchMock = vi.fn(async () => fakeResponse({ chunks: ['data: [DONE]\n\n'] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await streamChat({ ...baseOptions(), temperature: 0.2, maxOutputTokens: 512 })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      temperature: 0.2,
+      max_tokens: 512
+    })
+  })
 })
 
 describe('streamChatCompletion', () => {
@@ -475,6 +549,33 @@ describe('streamChatCompletion', () => {
     controller.abort()
 
     await expect(promise).resolves.toBe('')
+  })
+
+  it('returns an aborted result when the signal is already aborted', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init: RequestInit) => {
+        expect(init.signal?.aborted).toBe(true)
+        return Promise.reject(new DOMException('Aborted', 'AbortError'))
+      })
+    )
+
+    const result = await streamChat({ ...baseOptions(), signal: controller.signal })
+
+    expect(result).toEqual({ text: '', toolCalls: [], finishReason: 'aborted' })
+  })
+
+  it('turns network failures into a readable error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed')
+      })
+    )
+
+    await expect(runStream()).rejects.toThrow('无法连接到 AI 服务，请检查 Base URL 与网络')
   })
 
   it('times out when the service never responds', async () => {

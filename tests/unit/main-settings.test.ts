@@ -128,6 +128,15 @@ describe('normalizeStoredSettings', () => {
     )
     // 失效的 activeId 回退到第一条
     expect(first.ai.activeId).toBe('profile-1')
+
+    // 生成的兜底 id 不能和已有 id 冲突
+    const collision = normalizeStoredSettings({
+      ai: {
+        profiles: [{ id: 'profile-2', baseUrl: 'https://a' }, { baseUrl: 'https://b' }],
+        activeId: 'profile-2'
+      }
+    })
+    expect(collision.ai.profiles.map((profile) => profile.id)).toEqual(['profile-2', 'profile-2-2'])
   })
 
   it('does not truncate encrypted keys but caps plaintext keys', () => {

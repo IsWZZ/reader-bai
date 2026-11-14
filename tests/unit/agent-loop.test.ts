@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, type Mock } from 'vitest'
 import { runAgentLoop, type AgentEvent, type AgentLoopOptions } from '@renderer/lib/agent-loop'
-import type { AiChatResult, ChatToolCallResult } from '@renderer/types'
+import type { AiChatResult, ChatMessage, ChatToolCallResult } from '@renderer/types'
 
 type ChatFn = AgentLoopOptions['chat']
 type ExecuteFn = AgentLoopOptions['executeTool']
@@ -222,5 +222,105 @@ describe('runAgentLoop', () => {
 
     expect(result).toMatchObject({ text: '部分回复', steps: 1, finishReason: 'aborted' })
     expect(options.executeTool).not.toHaveBeenCalled()
+  })
+
+  it('keeps the previous text when an aborted step returns no text', async () => {
+    const options = setup()
+    options.chat
+      .mockResolvedValueOnce(
+        aiResult({
+          text: '正在查询',
+          toolCalls: [toolCall('call-1', 'library.list')],
+          finishReason: 'tool_calls'
+        })
+      )
+      .mockResolvedValueOnce(aiResult({ text: '', finishReason: 'aborted' }))
+
+    const result = await runAgentLoop(options)
+
+    expect(result).toMatchObject({ text: '正在查询', steps: 2, finishReason: 'aborted' })
+  })
+
+  it('stops between tool calls when the signal is aborted', async () => {
+    const controller = new AbortController()
+    const options = setup({ signal: controller.signal })
+    options.chat.mockResolvedValueOnce(
+      aiResult({
+        toolCalls: [toolCall('call-1', 'library.list'), toolCall('call-2', 'library.list')],
+        finishReason: 'tool_calls'
+      })
+    )
+    options.executeTool.mockImplementationOnce(async () => {
+      controller.abort()
+      return { content: 'first' }
+    })
+
+    const result = await runAgentLoop(options)
+
+    expect(result).toMatchObject({ steps: 1, finishReason: 'aborted' })
+    expect(options.executeTool).toHaveBeenCalledTimes(1)
+    expect(result.messages.filter((message) => message.role === 'tool')).toEqual([
+      { role: 'tool', tool_call_id: 'call-1', content: 'first' }
+    ])
+  })
+
+  it('turns non-Error tool failures into a readable message', async () => {
+    const options = setup()
+    options.chat
+      .mockResolvedValueOnce(
+        aiResult({
+          toolCalls: [toolCall('call-1', 'library.list')],
+          finishReason: 'tool_calls'
+        })
+      )
+      .mockResolvedValueOnce(aiResult({ text: '完成' }))
+    options.executeTool.mockRejectedValue('network down')
+
+    await runAgentLoop(options)
+
+    expect(options.chat.mock.calls[1][1].slice(-1)).toEqual([
+      { role: 'tool', tool_call_id: 'call-1', content: '工具执行失败：network down' }
+    ])
+  })
+
+  it('clamps the step budget to the allowed range', async () => {
+    const minimum = setup({ maxSteps: 0 })
+    minimum.chat.mockResolvedValue(aiResult({ text: 'ok' }))
+
+    await expect(runAgentLoop(minimum)).resolves.toMatchObject({ steps: 1, finishReason: 'stop' })
+
+    const maximum = setup({ maxSteps: 50 })
+    maximum.chat.mockResolvedValue(
+      aiResult({
+        toolCalls: [toolCall('call-1', 'library.list')],
+        finishReason: 'tool_calls'
+      })
+    )
+
+    await expect(runAgentLoop(maximum)).resolves.toMatchObject({
+      steps: 20,
+      finishReason: 'max-steps'
+    })
+    expect(maximum.chat).toHaveBeenCalledTimes(20)
+  })
+
+  it('does not mutate the input messages and creates an id per step', async () => {
+    const input: ChatMessage[] = [{ role: 'user', content: 'hi' }]
+    const createRequestId = vi.fn(() => `req-${createRequestId.mock.calls.length}`)
+    const options = setup({ messages: input, createRequestId })
+    options.chat
+      .mockResolvedValueOnce(
+        aiResult({
+          toolCalls: [toolCall('call-1', 'library.list')],
+          finishReason: 'tool_calls'
+        })
+      )
+      .mockResolvedValueOnce(aiResult({ text: '完成' }))
+
+    await runAgentLoop(options)
+
+    expect(input).toEqual([{ role: 'user', content: 'hi' }])
+    expect(createRequestId).toHaveBeenCalledTimes(2)
+    expect(options.chat.mock.calls.map(([requestId]) => requestId)).toEqual(['req-1', 'req-2'])
   })
 })

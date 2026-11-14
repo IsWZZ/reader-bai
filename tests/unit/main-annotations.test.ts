@@ -95,7 +95,9 @@ describe('parsePaperAnnotation', () => {
       { rects: [] },
       { rects: [{ x: -0.1, y: 0, width: 1, height: 0.1 }] },
       { rects: [{ x: 0, y: 0, width: 0, height: 0.1 }] },
-      { rects: [{ x: 0, y: 0, width: 1 }] }
+      { rects: [{ x: 0, y: 0, width: 1 }] },
+      { rects: [null] },
+      { rects: Array.from({ length: 501 }, () => highlight.rects[0]) }
     ]
 
     for (const patch of invalid) {
@@ -104,6 +106,12 @@ describe('parsePaperAnnotation', () => {
         JSON.stringify(patch)
       ).toThrow()
     }
+  })
+
+  it('rejects non-object annotations', () => {
+    expect(() => parsePaperAnnotation(null)).toThrow('标注格式不正确')
+    expect(() => parsePaperAnnotation([])).toThrow('标注格式不正确')
+    expect(() => parsePaperAnnotation('highlight')).toThrow('标注格式不正确')
   })
 })
 

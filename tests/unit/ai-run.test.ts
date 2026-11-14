@@ -90,4 +90,37 @@ describe('run manager', () => {
     expect(() => run.recordStep()).toThrow('运行超时')
     expect(run.abortReason).toBe('timeout')
   })
+
+  it('keeps the first abort reason when cancelled again', async () => {
+    vi.useFakeTimers()
+    const manager = createRunManager()
+    const run = manager.start({ timeoutMs: 1000 })
+
+    await vi.advanceTimersByTimeAsync(1000)
+    run.cancel('user')
+
+    expect(run.abortReason).toBe('timeout')
+  })
+
+  it('clears the timeout when disposed', async () => {
+    vi.useFakeTimers()
+    const manager = createRunManager()
+    const run = manager.start({ timeoutMs: 1000 })
+
+    run.dispose()
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(run.isAborted).toBe(false)
+  })
+
+  it('generates a distinct id for every run and ignores negative usage', () => {
+    const manager = createRunManager()
+    const first = manager.start()
+    const second = manager.start()
+
+    first.recordStep({ inputTokens: -10, outputTokens: -5 })
+
+    expect(first.id).not.toBe(second.id)
+    expect(first.usage).toEqual({ steps: 1, inputTokens: 0, outputTokens: 0 })
+  })
 })
