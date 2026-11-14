@@ -1,78 +1,53 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createRunManager, RunLimitError } from '../../src/main/ai-run'
+import { RunLimitError, startRun } from '../../src/main/ai-run'
 
-describe('run manager', () => {
+describe('run lifecycle', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
 
   it('tracks steps and usage', () => {
-    const manager = createRunManager()
-    const run = manager.start()
+    const run = startRun()
 
     run.recordStep({ inputTokens: 10, outputTokens: 5 })
 
     expect(run.usage).toEqual({ steps: 1, inputTokens: 10, outputTokens: 5 })
-    expect(manager.get(run.id)).toBe(run)
-
-    run.dispose()
-    expect(manager.get(run.id)).toBeUndefined()
   })
 
   it('aborts when the step budget is exceeded', () => {
-    const manager = createRunManager()
-    const run = manager.start({ maxSteps: 1 })
+    const run = startRun({ maxSteps: 1 })
     run.recordStep()
 
     expect(() => run.recordStep()).toThrow(RunLimitError)
     expect(run.isAborted).toBe(true)
     expect(run.abortReason).toBe('limit')
-    expect(manager.get(run.id)).toBeUndefined()
 
     // 中止后的调用统一报运行已中止
     expect(() => run.recordStep()).toThrow('运行已中止')
   })
 
   it('aborts when token budgets are exceeded', () => {
-    const manager = createRunManager()
-
-    const inputRun = manager.start({ maxInputTokens: 10 })
+    const inputRun = startRun({ maxInputTokens: 10 })
     expect(() => inputRun.recordStep({ inputTokens: 11 })).toThrow('输入 token 超出预算')
     expect(inputRun.abortReason).toBe('limit')
 
-    const outputRun = manager.start({ maxOutputTokens: 10 })
+    const outputRun = startRun({ maxOutputTokens: 10 })
     expect(() => outputRun.recordStep({ outputTokens: 11 })).toThrow('输出 token 超出预算')
     expect(outputRun.abortReason).toBe('limit')
   })
 
-  it('cancels a run by id', () => {
-    const manager = createRunManager()
-    const run = manager.start()
+  it('cancels a run', () => {
+    const run = startRun()
 
-    manager.cancel(run.id, 'user')
+    run.cancel('user')
 
     expect(run.isAborted).toBe(true)
     expect(run.abortReason).toBe('user')
-    expect(manager.get(run.id)).toBeUndefined()
-  })
-
-  it('stops all runs', () => {
-    const manager = createRunManager()
-    const first = manager.start()
-    const second = manager.start()
-
-    manager.stopAll()
-
-    expect(first.isAborted).toBe(true)
-    expect(second.isAborted).toBe(true)
-    expect(first.abortReason).toBe('user')
-    expect(second.abortReason).toBe('user')
   })
 
   it('times out on the timer', async () => {
     vi.useFakeTimers()
-    const manager = createRunManager()
-    const run = manager.start({ timeoutMs: 1000 })
+    const run = startRun({ timeoutMs: 1000 })
 
     await vi.advanceTimersByTimeAsync(1000)
 
@@ -82,8 +57,7 @@ describe('run manager', () => {
 
   it('detects a timeout while recording a step', () => {
     let time = 0
-    const manager = createRunManager({ now: () => time })
-    const run = manager.start({ timeoutMs: 100 })
+    const run = startRun({ timeoutMs: 100 }, { now: () => time })
 
     time = 101
 
@@ -93,8 +67,7 @@ describe('run manager', () => {
 
   it('keeps the first abort reason when cancelled again', async () => {
     vi.useFakeTimers()
-    const manager = createRunManager()
-    const run = manager.start({ timeoutMs: 1000 })
+    const run = startRun({ timeoutMs: 1000 })
 
     await vi.advanceTimersByTimeAsync(1000)
     run.cancel('user')
@@ -104,8 +77,7 @@ describe('run manager', () => {
 
   it('clears the timeout when disposed', async () => {
     vi.useFakeTimers()
-    const manager = createRunManager()
-    const run = manager.start({ timeoutMs: 1000 })
+    const run = startRun({ timeoutMs: 1000 })
 
     run.dispose()
     await vi.advanceTimersByTimeAsync(1000)
@@ -114,9 +86,8 @@ describe('run manager', () => {
   })
 
   it('generates a distinct id for every run and ignores negative usage', () => {
-    const manager = createRunManager()
-    const first = manager.start()
-    const second = manager.start()
+    const first = startRun()
+    const second = startRun()
 
     first.recordStep({ inputTokens: -10, outputTokens: -5 })
 

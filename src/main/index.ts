@@ -5,7 +5,6 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import packageJson from '../../package.json'
 import { createAgentRuntime } from './agent/runtime'
 import { createAiRequester } from './ai-request'
-import { createRunManager } from './ai-run'
 import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
 import { readPdfPageText } from './pdf-text'
@@ -59,7 +58,6 @@ app.whenReady().then(async () => {
   const annotations = createAnnotationStore(paths.annotationsFile)
   // 阅读本地的设置文件 settings.json
   const settings = createSettingsStore(paths.settingsFile, paths.papersDirectory)
-  const runs = createRunManager()
   const plugins = createPluginHost({
     root: paths.pluginsDirectory,
     stateFile: paths.pluginsStateFile,
@@ -79,7 +77,6 @@ app.whenReady().then(async () => {
     hostScript: join(__dirname, 'agent-host.js'),
     requester,
     tools,
-    runs,
     onLog: (message) => console.warn(`[agent] ${message}`)
   })
   const runtime = createPluginRuntime({

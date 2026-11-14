@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAiRequester, resolveChatTools, type AiChatRequest } from '../../src/main/ai-request'
 import { streamChat, type StreamChatResult } from '../../src/main/ai'
 import { streamAnthropic } from '../../src/main/ai-anthropic'
-import { createRunManager } from '../../src/main/ai-run'
+import { startRun } from '../../src/main/ai-run'
 import { createToolRegistry, type ToolRegistry } from '../../src/main/tool-registry'
 import type { StoredAiProfile, StoredSettings } from '../../src/main/settings'
 import type { SettingsStore } from '../../src/main/settings-store'
@@ -256,8 +256,7 @@ describe('createAiRequester', () => {
   })
 
   it('does not call the model when the run is already aborted', async () => {
-    const runs = createRunManager()
-    const run = runs.start()
+    const run = startRun()
     run.cancel('user')
     const requester = createAiRequester(makeSettings(), makeTools())
 
@@ -266,8 +265,7 @@ describe('createAiRequester', () => {
   })
 
   it('records a step per model call and stops after the run budget', async () => {
-    const runs = createRunManager()
-    const run = runs.start({ maxSteps: 1 })
+    const run = startRun({ maxSteps: 1 })
     const requester = createAiRequester(makeSettings(), makeTools())
 
     await requester.chat({ ...baseRequest(), run })
@@ -316,8 +314,7 @@ describe('createAiRequester', () => {
       signals.push(options.signal)
       return new Promise<StreamChatResult>(() => undefined)
     })
-    const runs = createRunManager()
-    const run = runs.start()
+    const run = startRun()
     const controller = new AbortController()
     const requester = createAiRequester(makeSettings(), makeTools())
 

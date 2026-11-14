@@ -4,7 +4,7 @@
 
 import { utilityProcess, type UtilityProcess, type WebContents } from 'electron'
 import { normalizeChatMessages, type ChatMessage } from '../ai'
-import type { AgentRun, RunAbortReason, RunManager } from '../ai-run'
+import { startRun, type AgentRun, type RunAbortReason } from '../ai-run'
 import type { AiRequester } from '../ai-request'
 import type { ToolRegistry } from '../tool-registry'
 import {
@@ -42,7 +42,6 @@ export interface AgentRuntimeOptions {
   hostScript: string
   requester: AiRequester
   tools: ToolRegistry
-  runs: RunManager
   onLog?: (message: string) => void
 }
 
@@ -319,7 +318,7 @@ export const createAgentRuntime = (options: AgentRuntimeOptions): AgentRuntime =
     await ensureHost()
 
     const policy = AGENT_POLICIES[mode]
-    const run = options.runs.start({ maxSteps: policy.maxSteps, timeoutMs: policy.timeoutMs })
+    const run = startRun({ maxSteps: policy.maxSteps, timeoutMs: policy.timeoutMs })
     const toolNames = mode === 'agent' ? readToolNames(options.tools) : []
     const controller = new AbortController()
 

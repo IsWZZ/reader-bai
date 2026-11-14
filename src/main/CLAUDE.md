@@ -4,7 +4,7 @@
 
 ## 职责与装配
 
-- `index.ts` 只做启动装配：创建 store、run manager、AI 请求器、agent runtime、插件宿主、工具注册表，注册 IPC，创建窗口，退出时停止 agent runtime 和插件宿主。业务逻辑不要写进这里。
+- `index.ts` 只做启动装配：创建 store、AI 请求器、agent runtime、插件宿主、工具注册表，注册 IPC，创建窗口，退出时停止 agent runtime 和插件宿主。业务逻辑不要写进这里。
 - 领域逻辑按域拆到 `src/main/<domain>.ts`：`library.ts`、`annotations.ts`、`settings.ts`、`settings-store.ts`、`ai.ts`、`ai-run.ts`、`pdf-text.ts`、`platform-tools.ts`、`tool-registry.ts`。
 - IPC handler 统一放 `src/main/ipc/<domain>.ts`，导出 `register<Domain>Ipc(...)`，由 `index.ts` 装配。
 - 窗口与 Electron 加固在 `window.ts`：保持 `sandbox`、`contextIsolation`，关闭 `nodeIntegration` / `webviewTag`；导航、新窗口、权限请求默认拒绝。
@@ -71,7 +71,7 @@
   - `annotations.add`（写）、`annotations.remove`（破坏性）
   - 权限：读工具要 `documents:read`；标注写入要 `documents:read` + `annotations:write`。
 - `pdf-text.ts` 按需加载 pdfjs，限制 PDF 大小（100 MB）和解析时间（20 秒）；页码从 1 开始，越界返回可读错误；单页文本会截断后再返回。
-- `ai-run.ts` 持有 run 生命周期：`runId`、`AbortSignal`、步数、token 用量、超时和取消原因。run 不再通过 IPC 暴露，由 `agent/runtime.ts` 和 `ai-request.ts` 内部使用。
+- `ai-run.ts` 的 `startRun` 创建单个 run：`runId`、`AbortSignal`、步数、token 用量、超时和取消原因。run 由 `agent/runtime.ts` 保存并在会话结束时 `dispose`，也会传给 `ai-request.ts` 计步；不通过 IPC 暴露。
 - `agent/loop.ts`：纯 agent 循环（模型 → 工具 → 模型），不依赖 Electron；按 `maxSteps` 截断，工具参数非法或执行失败时把错误作为 `tool` 消息回给模型。
 - `agent/runtime.ts`：主进程侧会话管理。用 `utilityProcess.fork(out/main/agent-host.js)` 启动宿主；策略固定为 `chat` 1 步、`agent` 6 步、120 秒超时，调用方不能放宽；只把 `risk === 'read'` 且 `exposeToAi` 的工具交给宿主；宿主只能请求本会话开放的工具。
 - `agent/host-process.ts`：agent 宿主入口。只请求模型和工具，不接触 Key、设置、文件系统或窗口。

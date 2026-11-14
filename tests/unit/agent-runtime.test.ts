@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { WebContents } from 'electron'
-import type { AgentRun, RunManager } from '../../src/main/ai-run'
+import type { AgentRun, RunLimits } from '../../src/main/ai-run'
 import type { AiRequester } from '../../src/main/ai-request'
 import type { ToolInfo, ToolRegistry } from '../../src/main/tool-registry'
 import {
@@ -12,8 +12,13 @@ import {
 } from '../../src/main/agent/runtime'
 
 const electron = vi.hoisted(() => ({ fork: vi.fn() }))
+const aiRun = vi.hoisted(() => ({ startRun: vi.fn() }))
 
 vi.mock('electron', () => ({ utilityProcess: { fork: electron.fork } }))
+vi.mock('../../src/main/ai-run', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/main/ai-run')>()
+  return { ...actual, startRun: aiRun.startRun }
+})
 
 class FakeSender extends EventEmitter {
   sent: Array<{ sessionId: string; event: Record<string, unknown> }> = []
@@ -72,17 +77,18 @@ const TOOL_INFOS: ToolInfo[] = [
   }
 ]
 
-interface RunsContext {
-  runs: RunManager
+interface RunStarterContext {
   started: AgentRun[]
-  start: ReturnType<typeof vi.fn>
+  start: Mock<(limits: RunLimits) => AgentRun>
 }
 
-const makeRuns = (): RunsContext => {
+const makeRunStarter = (): RunStarterContext => {
   const started: AgentRun[] = []
   let sequence = 0
 
-  const start = vi.fn(() => {
+  const start = vi.fn((limits: RunLimits): AgentRun => {
+    // 测试只关心传入的预算，不在这里实现超时逻辑
+    void limits
     const controller = new AbortController()
     let abortReason: AgentRun['abortReason'] = null
     const run: AgentRun = {
@@ -107,11 +113,7 @@ const makeRuns = (): RunsContext => {
     return run
   })
 
-  return {
-    runs: { start, get: vi.fn(), cancel: vi.fn(), stopAll: vi.fn() },
-    started,
-    start
-  }
+  return { started, start }
 }
 
 interface Context {
@@ -120,7 +122,7 @@ interface Context {
   proc: FakeProcess
   tools: { list: ReturnType<typeof vi.fn>; execute: ReturnType<typeof vi.fn> } & ToolRegistry
   requester: { chat: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn> } & AiRequester
-  runs: RunsContext
+  runStarter: RunStarterContext
   options: AgentRuntimeOptions
 }
 
@@ -142,12 +144,12 @@ const createContext = (onLog?: (message: string) => void): Context => {
     abort: vi.fn()
   } as unknown as Context['requester']
 
-  const runs = makeRuns()
+  const runStarter = makeRunStarter()
+  aiRun.startRun.mockImplementation(runStarter.start)
   const options: AgentRuntimeOptions = {
     hostScript: '/tmp/agent-host.js',
     requester,
     tools,
-    runs: runs.runs,
     onLog
   }
 
@@ -157,7 +159,7 @@ const createContext = (onLog?: (message: string) => void): Context => {
     proc,
     tools,
     requester,
-    runs,
+    runStarter,
     options
   }
 }
@@ -210,7 +212,7 @@ describe('agent runtime', () => {
     expect(electron.fork).toHaveBeenCalledWith('/tmp/agent-host.js', [], {
       serviceName: 'reader-bai agent'
     })
-    expect(context.runs.start).toHaveBeenCalledWith(AGENT_POLICIES.agent)
+    expect(context.runStarter.start).toHaveBeenCalledWith(AGENT_POLICIES.agent)
     expect(context.tools.list).toHaveBeenCalledWith({ forAi: true })
     expect(context.proc.messages[0]).toEqual({
       type: 'start',
@@ -227,7 +229,7 @@ describe('agent runtime', () => {
 
     await startSession(context, { ...VALID_REQUEST, mode: 'chat' })
 
-    expect(context.runs.start).toHaveBeenCalledWith(AGENT_POLICIES.chat)
+    expect(context.runStarter.start).toHaveBeenCalledWith(AGENT_POLICIES.chat)
     expect(context.proc.messages[0]).toMatchObject({
       mode: 'chat',
       toolNames: [],
@@ -248,7 +250,7 @@ describe('agent runtime', () => {
     await expect(start({ ...VALID_REQUEST, messages: [] })).rejects.toThrow('消息不能为空')
 
     expect(electron.fork).not.toHaveBeenCalled()
-    expect(context.runs.start).not.toHaveBeenCalled()
+    expect(context.runStarter.start).not.toHaveBeenCalled()
   })
 
   it('forwards host events and the final summary to the sender', async () => {
@@ -274,7 +276,7 @@ describe('agent runtime', () => {
       sessionId: id,
       event: { type: 'done', text: '完成', steps: 2, finishReason: 'stop' }
     })
-    expect(context.runs.started[0].dispose).toHaveBeenCalled()
+    expect(context.runStarter.started[0].dispose).toHaveBeenCalled()
 
     // 结束后再取消是幂等的
     context.runtime.cancel(id)
@@ -322,7 +324,7 @@ describe('agent runtime', () => {
         messages: [{ role: 'user', content: 'hi' }],
         profileId: 'profile-1',
         toolNames: ['library.list'],
-        run: context.runs.started[0],
+        run: context.runStarter.started[0],
         signal: expect.any(AbortSignal)
       })
     )
@@ -410,13 +412,13 @@ describe('agent runtime', () => {
 
     context.runtime.cancel(id)
 
-    expect(context.runs.started[0].cancel).toHaveBeenCalledWith('user')
+    expect(context.runStarter.started[0].cancel).toHaveBeenCalledWith('user')
     expect(lastEvent(context)).toEqual({
       sessionId: id,
       event: { type: 'done', text: '', steps: 0, finishReason: 'aborted' }
     })
     expect(context.proc.messages).toContainEqual({ type: 'cancel', sessionId: id })
-    expect(context.runs.started[0].dispose).toHaveBeenCalled()
+    expect(context.runStarter.started[0].dispose).toHaveBeenCalled()
 
     // 未知或非法 id 是幂等的
     expect(() => context.runtime.cancel('missing')).not.toThrow()
@@ -429,7 +431,7 @@ describe('agent runtime', () => {
 
     context.proc.emit('exit', 1)
 
-    expect(context.runs.started[0].cancel).toHaveBeenCalledWith('error')
+    expect(context.runStarter.started[0].cancel).toHaveBeenCalledWith('error')
     expect(lastEvent(context)).toEqual({
       sessionId: id,
       event: { type: 'error', message: 'agent 宿主已退出（1）' }
@@ -444,7 +446,7 @@ describe('agent runtime', () => {
     context.proc.emit('exit', 0)
     await stopping
 
-    expect(context.runs.started[0].cancel).toHaveBeenCalledWith('user')
+    expect(context.runStarter.started[0].cancel).toHaveBeenCalledWith('user')
     expect(context.proc.messages).toContainEqual({ type: 'stop' })
     expect(context.proc.killed).toBe(false)
   })
