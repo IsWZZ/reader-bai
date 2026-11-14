@@ -190,7 +190,7 @@ describe('AssistantPanel', () => {
     const options = selectModels(wrapper).findAll('option')
 
     expect(options.map((option) => option.text())).toEqual([
-      'gpt-test · api.example.com',
+      'gpt-test',
       'https://api3.example.com/v1'
     ])
     wrapper.unmount()

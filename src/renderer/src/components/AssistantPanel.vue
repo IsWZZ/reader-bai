@@ -31,7 +31,7 @@
         @change="handleProfileChange"
       >
         <option v-for="profile in settingsStore.aiProfiles" :key="profile.id" :value="profile.id">
-          {{ aiProfileLabel(profile) }}
+          {{ profile.model || profile.baseUrl || t('common.untitledProfile') }}
         </option>
       </select>
       <label
@@ -171,7 +171,6 @@ import { Button } from '@renderer/components/ui/button'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { useAssistantStore, type ChatEntry } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
-import { aiProfileLabel } from '@renderer/lib/ai'
 import { t } from '@renderer/lib/i18n'
 import { Send, Sparkles, Square, X } from 'lucide-vue-next'
 

@@ -324,6 +324,7 @@ test('switches the model from the panel dropdown and remembers it after relaunch
 
   const select = modelSelect(panel)
   await expect(select.locator('option')).toHaveCount(2)
+  await expect(select.locator('option')).toHaveText(['model-a', 'model-b'])
   await select.selectOption('b')
 
   await expect
