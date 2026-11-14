@@ -60,7 +60,7 @@ export const en = {
   'settings.uninstall.error.failed': 'Could not uninstall the app. Please try again',
   'settings.ai.title': 'AI Services',
   'settings.ai.description':
-    'Save multiple OpenAI-compatible configurations and pick one from the assistant panel.',
+    'Save multiple AI service configurations and pick one from the assistant panel. OpenAI-compatible and Anthropic Messages APIs are supported.',
   'settings.ai.plaintextWarning':
     'System secure storage is unavailable. API keys will be saved as plaintext in the local settings file.',
   'settings.ai.empty': 'No configurations yet. Click "Add model" to start.',
@@ -68,6 +68,11 @@ export const en = {
   'settings.ai.inUse': 'In use',
   'settings.ai.add': 'Add model',
   'settings.ai.editTitle': 'Edit model',
+  'settings.ai.provider.openai': 'OpenAI compatible',
+  'settings.ai.provider.anthropic': 'Anthropic',
+  'settings.ai.form.provider': 'API format',
+  'settings.ai.form.providerHint':
+    'OpenAI-compatible uses /chat/completions; Anthropic uses /v1/messages.',
   'settings.ai.form.baseUrl': 'Base URL',
   'settings.ai.form.model': 'Model',
   'settings.ai.form.modelHint':

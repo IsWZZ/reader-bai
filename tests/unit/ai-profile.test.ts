@@ -5,6 +5,7 @@ import type { AiProfile } from '@renderer/types'
 
 const profile = (overrides: Partial<AiProfile> = {}): AiProfile => ({
   id: 'p1',
+  provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   model: 'gpt-test',
   hasApiKey: true,

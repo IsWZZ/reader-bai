@@ -92,6 +92,7 @@ export const useSettingsStore = defineStore('settings', () => {
           const existing = previous.ai.profiles.find((item) => item.id === profile.id)
           return {
             id: profile.id,
+            provider: profile.provider ?? existing?.provider ?? 'openai',
             baseUrl: profile.baseUrl,
             model: profile.model,
             hasApiKey: Boolean(profile.apiKey?.trim()) || (existing?.hasApiKey ?? false)
@@ -152,12 +153,13 @@ export const useSettingsStore = defineStore('settings', () => {
    * 因此编辑时不需要、也无法把已保存的 Key 回填到表单。
    */
   const saveAiProfiles = (profiles: AiProfilePatch[], activeId?: string): Promise<boolean> => {
-    const next = profiles.map(({ id, baseUrl, model, apiKey }) => {
+    const next = profiles.map(({ id, provider, baseUrl, model, apiKey }) => {
       const entry: AiProfilePatch = {
         id,
         baseUrl: baseUrl.trim(),
         model: model.trim()
       }
+      if (provider) entry.provider = provider
       const trimmedKey = apiKey?.trim()
       if (trimmedKey) entry.apiKey = trimmedKey
       return entry

@@ -57,6 +57,7 @@ describe('normalizeStoredSettings', () => {
         profiles: [
           {
             id: 'a',
+            provider: 'openai',
             baseUrl: 'https://api.example.com/v1',
             apiKey: 'sk-test',
             apiKeyEncrypted: false,
@@ -67,6 +68,25 @@ describe('normalizeStoredSettings', () => {
       },
       library: { directory: '' }
     })
+  })
+
+  it('defaults missing or unknown providers to openai and keeps anthropic', () => {
+    const result = normalizeStoredSettings({
+      ai: {
+        profiles: [
+          { id: 'a', baseUrl: 'https://a', model: 'm' },
+          { id: 'b', provider: 'anthropic', baseUrl: 'https://b', model: 'm' },
+          { id: 'c', provider: 'gemini', baseUrl: 'https://c', model: 'm' }
+        ],
+        activeId: 'a'
+      }
+    })
+
+    expect(result.ai.profiles.map((profile) => profile.provider)).toEqual([
+      'openai',
+      'anthropic',
+      'openai'
+    ])
   })
 
   it('migrates removed themes to light', () => {
@@ -198,6 +218,7 @@ describe('applySettingsPatch', () => {
     expect(next.ai.profiles).toEqual([
       {
         id: 'c',
+        provider: 'openai',
         baseUrl: 'https://c.example/v1',
         apiKey: 'enc:secret',
         apiKeyEncrypted: true,
@@ -324,6 +345,7 @@ describe('applySettingsPatch', () => {
     expect(encode).not.toHaveBeenCalled()
     expect(next.ai.profiles[0]).toEqual({
       id: 'a',
+      provider: 'openai',
       baseUrl: 'https://a.example/v2',
       apiKey: 'sk-a',
       apiKeyEncrypted: false,
@@ -345,11 +367,47 @@ describe('applySettingsPatch', () => {
     expect(encode).not.toHaveBeenCalled()
     expect(next.ai.profiles[0]).toEqual({
       id: 'new',
+      provider: 'openai',
       baseUrl: 'https://new.example/v1',
       apiKey: '',
       apiKeyEncrypted: false,
       model: 'm'
     })
+  })
+
+  it('preserves the provider when a patch omits it and accepts explicit changes', () => {
+    const base = normalizeStoredSettings({
+      ai: {
+        profiles: [
+          {
+            id: 'a',
+            provider: 'anthropic',
+            baseUrl: 'https://a.example',
+            apiKey: 'sk-a',
+            model: 'm'
+          }
+        ],
+        activeId: 'a'
+      }
+    })
+
+    const kept = applySettingsPatch(
+      base,
+      { ai: { profiles: [{ id: 'a', baseUrl: 'https://a.example', model: 'm2' }] } },
+      plainEncode
+    )
+    expect(kept.ai.profiles[0].provider).toBe('anthropic')
+
+    const changed = applySettingsPatch(
+      base,
+      {
+        ai: {
+          profiles: [{ id: 'a', provider: 'openai', baseUrl: 'https://a.example', model: 'm2' }]
+        }
+      },
+      plainEncode
+    )
+    expect(changed.ai.profiles[0].provider).toBe('openai')
   })
 
   it('rejects AI base URLs that would send the key over plain HTTP', () => {

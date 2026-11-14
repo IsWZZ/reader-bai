@@ -296,13 +296,43 @@
               </div>
 
               <div class="space-y-1.5">
+                <span id="ai-provider-label" class="text-xs font-medium">
+                  {{ t('settings.ai.form.provider') }}
+                </span>
+                <div
+                  class="grid grid-cols-2 gap-2"
+                  role="group"
+                  aria-labelledby="ai-provider-label"
+                >
+                  <button
+                    v-for="option in providerOptions"
+                    :key="option.value"
+                    type="button"
+                    :aria-pressed="provider === option.value"
+                    :class="[
+                      'rounded-md border px-3 py-2 text-sm transition-colors',
+                      provider === option.value
+                        ? 'border-primary bg-accent text-accent-foreground'
+                        : 'hover:bg-accent/60'
+                    ]"
+                    @click="provider = option.value"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
+                <p class="text-muted-foreground text-xs">
+                  {{ t('settings.ai.form.providerHint') }}
+                </p>
+              </div>
+
+              <div class="space-y-1.5">
                 <label class="text-xs font-medium" for="ai-base-url">
                   {{ t('settings.ai.form.baseUrl') }}
                 </label>
                 <Input
                   id="ai-base-url"
                   v-model="baseUrl"
-                  placeholder="https://api.openai.com/v1"
+                  :placeholder="baseUrlPlaceholder"
                   autocomplete="off"
                   spellcheck="false"
                 />
@@ -315,7 +345,7 @@
                 <Input
                   id="ai-model"
                   v-model="model"
-                  placeholder="gpt-4o-mini / deepseek-chat"
+                  :placeholder="modelPlaceholder"
                   autocomplete="off"
                   spellcheck="false"
                 />
@@ -384,7 +414,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { AiProfile, AiProfilePatch, AppTheme } from '@renderer/types'
+import type { AiProfile, AiProfilePatch, AiProvider, AppTheme } from '@renderer/types'
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
@@ -433,11 +463,25 @@ const themeOptions = computed<{ value: AppTheme; label: string; icon: IconCompon
 
 const languageOptions = availableLocales
 
+const providerOptions = computed<{ value: AiProvider; label: string }[]>(() => [
+  { value: 'openai', label: t('settings.ai.provider.openai') },
+  { value: 'anthropic', label: t('settings.ai.provider.anthropic') }
+])
+
+const baseUrlPlaceholder = computed(() =>
+  provider.value === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'
+)
+
+const modelPlaceholder = computed(() =>
+  provider.value === 'anthropic' ? 'claude-sonnet-5-5' : 'gpt-4o-mini / deepseek-chat'
+)
+
 const activeSection = ref<SectionId>('basic')
 const profiles = computed(() => settingsStore.aiProfiles)
 // 默认只展示已保存的配置，点「新增模型」或「编辑」才展开表单
 const editingId = ref<string | null>(null)
 const editingIsNew = ref(true)
+const provider = ref<AiProvider>('openai')
 const baseUrl = ref('')
 const apiKey = ref('')
 const model = ref('')
@@ -462,6 +506,7 @@ const createId = (): string =>
 
 const resetForm = (): void => {
   editingId.value = null
+  provider.value = 'openai'
   baseUrl.value = ''
   apiKey.value = ''
   model.value = ''
@@ -480,6 +525,7 @@ const startEdit = (profile: AiProfile): void => {
   resetForm()
   editingId.value = profile.id
   editingIsNew.value = false
+  provider.value = profile.provider
   baseUrl.value = profile.baseUrl
   // 渲染进程拿不到已保存的 Key，编辑时始终留空
   apiKey.value = ''
@@ -631,11 +677,13 @@ const saveProfile = async (): Promise<void> => {
   // 未重新填写 Key 的配置不带 apiKey，主进程会保留原有 Key
   const next: AiProfilePatch[] = profiles.value.map((profile) => ({
     id: profile.id,
+    provider: profile.provider,
     baseUrl: profile.baseUrl,
     model: profile.model
   }))
   const entry: AiProfilePatch = {
     id,
+    provider: provider.value,
     baseUrl: normalized,
     model: trimmedModel
   }
@@ -666,7 +714,12 @@ const removeProfile = async (profile: AiProfile): Promise<void> => {
   formError.value = ''
   const next: AiProfilePatch[] = profiles.value
     .filter((item) => item.id !== profile.id)
-    .map((item) => ({ id: item.id, baseUrl: item.baseUrl, model: item.model }))
+    .map((item) => ({
+      id: item.id,
+      provider: item.provider,
+      baseUrl: item.baseUrl,
+      model: item.model
+    }))
   const currentActiveId = settingsStore.activeAiProfile?.id
   const nextActiveId = next.some((item) => item.id === currentActiveId)
     ? currentActiveId

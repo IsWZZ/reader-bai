@@ -51,7 +51,9 @@
 ## AI 网关
 
 - `ai.ts` 刻意不依赖 Electron，方便单元测试；负责 OpenAI 兼容的 SSE 流式解析和 `tool_calls` 聚合。
-- `ai-request.ts` 是单次模型请求的执行边界：解析 `profileId`、解密 Key、校验 Base URL、解析工具 schema、计步和取消都集中在这里；`ai.ts` 只做 OpenAI 兼容 SSE 和 `tool_calls` 聚合。
+- `ai-anthropic.ts` 负责 Anthropic Messages API：把内部的 OpenAI 风格消息/工具定义转成 `system` + `tool_use` / `tool_result` 内容块，解析 `/v1/messages` 的 SSE 事件，并归一化成与 `ai.ts` 相同的 `StreamChatResult`。
+- `ai-request.ts` 是单次模型请求的执行边界：解析 `profileId`、解密 Key、校验 Base URL、解析工具 schema、计步和取消都集中在这里，并按 `profile.provider`（`openai` / `anthropic`）选择网关。
+- 配置里的 `provider` 缺省为 `openai`，保证旧设置文件继续可用；渲染进程保存时必须回传每份配置的 `provider`。
   - `messages` 先经 `normalizeChatMessages` 校验角色、结构、条数和总长度。
   - `toolNames` 只能引用工具注册表中已注册且 `exposeToAi` 的工具，schema 由主进程解析。
   - `run` 存在时先检查是否已中止，再调用 `recordStep` 计步；`run.signal` 和调用方 `signal` 都要能中止网络请求。

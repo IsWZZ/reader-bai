@@ -33,10 +33,14 @@ export type AppTheme = 'light' | 'dark'
 /** BCP 47 风格的语言标签；实际支持的语言由 lib/i18n 的 locale 注册表决定 */
 export type AppLanguage = string
 
+/** 接口协议：openai 走 /chat/completions，anthropic 走 /v1/messages */
+export type AiProvider = 'openai' | 'anthropic'
+
 export interface AiProfile {
   id: string
+  provider: AiProvider
   baseUrl: string
-  /** 调用 OpenAI 兼容接口时使用的模型名 */
+  /** 服务商提供的模型名 */
   model: string
   /** 是否已在主进程保存 Key；渲染进程拿不到 Key 本身 */
   hasApiKey: boolean
@@ -44,6 +48,8 @@ export interface AiProfile {
 
 export interface AiProfilePatch {
   id: string
+  /** 省略时沿用该 id 原有的协议 */
+  provider?: AiProvider
   baseUrl: string
   model: string
   /** 留空或省略时保留该 id 已保存的 Key；新增配置必须填写 */

@@ -11,9 +11,16 @@ export type AppTheme = 'light' | 'dark'
  */
 export type AppLanguage = string
 
+/**
+ * 接口协议。openai 走 OpenAI 兼容的 /chat/completions，
+ * anthropic 走 Anthropic Messages API 的 /v1/messages。
+ */
+export type AiProvider = 'openai' | 'anthropic'
+
 /** 传给主进程的配置补丁；apiKey 为空表示保留该 id 已保存的 Key */
 export interface AiProfilePatch {
   id: string
+  provider?: AiProvider
   baseUrl: string
   model: string
   apiKey?: string
@@ -22,6 +29,7 @@ export interface AiProfilePatch {
 /** 回给渲染进程的配置：永不包含明文或密文 Key */
 export interface PublicAiProfile {
   id: string
+  provider: AiProvider
   baseUrl: string
   model: string
   hasApiKey: boolean
@@ -64,6 +72,7 @@ export interface SettingsPatch {
 // 磁盘上的形式：每条配置的 API Key 优先用系统钥匙串加密
 export interface StoredAiProfile {
   id: string
+  provider: AiProvider
   baseUrl: string
   apiKey: string
   apiKeyEncrypted: boolean
@@ -125,6 +134,10 @@ export const AI_BASE_URL_ERROR =
 const normalizeTheme = (value: unknown): AppTheme =>
   value === 'light' || value === 'dark' ? value : 'light'
 
+/** 旧设置没有 provider；未知值一律回退到 OpenAI 兼容接口 */
+const normalizeProvider = (value: unknown): AiProvider =>
+  value === 'anthropic' ? 'anthropic' : 'openai'
+
 const asString = (value: unknown, max: number): string =>
   typeof value === 'string' ? value.trim().slice(0, max) : ''
 
@@ -179,6 +192,7 @@ const normalizeStoredProfile = (
   const apiKey = asString(raw.apiKey, encrypted ? MAX_STORED_KEY : MAX_API_KEY)
   return {
     id: normalizeId(raw.id, index, used),
+    provider: normalizeProvider(raw.provider),
     baseUrl: asString(raw.baseUrl, MAX_BASE_URL),
     apiKey,
     apiKeyEncrypted: encrypted && apiKey !== '',
@@ -278,6 +292,11 @@ const encodeStoredProfile = (
 
   return {
     id,
+    // 未显式提供时沿用该 id 原有的协议，避免老调用方把 Anthropic 配置改回 OpenAI
+    provider:
+      raw.provider === undefined
+        ? (previous?.provider ?? 'openai')
+        : normalizeProvider(raw.provider),
     baseUrl,
     apiKey: encoded.apiKey,
     apiKeyEncrypted: encoded.apiKeyEncrypted && encoded.apiKey !== '',

@@ -19,8 +19,12 @@ interface UninstallResult {
   canceled: boolean
 }
 
+/** 接口协议：openai 走 /chat/completions，anthropic 走 /v1/messages */
+type AiProvider = 'openai' | 'anthropic'
+
 interface AiProfile {
   id: string
+  provider: AiProvider
   baseUrl: string
   model: string
   hasApiKey: boolean
@@ -28,6 +32,8 @@ interface AiProfile {
 
 interface AiProfilePatch {
   id: string
+  /** 省略时沿用该 id 原有的协议 */
+  provider?: AiProvider
   baseUrl: string
   model: string
   /** 留空表示保留已保存的 Key */

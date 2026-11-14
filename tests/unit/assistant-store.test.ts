@@ -16,6 +16,7 @@ import type {
 
 const PROFILE_A: AiProfile = {
   id: 'a',
+  provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
   model: 'gpt-test'
@@ -23,6 +24,7 @@ const PROFILE_A: AiProfile = {
 
 const PROFILE_B: AiProfile = {
   id: 'b',
+  provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
   model: 'model-b'
@@ -50,6 +52,7 @@ const toPublicProfiles = (patch: SettingsPatch | undefined, base: AiProfile[]): 
     const existing = base.find((item) => item.id === profile.id)
     return {
       id: profile.id,
+      provider: profile.provider ?? existing?.provider ?? 'openai',
       baseUrl: profile.baseUrl,
       model: profile.model,
       hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)

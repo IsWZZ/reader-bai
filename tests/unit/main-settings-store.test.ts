@@ -89,6 +89,7 @@ describe('createSettingsStore', () => {
     expect(publicSettings.ai.profiles).toEqual([
       {
         id: 'p1',
+        provider: 'openai',
         baseUrl: 'https://api.example.com/v1',
         model: 'model-a',
         hasApiKey: true
@@ -102,6 +103,34 @@ describe('createSettingsStore', () => {
     expect(profile.apiKeyEncrypted).toBe(true)
     expect(profile.apiKey).not.toBe('sk-secret')
     expect(store.decodeApiKey(profile)).toBe('sk-secret')
+  })
+
+  it('persists the provider per profile and returns it publicly', async () => {
+    const store = createStore()
+
+    const publicSettings = await store.update({
+      ai: {
+        profiles: [
+          {
+            id: 'p1',
+            provider: 'anthropic',
+            baseUrl: 'https://api.anthropic.com',
+            model: 'claude-test',
+            apiKey: 'sk-ant'
+          }
+        ],
+        activeId: 'p1'
+      }
+    })
+
+    expect(publicSettings.ai.profiles[0]).toMatchObject({
+      provider: 'anthropic',
+      model: 'claude-test'
+    })
+    const stored = JSON.parse(await readFile(settingsFile, 'utf8')) as {
+      ai: { profiles: StoredAiProfile[] }
+    }
+    expect(stored.ai.profiles[0].provider).toBe('anthropic')
   })
 
   it('treats an undecryptable key as missing', async () => {

@@ -7,6 +7,7 @@ import type { AiProfile, AppSettings, SettingsPatch } from '@renderer/types'
 
 const PROFILE_A: AiProfile = {
   id: 'a',
+  provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
   model: 'model-a'
@@ -14,9 +15,18 @@ const PROFILE_A: AiProfile = {
 
 const PROFILE_B: AiProfile = {
   id: 'b',
+  provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
   model: 'model-b'
+}
+
+const PROFILE_ANTHROPIC: AiProfile = {
+  id: 'c',
+  provider: 'anthropic',
+  baseUrl: 'https://api.anthropic.com',
+  hasApiKey: true,
+  model: 'claude-test'
 }
 
 /** 表单里填写的草稿：Key 是本次新输入的，不会来自已保存配置 */
@@ -124,6 +134,7 @@ describe('SettingsDialog', () => {
             const existing = current.ai.profiles.find((item) => item.id === profile.id)
             return {
               id: profile.id,
+              provider: profile.provider ?? existing?.provider ?? 'openai',
               baseUrl: profile.baseUrl,
               model: profile.model,
               hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
@@ -297,6 +308,64 @@ describe('SettingsDialog', () => {
     wrapper.unmount()
   })
 
+  it('saves a new profile with the selected Anthropic provider', async () => {
+    const wrapper = await mountDialog()
+    await openAiSection()
+    await findButton('新增模型').trigger('click')
+
+    // 默认是 OpenAI 兼容接口
+    expect(findButton('OpenAI 兼容').attributes('aria-pressed')).toBe('true')
+    expect(findInput('#ai-base-url').attributes('placeholder')).toBe('https://api.openai.com/v1')
+
+    await findButton('Anthropic').trigger('click')
+
+    expect(findButton('Anthropic').attributes('aria-pressed')).toBe('true')
+    expect(findInput('#ai-base-url').attributes('placeholder')).toBe('https://api.anthropic.com')
+    expect(findInput('#ai-model').attributes('placeholder')).toBe('claude-sonnet-5-5')
+
+    await fillProfile({
+      baseUrl: 'https://api.anthropic.com/',
+      apiKey: 'sk-ant',
+      model: 'claude-test'
+    })
+    await findButton('保存').trigger('click')
+    await flushPromises()
+
+    const patch = updateSettings.mock.calls[0][0]
+    expect(patch.ai?.profiles?.[0]).toMatchObject({
+      provider: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      model: 'claude-test'
+    })
+    expect(useSettingsStore().aiProfiles[0]?.provider).toBe('anthropic')
+    wrapper.unmount()
+  })
+
+  it('opens an existing Anthropic profile with its provider selected', async () => {
+    installSettings(
+      makeSettings({
+        theme: 'light',
+        ai: { profiles: [PROFILE_A, PROFILE_ANTHROPIC], activeId: 'a' }
+      })
+    )
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = await mountDialog()
+    await openAiSection()
+    await findButtons('编辑')[1].trigger('click')
+
+    expect(findButton('Anthropic').attributes('aria-pressed')).toBe('true')
+    expect(findInput('#ai-base-url').element.value).toBe('https://api.anthropic.com')
+
+    await findButton('保存').trigger('click')
+    await flushPromises()
+
+    const patch = updateSettings.mock.calls[0][0]
+    expect(patch.ai?.profiles?.[1]?.provider).toBe('anthropic')
+    wrapper.unmount()
+  })
+
   it('keeps the existing profile when adding a second one', async () => {
     installSettings(makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'a' } }))
     setActivePinia(createPinia())
@@ -363,7 +432,12 @@ describe('SettingsDialog', () => {
     const patch = updateSettings.mock.calls[0][0]
     // 没重新填写 Key，补丁里不带 apiKey，主进程会保留原 Key
     expect(patch.ai?.profiles).toEqual([
-      { id: 'a', baseUrl: 'https://api.example.com/v1', model: 'model-a2' }
+      {
+        id: 'a',
+        provider: 'openai',
+        baseUrl: 'https://api.example.com/v1',
+        model: 'model-a2'
+      }
     ])
     expect(patch.ai?.activeId).toBe('a')
     expect(document.body.textContent).toContain('model-a2 · api.example.com')
@@ -388,6 +462,7 @@ describe('SettingsDialog', () => {
     expect(patch.ai?.profiles).toEqual([
       {
         id: 'a',
+        provider: 'openai',
         baseUrl: 'https://api.example.com/v1',
         model: 'model-a',
         apiKey: 'sk-rotated'
@@ -443,7 +518,12 @@ describe('SettingsDialog', () => {
     expect(updateSettings).toHaveBeenCalledTimes(1)
     const patch = updateSettings.mock.calls[0][0]
     expect(patch.ai?.profiles).toEqual([
-      { id: 'a', baseUrl: 'https://api.example.com/v1', model: 'model-a' }
+      {
+        id: 'a',
+        provider: 'openai',
+        baseUrl: 'https://api.example.com/v1',
+        model: 'model-a'
+      }
     ])
     expect(patch.ai?.activeId).toBe('a')
     expect(document.body.textContent).not.toContain('model-b · api2.example.com')

@@ -65,6 +65,7 @@ export const createSettingsStore = (
       // 渲染进程只需要知道是否已配置 Key，明文和密文都留在主进程
       profiles: stored.ai.profiles.map((profile) => ({
         id: profile.id,
+        provider: profile.provider,
         baseUrl: profile.baseUrl,
         model: profile.model,
         hasApiKey: profile.apiKey !== ''

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAiRequester, resolveChatTools, type AiChatRequest } from '../../src/main/ai-request'
 import { streamChat, type StreamChatResult } from '../../src/main/ai'
+import { streamAnthropic } from '../../src/main/ai-anthropic'
 import { createRunManager } from '../../src/main/ai-run'
 import { createToolRegistry, type ToolRegistry } from '../../src/main/tool-registry'
-import type { StoredSettings } from '../../src/main/settings'
+import type { StoredAiProfile, StoredSettings } from '../../src/main/settings'
 import type { SettingsStore } from '../../src/main/settings-store'
 
 vi.mock('../../src/main/ai', async (importOriginal) => {
@@ -11,7 +12,10 @@ vi.mock('../../src/main/ai', async (importOriginal) => {
   return { ...actual, streamChat: vi.fn() }
 })
 
+vi.mock('../../src/main/ai-anthropic', () => ({ streamAnthropic: vi.fn() }))
+
 const streamChatMock = vi.mocked(streamChat)
+const streamAnthropicMock = vi.mocked(streamAnthropic)
 
 const okResult = (text = '你好'): StreamChatResult => ({
   text,
@@ -19,8 +23,9 @@ const okResult = (text = '你好'): StreamChatResult => ({
   finishReason: 'stop'
 })
 
-const PROFILE = {
+const PROFILE: StoredAiProfile = {
   id: 'profile-1',
+  provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   apiKey: 'encrypted-key',
   apiKeyEncrypted: true,
@@ -125,6 +130,8 @@ describe('createAiRequester', () => {
   beforeEach(() => {
     streamChatMock.mockReset()
     streamChatMock.mockResolvedValue(okResult())
+    streamAnthropicMock.mockReset()
+    streamAnthropicMock.mockResolvedValue(okResult())
   })
 
   it('resolves the profile, decrypts the key and streams the reply', async () => {
@@ -149,6 +156,20 @@ describe('createAiRequester', () => {
 
     options.onDelta('你')
     expect(request.onDelta).toHaveBeenCalledWith('你')
+  })
+
+  it('routes anthropic profiles to the Messages API gateway', async () => {
+    const anthropic = createAiRequester(
+      makeSettings([{ ...PROFILE, provider: 'anthropic' }]),
+      makeTools()
+    )
+
+    await anthropic.chat({ ...baseRequest(), toolNames: ['library.list'] })
+
+    expect(streamAnthropicMock).toHaveBeenCalledTimes(1)
+    expect(streamChatMock).not.toHaveBeenCalled()
+    // 工具 schema 仍由平台解析，两个网关拿到的是同一份定义
+    expect(streamAnthropicMock.mock.calls[0][0].tools?.[0]?.function.name).toBe('library.list')
   })
 
   it('normalizes messages before calling the model', async () => {

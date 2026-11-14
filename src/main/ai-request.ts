@@ -8,6 +8,7 @@ import {
   type ChatToolDefinition,
   type StreamChatResult
 } from './ai'
+import { streamAnthropic } from './ai-anthropic'
 import type { AgentRun } from './ai-run'
 import { AI_BASE_URL_ERROR, isAllowedAiBaseUrl } from './settings'
 import type { SettingsStore } from './settings-store'
@@ -118,7 +119,9 @@ export const createAiRequester = (settings: SettingsStore, tools: ToolRegistry):
       }
       if (request.run?.signal.aborted || request.signal?.aborted) controller.abort()
 
-      return await streamChat({
+      // 协议差异只在网关层处理，调用方（翻译和 agent 宿主）拿到的仍是同一结果结构
+      const stream = profile.provider === 'anthropic' ? streamAnthropic : streamChat
+      return await stream({
         baseUrl: profile.baseUrl,
         apiKey,
         model: profile.model,

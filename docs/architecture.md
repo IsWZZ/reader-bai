@@ -200,7 +200,8 @@ for (let step = 0; step < 12 && !run.signal.aborted; step++) {
 
 还不是完整的插件宿主，但先把 agent 需要的平台边界立住了：
 
-- `src/main/ai.ts`：把流式文本和 `tool_calls` 归一化为 `StreamChatResult`；工具参数分片会拼装完整后再返回；旧的 `streamChatCompletion` 保留为只取文本的兼容包装。
+- `src/main/ai.ts`：OpenAI 兼容接口的流式文本和 `tool_calls` 归一化为 `StreamChatResult`；工具参数分片会拼装完整后再返回；旧的 `streamChatCompletion` 保留为只取文本的兼容包装。
+- `src/main/ai-anthropic.ts`：Anthropic Messages API（`/v1/messages`）适配层，负责消息/工具定义转换和 SSE 事件解析，输出与 `ai.ts` 相同的 `StreamChatResult`；由配置里的 `provider` 选择。
 - `src/main/ai-run.ts`：`runId`、取消、步数/token 预算和超时；run 不再通过 IPC 暴露，由 agent runtime 和 `ai-request.ts` 内部使用。
 - `src/main/ai-request.ts`：单次模型请求的执行边界，负责解析配置、解密 Key、校验 Base URL、解析工具 schema、计步和取消；翻译与 agent 宿主共用。
 - `src/main/tool-registry.ts`：工具注册、JSON Schema、风险等级、AI 暴露白名单、`authorize`/`onInvoke` 钩子。

@@ -5,6 +5,7 @@ import type { AiProfile, AppSettings, SettingsPatch } from '@renderer/types'
 
 const PROFILE_A: AiProfile = {
   id: 'a',
+  provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
   model: 'model-a'
@@ -12,6 +13,7 @@ const PROFILE_A: AiProfile = {
 
 const PROFILE_B: AiProfile = {
   id: 'b',
+  provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
   model: 'model-b'
@@ -49,6 +51,7 @@ const mergePatch = (patch: SettingsPatch): AppSettings => {
         const existing = current.ai.profiles.find((item) => item.id === profile.id)
         return {
           id: profile.id,
+          provider: profile.provider ?? existing?.provider ?? 'openai',
           baseUrl: profile.baseUrl,
           model: profile.model,
           hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
@@ -247,6 +250,7 @@ describe('settings store', () => {
     })
     expect(store.aiProfiles[0]).toEqual({
       id: 'a',
+      provider: 'openai',
       baseUrl: 'https://api.example.com/v1/',
       hasApiKey: true,
       model: 'm'
@@ -273,10 +277,46 @@ describe('settings store', () => {
     })
     expect(store.aiProfiles[0]).toEqual({
       id: 'a',
+      provider: 'openai',
       baseUrl: 'https://api.example.com/v2',
       hasApiKey: true,
       model: 'model-a2'
     })
+  })
+
+  it('sends the selected provider with each profile', async () => {
+    const store = useSettingsStore()
+    await store.initialize()
+
+    const saved = await store.saveAiProfiles(
+      [
+        {
+          id: 'a',
+          provider: 'anthropic',
+          baseUrl: ' https://api.anthropic.com ',
+          apiKey: ' sk-ant ',
+          model: ' claude-test '
+        }
+      ],
+      'a'
+    )
+
+    expect(saved).toBe(true)
+    expect(updateSettings).toHaveBeenCalledWith({
+      ai: {
+        profiles: [
+          {
+            id: 'a',
+            provider: 'anthropic',
+            baseUrl: 'https://api.anthropic.com',
+            model: 'claude-test',
+            apiKey: 'sk-ant'
+          }
+        ],
+        activeId: 'a'
+      }
+    })
+    expect(store.aiProfiles[0]).toMatchObject({ provider: 'anthropic', model: 'claude-test' })
   })
 
   it('marks a profile as configured while its key is being saved', async () => {

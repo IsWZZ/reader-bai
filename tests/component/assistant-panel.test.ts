@@ -16,6 +16,7 @@ import type {
 
 const PROFILE_A: AiProfile = {
   id: 'a',
+  provider: 'openai',
   baseUrl: 'https://api.example.com/v1',
   hasApiKey: true,
   model: 'gpt-test'
@@ -23,6 +24,7 @@ const PROFILE_A: AiProfile = {
 
 const PROFILE_B: AiProfile = {
   id: 'b',
+  provider: 'openai',
   baseUrl: 'https://api2.example.com/v1',
   hasApiKey: true,
   model: 'model-b'
@@ -113,7 +115,13 @@ describe('AssistantPanel', () => {
         theme: patch.theme ?? current.theme,
         language: patch.language ?? current.language,
         ai: {
-          profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
+          profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => {
+            const existing = current.ai.profiles.find((item) => item.id === profile.id)
+            return {
+              ...profile,
+              provider: profile.provider ?? existing?.provider ?? 'openai'
+            }
+          }),
           activeId: patch.ai?.activeId ?? current.ai.activeId
         },
         library: current.library,
@@ -161,7 +169,13 @@ describe('AssistantPanel', () => {
         ai: {
           profiles: [
             PROFILE_A,
-            { id: 'c', baseUrl: 'https://api3.example.com/v1', hasApiKey: true, model: '' }
+            {
+              id: 'c',
+              provider: 'openai',
+              baseUrl: 'https://api3.example.com/v1',
+              hasApiKey: true,
+              model: ''
+            }
           ],
           activeId: 'a'
         }
