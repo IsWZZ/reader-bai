@@ -126,6 +126,71 @@ describe('LibraryPanel', () => {
     expect(wrapper.text()).toContain('深度学习')
   })
 
+  it('ignores Enter that only confirms an IME candidate', async () => {
+    createSpace.mockResolvedValue({
+      spaces: [{ id: 'space-1', name: '机器学习', createdAt: 1 }],
+      papers: []
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="新建空间"]').trigger('click')
+
+    const input = wrapper.get('input[placeholder="空间名称"]')
+    await input.trigger('keydown', { key: 'Enter', isComposing: true })
+    await flushPromises()
+
+    // 组词中的 Enter 只确认候选词：不能提交空名称，也不能关掉输入框
+    expect(createSpace).not.toHaveBeenCalled()
+    expect(wrapper.find('input[placeholder="空间名称"]').exists()).toBe(true)
+
+    await input.setValue('机器学习')
+    await input.trigger('keydown.enter')
+    await flushPromises()
+
+    expect(createSpace).toHaveBeenCalledWith('机器学习')
+  })
+
+  it('creates a space after the IME composition ends, not on the confirming Enter', async () => {
+    createSpace.mockResolvedValue({
+      spaces: [{ id: 'space-1', name: '机器学习', createdAt: 1 }],
+      papers: []
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="新建空间"]').trigger('click')
+
+    const input = wrapper.get('input[placeholder="空间名称"]')
+    await input.trigger('compositionstart')
+    // 组词期间浏览器会发 input 事件，但 v-model 不应更新
+    await input.setValue('机器学习')
+    await input.trigger('keydown', { key: 'Enter', isComposing: true })
+    await flushPromises()
+
+    expect(createSpace).not.toHaveBeenCalled()
+    expect(wrapper.find('input[placeholder="空间名称"]').exists()).toBe(true)
+
+    // 组词结束，v-model 才拿到候选词；此时按 Enter 才是真正的提交
+    await input.trigger('compositionend')
+    await input.trigger('keydown.enter')
+    await flushPromises()
+
+    expect(createSpace).toHaveBeenCalledWith('机器学习')
+  })
+
+  it('keeps the input open when Escape cancels an IME candidate', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="新建空间"]').trigger('click')
+
+    const input = wrapper.get('input[placeholder="空间名称"]')
+    await input.trigger('keydown', { key: 'Escape', isComposing: true })
+    await flushPromises()
+
+    expect(wrapper.find('input[placeholder="空间名称"]').exists()).toBe(true)
+  })
+
   it('renames a paper from the inline input', async () => {
     const target = paper({ id: 'paper-1', title: 'Old Title' })
     listPapers.mockResolvedValue({ spaces: [], papers: [target] })

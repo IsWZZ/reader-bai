@@ -51,8 +51,8 @@
                 data-inline-input
                 class="h-7 px-2 text-sm"
                 :placeholder="t('library.spaceNamePlaceholder')"
-                @keydown.enter.prevent="confirmCreateSpace"
-                @keydown.esc.stop="cancelCreateSpace"
+                @keydown.enter="onInlineEnter($event, confirmCreateSpace)"
+                @keydown.esc="onInlineEscape($event, cancelCreateSpace)"
                 @blur="confirmCreateSpace"
               />
             </div>
@@ -87,8 +87,8 @@
                     v-model="spaceNameDraft"
                     data-inline-input
                     class="h-6 min-w-0 flex-1 px-1.5 text-xs"
-                    @keydown.enter.prevent="confirmRenameSpace"
-                    @keydown.esc.stop="cancelRenameSpace"
+                    @keydown.enter="onInlineEnter($event, confirmRenameSpace)"
+                    @keydown.esc="onInlineEscape($event, cancelRenameSpace)"
                     @blur="confirmRenameSpace"
                   />
                 </template>
@@ -163,8 +163,8 @@
                         v-model="paperTitleDraft"
                         data-inline-input
                         class="h-6 min-w-0 flex-1 px-1.5 text-sm"
-                        @keydown.enter.prevent="confirmRenamePaper"
-                        @keydown.esc.stop="cancelRenamePaper"
+                        @keydown.enter="onInlineEnter($event, confirmRenamePaper)"
+                        @keydown.esc="onInlineEscape($event, cancelRenamePaper)"
                         @blur="confirmRenamePaper"
                       />
                     </div>
@@ -354,6 +354,23 @@ const toggleGroup = (key: string): void => {
 const focusInlineInput = async (): Promise<void> => {
   await nextTick()
   rootRef.value?.querySelector<HTMLInputElement>('[data-inline-input]')?.select()
+}
+
+// 输入法组词中按 Enter/Esc 只用于确认或取消候选词，
+// 此时 v-model 还没收到组词内容，直接提交会拿到空值并关掉输入框
+const isComposingEvent = (event: KeyboardEvent): boolean =>
+  event.isComposing || event.keyCode === 229
+
+const onInlineEnter = (event: KeyboardEvent, commit: () => unknown): void => {
+  if (isComposingEvent(event)) return
+  event.preventDefault()
+  void commit()
+}
+
+const onInlineEscape = (event: KeyboardEvent, cancel: () => void): void => {
+  if (isComposingEvent(event)) return
+  event.stopPropagation()
+  cancel()
 }
 
 // 读取 PDF 元数据里的标题，并更新“仍在使用文件名”的论文
