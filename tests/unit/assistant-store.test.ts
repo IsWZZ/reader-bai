@@ -2,7 +2,16 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAssistantStore } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
-import type { AiChunk, AiProfile, AppSettings, ChatMessage, SettingsPatch } from '@renderer/types'
+import type {
+  AiChatResult,
+  AiChunk,
+  AiProfile,
+  AppSettings,
+  ChatMessage,
+  SettingsPatch,
+  ToolInfo,
+  ToolResult
+} from '@renderer/types'
 
 const PROFILE_A: AiProfile = {
   id: 'a',
@@ -32,6 +41,17 @@ const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
 const chat =
   vi.fn<(requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>>()
+const chatWithTools =
+  vi.fn<
+    (
+      requestId: string,
+      messages: ChatMessage[],
+      profileId: string,
+      tools?: string[]
+    ) => Promise<AiChatResult>
+  >()
+const listTools = vi.fn<() => Promise<ToolInfo[]>>()
+const executeTool = vi.fn<(name: string, input: unknown) => Promise<ToolResult>>()
 const abortChat = vi.fn<(requestId: string) => void>()
 let chunkHandler: ((payload: AiChunk) => void) | null = null
 const unsubscribe = vi.fn()
@@ -45,10 +65,19 @@ const installApi = (): void => {
     getSettings,
     updateSettings,
     chat,
+    chatWithTools,
+    listTools,
+    executeTool,
     abortChat,
     onAiChunk
   } as unknown as Api
 }
+
+const replyResult = (text: string): AiChatResult => ({
+  text,
+  toolCalls: [],
+  finishReason: 'stop'
+})
 
 // 让 pending 的 Promise 在几次微任务后继续
 const flush = async (): Promise<void> => {
@@ -56,14 +85,27 @@ const flush = async (): Promise<void> => {
 }
 
 let resolveChat: (value: string) => void
-let rejectChat: (error: unknown) => void
 
+/** 翻译仍走只返回文本的 chat */
 const pendingChat = (): void => {
   chat.mockImplementation(
     () =>
-      new Promise<string>((resolve, reject) => {
+      new Promise<string>((resolve) => {
         resolveChat = resolve
-        rejectChat = reject
+      })
+  )
+}
+
+let resolveReply: (value: AiChatResult) => void
+let rejectReply: (error: unknown) => void
+
+/** 对话走带工具的 chatWithTools */
+const pendingReply = (): void => {
+  chatWithTools.mockImplementation(
+    () =>
+      new Promise<AiChatResult>((resolve, reject) => {
+        resolveReply = resolve
+        rejectReply = reject
       })
   )
 }
@@ -75,8 +117,13 @@ describe('assistant store', () => {
     getSettings.mockReset()
     updateSettings.mockReset()
     chat.mockReset()
+    chatWithTools.mockReset()
+    listTools.mockReset()
+    executeTool.mockReset()
     abortChat.mockReset()
     onAiChunk.mockClear()
+    listTools.mockResolvedValue([])
+    executeTool.mockResolvedValue({ content: 'ok' })
     chunkHandler = null
     getSettings.mockResolvedValue(structuredClone(CONFIGURED))
     updateSettings.mockImplementation(async (patch) => ({
@@ -251,7 +298,7 @@ describe('assistant store', () => {
   })
 
   it('streams chat replies and only sends the recent history', async () => {
-    pendingChat()
+    pendingReply()
     const store = useAssistantStore()
     store.initialize()
 
@@ -267,29 +314,70 @@ describe('assistant store', () => {
     expect(store.messages).toHaveLength(27)
     expect(store.chatLoading).toBe(true)
 
-    const [requestId, messages, profileId] = chat.mock.calls[0]
+    const [requestId, messages, profileId] = chatWithTools.mock.calls[0]
     expect(profileId).toBe('a')
     expect(messages[0].role).toBe('system')
     expect(messages).toHaveLength(21)
     expect(messages[messages.length - 1]).toEqual({ role: 'user', content: 'hello' })
 
-    chunkHandler?.({ requestId, delta: '回复' })
+    chunkHandler?.({ requestId, delta: '回复内容' })
     const reply = store.messages[store.messages.length - 1]
-    expect(reply.content).toBe('回复')
+    expect(reply.content).toBe('回复内容')
 
-    resolveChat('回复内容')
+    resolveReply(replyResult('回复内容'))
     await promise
     expect(reply.content).toBe('回复内容')
     expect(store.chatLoading).toBe(false)
   })
 
+  it('runs read-only tools through the agent loop', async () => {
+    listTools.mockResolvedValue([
+      {
+        name: 'library.list',
+        title: '列出论文',
+        description: '只读',
+        inputSchema: { type: 'object', properties: {} },
+        risk: 'read',
+        exposeToAi: true
+      },
+      {
+        name: 'annotations.remove',
+        title: '删除标注',
+        description: '破坏性',
+        inputSchema: { type: 'object', properties: {} },
+        risk: 'destructive',
+        exposeToAi: true
+      }
+    ])
+    chatWithTools
+      .mockResolvedValueOnce({
+        text: '',
+        toolCalls: [{ id: 'call-1', name: 'library.list', arguments: '{}' }],
+        finishReason: 'tool_calls'
+      })
+      .mockResolvedValueOnce(replyResult('找到一篇论文'))
+    executeTool.mockResolvedValue({ content: '{"total":1}' })
+
+    const store = useAssistantStore()
+    store.initialize()
+    store.agentMode = true
+
+    await store.sendChat('库里有几篇论文？')
+
+    expect(listTools).toHaveBeenCalledTimes(1)
+    expect(chatWithTools.mock.calls[0][3]).toEqual(['library.list'])
+    expect(executeTool).toHaveBeenCalledWith('library.list', {})
+    expect(store.messages[store.messages.length - 1].content).toBe('找到一篇论文')
+    expect(store.messages[store.messages.length - 1].toolNotes).toEqual(['调用工具：library.list'])
+  })
+
   it('stops a streaming chat reply', async () => {
-    pendingChat()
+    pendingReply()
     const store = useAssistantStore()
     store.initialize()
 
     const promise = store.sendChat('hello')
-    const requestId = chat.mock.calls[0][0]
+    const requestId = chatWithTools.mock.calls[0][0]
     chunkHandler?.({ requestId, delta: '部分' })
 
     store.stopChat()
@@ -297,19 +385,19 @@ describe('assistant store', () => {
     expect(abortChat).toHaveBeenCalledWith(requestId)
     expect(store.chatLoading).toBe(false)
 
-    resolveChat('部分内容')
+    resolveReply(replyResult('部分内容'))
     await promise
     expect(store.chatLoading).toBe(false)
     expect(store.messages[store.messages.length - 1].content).toBe('部分')
   })
 
   it('shows an error when the request fails', async () => {
-    pendingChat()
+    pendingReply()
     const store = useAssistantStore()
     store.initialize()
 
     const promise = store.sendChat('hello')
-    rejectChat(new Error("Error invoking remote method 'ai:chat': Error: 服务不可用"))
+    rejectReply(new Error("Error invoking remote method 'ai:chat': Error: 服务不可用"))
     await promise
 
     expect(store.chatError).toBe('服务不可用')

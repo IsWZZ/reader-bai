@@ -25,11 +25,22 @@ interface AiSettings {
   activeId: string
 }
 
-type ChatRole = 'system' | 'user' | 'assistant'
+type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
+
+interface ChatToolCall {
+  id: string
+  type: 'function'
+  function: {
+    name: string
+    arguments: string
+  }
+}
 
 interface ChatMessage {
   role: ChatRole
-  content: string
+  content: string | null
+  tool_calls?: ChatToolCall[]
+  tool_call_id?: string
 }
 
 interface AiChunk {
@@ -80,11 +91,21 @@ const api = {
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch: SettingsPatch): Promise<AppSettings> =>
     ipcRenderer.invoke('settings:update', patch),
-  chat: (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> =>
-    ipcRenderer.invoke('ai:chat', requestId, messages, profileId),
+  chat: async (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> => {
+    const result = await ipcRenderer.invoke('ai:chat', requestId, messages, profileId)
+    return result.text
+  },
+  chatWithTools: (
+    requestId: string,
+    messages: ChatMessage[],
+    profileId: string,
+    tools: string[] = []
+  ) => ipcRenderer.invoke('ai:chat', requestId, messages, profileId, tools),
   abortChat: (requestId: string): void => {
     ipcRenderer.send('ai:abort', requestId)
   },
+  listTools: () => ipcRenderer.invoke('tools:list'),
+  executeTool: (name: string, input: unknown) => ipcRenderer.invoke('tools:execute', name, input),
   onAiChunk: (callback: (payload: AiChunk) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, payload: AiChunk): void => {
       callback(payload)

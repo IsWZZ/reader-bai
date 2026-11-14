@@ -1,16 +1,20 @@
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
 import type { AiChunk, ChatMessage } from '@renderer/types'
+import { runAgentLoop } from '@renderer/lib/agent-loop'
 import { useSettingsStore } from '@renderer/store/settings'
 
 const TRANSLATE_DEBOUNCE_MS = 250
 const MAX_SELECTION_CHARS = 4000
 const MAX_HISTORY_MESSAGES = 20
+const MAX_AGENT_STEPS = 6
 
 export interface ChatEntry {
   id: string
   role: 'user' | 'assistant'
   content: string
+  /** 工具调用记录，展示在气泡下方 */
+  toolNotes?: string[]
 }
 
 export interface TranslationState {
@@ -26,6 +30,9 @@ const TRANSLATE_SYSTEM_PROMPT =
   '你是学术论文翻译助手。请把用户提供的文本翻译成简体中文，保留术语与公式，只输出译文，不要解释。'
 
 const CHAT_SYSTEM_PROMPT = '你是一个简洁、准确的学术阅读助手，请用中文回答用户的问题。'
+
+const AGENT_SYSTEM_PROMPT =
+  '你是一个简洁、准确的学术阅读助手，请用中文回答用户的问题。你可以调用平台工具查询论文库和标注；涉及论文标题、标注内容时先查工具，不要编造。'
 
 const createId = (): string =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -50,6 +57,8 @@ export const useAssistantStore = defineStore('assistant', () => {
   const messages = ref<ChatEntry[]>([])
   const chatLoading = ref(false)
   const chatError = ref('')
+  /** 是否让 agent 调用平台只读工具；写工具仍由确认弹窗拦截 */
+  const agentMode = ref(false)
 
   const isConfigured = computed(() => settingsStore.isAiConfigured)
 
@@ -58,6 +67,7 @@ export const useAssistantStore = defineStore('assistant', () => {
   let translateTimer: ReturnType<typeof setTimeout> | undefined
   let translateRequestId: string | null = null
   let chatRequestId: string | null = null
+  let chatAbort: AbortController | null = null
 
   const handleChunk = (payload: AiChunk): void => {
     if (payload.requestId === translateRequestId && translation.value) {
@@ -166,6 +176,20 @@ export const useAssistantStore = defineStore('assistant', () => {
     translation.value = null
   }
 
+  /** agent 只拿平台判定为只读且对 AI 开放的工具 */
+  const resolveReadToolNames = async (): Promise<string[]> => {
+    const api = window.api
+    if (!api) return []
+    try {
+      const tools = await api.listTools()
+      return tools
+        .filter((tool) => tool.risk === 'read' && tool.exposeToAi)
+        .map((tool) => tool.name)
+    } catch {
+      return []
+    }
+  }
+
   const sendChat = async (input: string): Promise<void> => {
     const content = input.trim()
     if (!content || chatLoading.value) return
@@ -192,26 +216,60 @@ export const useAssistantStore = defineStore('assistant', () => {
       .slice(-MAX_HISTORY_MESSAGES)
       .map<ChatMessage>((item) => ({ role: item.role, content: item.content }))
 
-    const requestId = createId()
-    chatRequestId = requestId
+    const toolNames = agentMode.value ? await resolveReadToolNames() : []
+    const controller = new AbortController()
+    chatAbort = controller
     chatLoading.value = true
 
+    const addToolNote = (note: string): void => {
+      // 通过响应式数组取回代理对象，push 才能触发视图更新
+      const entry = messages.value.find((item) => item.id === reply.id)
+      if (!entry) return
+      entry.toolNotes ??= []
+      entry.toolNotes.push(note)
+    }
+
     try {
-      const result = await api.chat(
-        requestId,
-        [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...history],
-        profile.id
-      )
-      if (chatRequestId !== requestId) return
-      if (result) reply.content = result
+      // agent loop 在模块里，平台只负责每次模型请求和工具执行
+      const result = await runAgentLoop({
+        messages: [
+          {
+            role: 'system',
+            content: toolNames.length > 0 ? AGENT_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT
+          },
+          ...history
+        ],
+        toolNames,
+        signal: controller.signal,
+        maxSteps: MAX_AGENT_STEPS,
+        createRequestId: createId,
+        chat: (requestId, loopMessages) => {
+          chatRequestId = requestId
+          return api.chatWithTools(requestId, loopMessages, profile.id, toolNames)
+        },
+        executeTool: (name, toolInput) => api.executeTool(name, toolInput),
+        onEvent: (event) => {
+          if (event.type === 'tool-call') {
+            addToolNote(`调用工具：${event.name}`)
+          } else if (event.type === 'tool-error') {
+            addToolNote(`工具 ${event.name} 失败：${event.error}`)
+          }
+        }
+      })
+
+      if (controller.signal.aborted || result.finishReason === 'aborted') return
+      // 有流式回调时内容已经写入；没有回调的环境用最终结果兜底
+      const entry = messages.value.find((item) => item.id === reply.id)
+      if (entry && !entry.content && result.text) entry.content = result.text
     } catch (error) {
-      if (chatRequestId !== requestId) return
+      if (controller.signal.aborted) return
       if (!reply.content) {
         messages.value = messages.value.filter((item) => item.id !== reply.id)
       }
       chatError.value = cleanError(error, 'AI 回复失败，请稍后重试')
     } finally {
-      if (chatRequestId === requestId) {
+      if (chatAbort === controller) {
+        chatAbort = null
         chatRequestId = null
         chatLoading.value = false
       }
@@ -219,6 +277,8 @@ export const useAssistantStore = defineStore('assistant', () => {
   }
 
   const stopChat = (): void => {
+    chatAbort?.abort()
+    chatAbort = null
     if (chatRequestId) {
       window.api?.abortChat(chatRequestId)
       chatRequestId = null
@@ -231,6 +291,8 @@ export const useAssistantStore = defineStore('assistant', () => {
     unsubscribe = null
     if (translateTimer) clearTimeout(translateTimer)
     abortTranslation()
+    chatAbort?.abort()
+    chatAbort = null
     if (chatRequestId) {
       window.api?.abortChat(chatRequestId)
       chatRequestId = null
@@ -242,6 +304,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     messages,
     chatLoading,
     chatError,
+    agentMode,
     isConfigured,
     initialize,
     handleSelection,

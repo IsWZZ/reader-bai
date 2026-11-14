@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   chatCompletionsUrl,
   normalizeChatMessages,
+  streamChat,
   streamChatCompletion,
   type ChatMessage,
+  type ChatToolDefinition,
   type StreamChatOptions
 } from '../../src/main/ai'
 
@@ -47,6 +49,28 @@ const fakeResponse = (init: FakeResponseInit = {}): Response => {
 
 const sseFrame = (content: string): string =>
   `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`
+
+const ssePayload = (payload: unknown): string => `data: ${JSON.stringify(payload)}\n\n`
+
+const toolFrame = (toolCalls: unknown, finishReason?: string): string =>
+  ssePayload({
+    choices: [{ delta: { tool_calls: toolCalls }, finish_reason: finishReason }]
+  })
+
+const TOOLS: ChatToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'library.search',
+      description: '搜索论文',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        required: ['query']
+      }
+    }
+  }
+]
 
 const baseOptions = (): StreamChatOptions => ({
   baseUrl: 'https://api.example.com/v1',
@@ -108,6 +132,228 @@ describe('normalizeChatMessages', () => {
     expect(() => normalizeChatMessages([{ role: 'user', content: 'x'.repeat(40001) }])).toThrow(
       '消息过长'
     )
+  })
+
+  it('accepts assistant tool calls and tool result messages', () => {
+    const messages = normalizeChatMessages([
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'library.search', arguments: '{"query":"attention"}' }
+          }
+        ]
+      },
+      { role: 'tool', content: '[]', tool_call_id: 'call_1' }
+    ])
+
+    expect(messages).toEqual([
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'library.search', arguments: '{"query":"attention"}' }
+          }
+        ]
+      },
+      { role: 'tool', content: '[]', tool_call_id: 'call_1' }
+    ])
+  })
+
+  it('rejects malformed tool calls and tool messages', () => {
+    expect(() =>
+      normalizeChatMessages([
+        { role: 'assistant', content: 'x', tool_calls: [{ id: '', type: 'function' }] }
+      ])
+    ).toThrow('消息格式不正确')
+    expect(() =>
+      normalizeChatMessages([
+        {
+          role: 'user',
+          content: 'x',
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'library.search', arguments: '{}' }
+            }
+          ]
+        }
+      ])
+    ).toThrow('消息格式不正确')
+    expect(() =>
+      normalizeChatMessages([{ role: 'assistant', content: null, tool_calls: [] }])
+    ).toThrow('消息格式不正确')
+    expect(() =>
+      normalizeChatMessages([{ role: 'user', content: 'x', tool_call_id: 'call_1' }])
+    ).toThrow('消息格式不正确')
+  })
+})
+
+describe('streamChat tool calls', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('assembles fragmented streamed tool calls', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            toolFrame([
+              {
+                index: 0,
+                id: 'call_1',
+                type: 'function',
+                function: { name: 'library.search', arguments: '{"query":' }
+              }
+            ]),
+            toolFrame([{ index: 0, function: { arguments: '"attention"}' } }]),
+            toolFrame([], 'tool_calls'),
+            'data: [DONE]\n\n'
+          ]
+        })
+      )
+    )
+
+    const result = await streamChat({ ...baseOptions(), tools: TOOLS })
+
+    expect(result.text).toBe('')
+    expect(result.finishReason).toBe('tool_calls')
+    expect(result.toolCalls).toEqual([
+      { id: 'call_1', name: 'library.search', arguments: '{"query":"attention"}' }
+    ])
+  })
+
+  it('keeps multiple tool calls ordered by index', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            toolFrame([
+              {
+                index: 1,
+                id: 'call_b',
+                type: 'function',
+                function: { name: 'paper.readPage', arguments: '{"page":2}' }
+              },
+              {
+                index: 0,
+                id: 'call_a',
+                type: 'function',
+                function: { name: 'library.search', arguments: '{"query":"x"}' }
+              }
+            ]),
+            toolFrame([], 'tool_calls'),
+            'data: [DONE]\n\n'
+          ]
+        })
+      )
+    )
+
+    const result = await streamChat({ ...baseOptions(), tools: TOOLS })
+
+    expect(result.toolCalls.map((call) => call.id)).toEqual(['call_a', 'call_b'])
+  })
+
+  it('reads tool calls from a non-streaming response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          contentType: 'application/json',
+          json: {
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call_2',
+                      type: 'function',
+                      function: { name: 'paper.readPage', arguments: '{"page":3}' }
+                    }
+                  ]
+                },
+                finish_reason: 'tool_calls'
+              }
+            ]
+          }
+        })
+      )
+    )
+
+    const result = await streamChat({ ...baseOptions(), tools: TOOLS })
+
+    expect(result.finishReason).toBe('tool_calls')
+    expect(result.toolCalls).toEqual([
+      { id: 'call_2', name: 'paper.readPage', arguments: '{"page":3}' }
+    ])
+  })
+
+  it('sends tool definitions and tool result messages to the provider', async () => {
+    const fetchMock = vi.fn(async () => fakeResponse({ chunks: ['data: [DONE]\n\n'] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const messages: ChatMessage[] = [
+      { role: 'user', content: '找 attention 相关论文' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'library.search', arguments: '{"query":"attention"}' }
+          }
+        ]
+      },
+      { role: 'tool', content: '["Attention Is All You Need"]', tool_call_id: 'call_1' }
+    ]
+
+    await streamChat({ ...baseOptions(), messages, tools: TOOLS })
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(String(init.body))
+    expect(body.tools).toEqual(TOOLS)
+    expect(body.messages).toEqual(messages)
+  })
+
+  it('treats a stop finish reason as tool_calls when calls are present', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        fakeResponse({
+          chunks: [
+            toolFrame(
+              [
+                {
+                  index: 0,
+                  id: 'call_1',
+                  type: 'function',
+                  function: { name: 'library.search', arguments: '{"query":"x"}' }
+                }
+              ],
+              'stop'
+            ),
+            'data: [DONE]\n\n'
+          ]
+        })
+      )
+    )
+
+    const result = await streamChat({ ...baseOptions(), tools: TOOLS })
+
+    expect(result.finishReason).toBe('tool_calls')
   })
 })
 

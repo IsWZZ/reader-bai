@@ -41,13 +41,14 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 ### 关键位置
 
 - `views/Home.vue` 外壳；`LibraryPanel.vue` 书库；`PdfViewer.vue` 渲染/选词/标注（改动前读 [docs/pdf-viewer.md](docs/pdf-viewer.md)）。
-- `AssistantPanel.vue` + `store/assistant.ts` 翻译与 AI 对话；`SettingsDialog.vue` + `store/settings.ts` 主题、多 AI 配置与论文库存储位置。
+- `AssistantPanel.vue` + `store/assistant.ts` 翻译与 AI 对话；`lib/agent-loop.ts` 是第一方 agent 循环，通过 `window.api.chatWithTools` 和 `executeTool` 使用平台能力。`SettingsDialog.vue` + `store/settings.ts` 主题、多 AI 配置与论文库存储位置。
+- `src/main/platform-tools.ts` 注册平台工具；`src/main/ipc/tools.ts` 提供 `tools:list/execute`，写/删除操作由主进程在执行边界确认。
 - `components/ui/**` 为 shadcn-vue 生成代码；`lib/pdf.ts` 管 worker 与元数据；`types.ts` 是渲染侧类型副本。
 - 测试：`tests/unit|component`（Vitest，mock `window.api`）、`tests/e2e`（Playwright，独立 `--user-data-dir`）；约定见 [docs/testing.md](docs/testing.md)。
 
 ### IPC 与数据
 
-通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`dialog:chooseDirectory`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId）、`ai:abort`、`ai:chunk`。
+通道：`library:*`（list/createSpace/renameSpace/deleteSpace/renamePaper/movePaper/removePaper）、`dialog:importPaper`、`dialog:chooseDirectory`、`paper:read`、`annotations:list/add/remove`、`settings:get/update`、`ai:chat`（requestId, messages, profileId, toolNames?）、`ai:abort`、`ai:chunk`、`tools:list`、`tools:execute`。
 
 - `settings.json` 为 `{ theme, ai: { profiles: [{ id, baseUrl, apiKey, apiKeyEncrypted, model }], activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`（不回写）；`settings:update` 接受部分补丁；`library.directory` 只接受绝对路径，空字符串表示默认的 `userData/papers`。
 - `library.json` 为 `{ spaces, papers }`，保持 `normalizeLibrary` 旧格式迁移；`annotations.json` 以论文路径为键；移除论文/空间不删 PDF。
@@ -78,7 +79,7 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 - **UI**：先查 `components/ui/**` 并复用现有组件；缺的用 shadcn-vue CLI 按 `components.json` 自行添加（`npx shadcn-vue@latest add <component>`），不手写重复组件；生成代码少改。
 - **样式**：Tailwind v4 工具类 + `assets/css/reset.css` 的设计 token；不新增自定义 CSS/大段内联样式；动态类名写完整；合并用 `cn`。
 - **图标**：业务组件用 `lucide-vue-next`；`components/ui/**` 里的 `@lucide/vue` 保持不动；纯图标按钮加 `aria-label`。
-- **AI**：渲染进程走 `window.api.chat(...)`，主进程 `src/main/ai.ts`，模型来自设置里的 AI 配置；不直接 `fetch`、不传 Key；当前没有 AI SDK，引入前先讨论。
+- **AI**：渲染进程走 `window.api.chat(...)` / `chatWithTools(...)`，主进程 `src/main/ai.ts`，模型来自设置里的 AI 配置；agent loop 在 `lib/agent-loop.ts`，工具走 `executeTool`。不直接 `fetch`、不传 Key；当前没有 AI SDK，引入前先讨论。
 - **状态与工具**：优先 Pinia、Vue Router、`@vueuse/core` 的现成能力；能不加依赖就不加。
 - **测试**：Vitest + Vue Test Utils + Playwright，复用 `tests/setup.ts` 和 `tests/e2e/helpers.ts`。
 

@@ -29,6 +29,20 @@
           {{ aiProfileLabel(profile) }}
         </option>
       </select>
+      <label
+        class="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap"
+        title="允许 AI 调用论文库等只读工具"
+      >
+        <input
+          type="checkbox"
+          aria-label="使用工具"
+          class="accent-primary size-3.5"
+          :checked="store.agentMode"
+          :disabled="store.chatLoading"
+          @change="handleAgentModeChange"
+        />
+        工具
+      </label>
     </div>
 
     <p
@@ -77,24 +91,31 @@
       <p v-if="store.messages.length === 0" class="text-muted-foreground text-xs leading-relaxed">
         也可以直接向 AI 提问，回答会流式显示在这里。
       </p>
-      <div
-        v-for="entry in store.messages"
-        :key="entry.id"
-        :class="entry.role === 'user' ? 'flex justify-end' : 'flex justify-start'"
-      >
-        <p
-          :class="[
-            'max-w-[92%] rounded-lg px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap',
-            entry.role === 'user'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-foreground'
-          ]"
-        >
-          {{ entry.content
-          }}<span v-if="isStreamingEntry(entry)" class="ml-0.5 animate-pulse" aria-hidden="true"
-            >▍</span
+      <div v-for="entry in store.messages" :key="entry.id" class="space-y-1">
+        <div :class="entry.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+          <p
+            :class="[
+              'max-w-[92%] rounded-lg px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap',
+              entry.role === 'user'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground'
+            ]"
           >
-        </p>
+            {{ entry.content
+            }}<span v-if="isStreamingEntry(entry)" class="ml-0.5 animate-pulse" aria-hidden="true"
+              >▍</span
+            >
+          </p>
+        </div>
+        <ul v-if="entry.toolNotes?.length" class="space-y-0.5 pl-1" aria-label="工具调用记录">
+          <li
+            v-for="(note, index) in entry.toolNotes"
+            :key="index"
+            class="text-muted-foreground text-xs leading-relaxed"
+          >
+            {{ note }}
+          </li>
+        </ul>
       </div>
       <p v-if="store.chatError" class="text-destructive text-xs leading-relaxed">
         {{ store.chatError }}
@@ -146,6 +167,10 @@ const handleProfileChange = (event: Event): void => {
   const id = (event.target as HTMLSelectElement).value
   if (!id || id === settingsStore.activeAiProfile?.id) return
   void settingsStore.setActiveAiProfile(id)
+}
+
+const handleAgentModeChange = (event: Event): void => {
+  store.agentMode = (event.target as HTMLInputElement).checked
 }
 
 // 切换配置（包括从设置里删除当前配置）时清掉旧模型的译文

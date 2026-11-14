@@ -3,12 +3,14 @@ import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
+import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
 import { createWindow } from './window'
 import { registerAiIpc } from './ipc/ai'
 import { registerAnnotationsIpc } from './ipc/annotations'
 import { registerLibraryIpc } from './ipc/library'
 import { registerSettingsIpc } from './ipc/settings'
+import { confirmToolInvocation, registerToolsIpc } from './ipc/tools'
 
 // 平台外壳：只负责应用生命周期、持久化实例与各领域 IPC 的装配。
 // 业务逻辑放在 src/main/<domain>.ts，IPC 注册放在 src/main/ipc/。
@@ -28,10 +30,17 @@ app.whenReady().then(() => {
   const annotations = createAnnotationStore(join(userData, 'annotations.json'))
   const settings = createSettingsStore(join(userData, 'settings.json'), join(userData, 'papers'))
 
+  const tools = createPlatformToolRegistry({
+    library,
+    annotations,
+    confirm: confirmToolInvocation
+  })
+
   registerLibraryIpc(library, settings)
   registerAnnotationsIpc(annotations, library)
   registerSettingsIpc(settings)
-  registerAiIpc(settings)
+  registerAiIpc(settings, tools)
+  registerToolsIpc(tools)
 
   createWindow()
 

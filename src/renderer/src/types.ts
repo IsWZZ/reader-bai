@@ -44,11 +44,56 @@ export interface AiSettings {
   activeId: string
 }
 
-export type ChatRole = 'system' | 'user' | 'assistant'
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
+
+export interface ChatToolCall {
+  id: string
+  type: 'function'
+  function: {
+    name: string
+    arguments: string
+  }
+}
 
 export interface ChatMessage {
   role: ChatRole
+  content: string | null
+  /** assistant 发起的工具调用 */
+  tool_calls?: ChatToolCall[]
+  /** tool 消息对应的调用 id */
+  tool_call_id?: string
+}
+
+export type ChatFinishReason = 'stop' | 'tool_calls' | 'length' | 'aborted' | 'error'
+
+export interface ChatToolCallResult {
+  id: string
+  name: string
+  /** 模型返回的原始 JSON 字符串 */
+  arguments: string
+}
+
+/** 一次模型请求的归一化结果 */
+export interface AiChatResult {
+  text: string
+  toolCalls: ChatToolCallResult[]
+  finishReason: ChatFinishReason
+}
+
+export type ToolRisk = 'read' | 'write' | 'destructive'
+
+export interface ToolInfo {
+  name: string
+  title: string
+  description: string
+  inputSchema: Record<string, unknown>
+  risk: ToolRisk
+  exposeToAi: boolean
+}
+
+export interface ToolResult {
   content: string
+  isError?: boolean
 }
 
 /** 主进程流式返回的增量片段 */

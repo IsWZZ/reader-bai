@@ -63,17 +63,64 @@ declare global {
     activeId: string
   }
 
-  type ChatRole = 'system' | 'user' | 'assistant'
+  type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
+
+  interface ChatToolCall {
+    id: string
+    type: 'function'
+    function: {
+      name: string
+      arguments: string
+    }
+  }
 
   interface ChatMessage {
     role: ChatRole
-    content: string
+    content: string | null
+    /** assistant 发起的工具调用 */
+    tool_calls?: ChatToolCall[]
+    /** tool 消息对应的调用 id */
+    tool_call_id?: string
+  }
+
+  type ChatFinishReason = 'stop' | 'tool_calls' | 'length' | 'aborted' | 'error'
+
+  interface ChatToolCallResult {
+    id: string
+    name: string
+    /** 模型返回的原始 JSON 字符串 */
+    arguments: string
+  }
+
+  /** 一次模型请求的归一化结果 */
+  interface AiChatResult {
+    text: string
+    toolCalls: ChatToolCallResult[]
+    finishReason: ChatFinishReason
   }
 
   /** 主进程流式返回的增量片段 */
   interface AiChunk {
     requestId: string
     delta: string
+  }
+
+  type ToolRisk = 'read' | 'write' | 'destructive'
+
+  interface ToolInfo {
+    name: string
+    title: string
+    description: string
+    /** 供模型/UI 展示的 JSON Schema */
+    inputSchema: Record<string, unknown>
+    risk: ToolRisk
+    /** 是否允许 agent 调用 */
+    exposeToAi: boolean
+  }
+
+  interface ToolResult {
+    content: string
+    isError?: boolean
   }
 
   interface LibrarySettings {
@@ -120,10 +167,21 @@ declare global {
     updateSettings: (patch: SettingsPatch) => Promise<AppSettings>
     /** 使用指定 AI 配置发起流式对话，返回完整回复文本；增量通过 onAiChunk 推送 */
     chat: (requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>
+    /** 带工具定义的流式对话，返回归一化后的文本和工具调用 */
+    chatWithTools: (
+      requestId: string,
+      messages: ChatMessage[],
+      profileId: string,
+      tools?: string[]
+    ) => Promise<AiChatResult>
     /** 中止指定请求 */
     abortChat: (requestId: string) => void
     /** 订阅流式增量，返回取消订阅函数 */
     onAiChunk: (callback: (payload: AiChunk) => void) => () => void
+    /** 列出平台注册的工具 */
+    listTools: () => Promise<ToolInfo[]>
+    /** 执行一个已注册工具；写操作由主进程弹出确认 */
+    executeTool: (name: string, input: unknown) => Promise<ToolResult>
   }
 
   interface Window {

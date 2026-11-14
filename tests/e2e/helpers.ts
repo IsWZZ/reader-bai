@@ -159,3 +159,13 @@ export async function stubOpenDirectoryDialog(
       target ? { canceled: false, filePaths: [target] } : { canceled: true, filePaths: [] }
   }, directory)
 }
+
+/** 替换主进程的工具确认对话框；response 0 表示取消，1 表示允许。 */
+export async function stubMessageBox(app: ElectronApplication, response: number): Promise<void> {
+  await app.evaluate(({ dialog }, index) => {
+    dialog.showMessageBox = (async () => ({
+      response: index,
+      checkboxChecked: false
+    })) as unknown as typeof dialog.showMessageBox
+  }, response)
+}

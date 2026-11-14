@@ -36,7 +36,8 @@ interface StoredSettings {
 interface StubRequest {
   model: string
   stream: boolean
-  messages: { role: string; content: string }[]
+  messages: { role: string; content: string | null; tool_call_id?: string }[]
+  tools?: { type: string; function: { name: string } }[]
 }
 
 interface CapturedRequest {
@@ -53,6 +54,7 @@ interface StubServer {
 let userDataDir: string
 let primary: StubServer
 let secondary: StubServer
+let agent: StubServer
 const captured: CapturedRequest[] = []
 
 const startStubServer = async (
@@ -74,7 +76,7 @@ const startStubServer = async (
       const body = JSON.parse(raw) as StubRequest
       captured.push({ server: name, body, authorization: req.headers.authorization })
 
-      const isTranslation = body.messages[0]?.content.includes('翻译')
+      const isTranslation = body.messages[0]?.content?.includes('翻译') ?? false
       const text = isTranslation ? translation : chatReply
       const parts = [text.slice(0, 2), text.slice(2)]
 
@@ -110,14 +112,89 @@ const closeStubServer = async (stub: StubServer): Promise<void> => {
   await new Promise<void>((resolve) => stub.server.close(() => resolve()))
 }
 
+/** 第一次对话返回 library.list 工具调用，第二次返回最终回答 */
+const startAgentStubServer = async (): Promise<StubServer> => {
+  let chatRequests = 0
+  const server = createServer((req, res) => {
+    if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
+      res.writeHead(404).end()
+      return
+    }
+
+    let raw = ''
+    req.on('data', (chunk) => {
+      raw += chunk
+    })
+    req.on('end', () => {
+      const body = JSON.parse(raw) as StubRequest
+      captured.push({ server: 'agent', body, authorization: req.headers.authorization })
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive'
+      })
+      res.flushHeaders()
+
+      if (chatRequests === 0) {
+        chatRequests += 1
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call-1',
+                      type: 'function',
+                      function: { name: 'library.list', arguments: '{}' }
+                    }
+                  ]
+                }
+              }
+            ]
+          })}\n\n`
+        )
+        res.write(
+          `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] })}\n\n`
+        )
+        res.end('data: [DONE]\n\n')
+        return
+      }
+
+      const text = '论文库里有一篇论文'
+      const parts = [text.slice(0, 3), text.slice(3)]
+      let index = 0
+      const timer = setInterval(() => {
+        if (index < parts.length) {
+          const delta = parts[index]
+          index += 1
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`)
+        } else {
+          clearInterval(timer)
+          res.end('data: [DONE]\n\n')
+        }
+      }, 20)
+      res.on('close', () => clearInterval(timer))
+    })
+  })
+
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`
+  return { server, baseUrl }
+}
+
 test.beforeAll(async () => {
   primary = await startStubServer('primary', '这是译文', '你好，我是助手')
   secondary = await startStubServer('secondary', '第二配置译文', '来自第二个模型')
+  agent = await startAgentStubServer()
 })
 
 test.afterAll(async () => {
   await closeStubServer(primary)
   await closeStubServer(secondary)
+  await closeStubServer(agent)
 })
 
 test.beforeEach(async () => {
@@ -330,6 +407,33 @@ test('reads legacy settings without a model and asks the user to complete it', a
   const stored = await readJsonFile<StoredSettings>(settingsFile())
   expect(stored?.ai.profiles).toBeUndefined()
   expect(stored?.ai.model).toBeUndefined()
+
+  await reader.app.close()
+})
+
+test('uses read-only platform tools through the agent loop', async () => {
+  await seedPaper()
+  await seedSingleProfile(agent.baseUrl)
+  const reader = await launchReader(userDataDir)
+  const panel = await openAssistant(reader.page)
+
+  await panel.getByRole('checkbox', { name: '使用工具' }).check()
+  await panel.getByRole('textbox', { name: '向 AI 提问' }).fill('论文库里有哪篇论文？')
+  await panel.getByRole('button', { name: '发送' }).click()
+
+  await expect(panel.getByText('论文库里有一篇论文')).toBeVisible({ timeout: 10_000 })
+  await expect(panel.getByText('调用工具：library.list')).toBeVisible()
+
+  const requests = captured.filter((item) => item.server === 'agent')
+  expect(requests).toHaveLength(2)
+  // 只发送平台判定为只读且对 AI 开放的工具
+  expect(requests[0].body.tools?.map((tool) => tool.function.name)).toEqual([
+    'library.list',
+    'paper.get',
+    'annotations.list'
+  ])
+  const toolMessage = requests[1].body.messages.find((message) => message.role === 'tool')
+  expect(toolMessage?.content).toContain('paper-1')
 
   await reader.app.close()
 })
