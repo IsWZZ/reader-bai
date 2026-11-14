@@ -29,9 +29,9 @@ interface ProfileDraft {
 const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
 
 const makeSettings = (
-  settings: Omit<AppSettings, 'library'>,
+  settings: Omit<AppSettings, 'library' | 'keyStorage'>,
   directory = DEFAULT_LIBRARY_DIRECTORY
-): AppSettings => ({ ...settings, library: { directory } })
+): AppSettings => ({ ...settings, library: { directory }, keyStorage: 'encrypted' })
 
 const BASE_SETTINGS = makeSettings({
   theme: 'light',
@@ -128,7 +128,8 @@ describe('SettingsDialog', () => {
             patch.library?.directory === undefined
               ? current.library.directory
               : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
-        }
+        },
+        keyStorage: current.keyStorage
       }
       return structuredClone(current)
     })
@@ -159,6 +160,21 @@ describe('SettingsDialog', () => {
     expect(findButton('深色')).toBeDefined()
     expect(() => findButton('跟随系统')).toThrow()
     expect(() => findButton('黑白')).toThrow()
+    wrapper.unmount()
+  })
+
+  it('warns when the system key store is unavailable', async () => {
+    installSettings({
+      ...makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }),
+      keyStorage: 'plaintext'
+    })
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = await mountDialog()
+    await openAiSection()
+
+    expect(document.body.textContent).toContain('系统安全存储不可用，API Key 将以明文保存')
     wrapper.unmount()
   })
 

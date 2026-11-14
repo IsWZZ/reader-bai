@@ -59,10 +59,13 @@ interface LibrarySettings {
   directory: string
 }
 
+type KeyStorage = 'encrypted' | 'plaintext'
+
 interface AppSettings {
   theme: AppTheme
   ai: AiSettings
   library: LibrarySettings
+  keyStorage: KeyStorage
 }
 
 type PluginPermission = 'documents:read' | 'annotations:write' | 'network' | 'storage'

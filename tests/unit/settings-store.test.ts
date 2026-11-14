@@ -20,9 +20,9 @@ const PROFILE_B: AiProfile = {
 const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
 
 const makeSettings = (
-  settings: Omit<AppSettings, 'library'>,
+  settings: Omit<AppSettings, 'library' | 'keyStorage'>,
   directory = DEFAULT_LIBRARY_DIRECTORY
-): AppSettings => ({ ...settings, library: { directory } })
+): AppSettings => ({ ...settings, library: { directory }, keyStorage: 'encrypted' })
 
 const BASE_SETTINGS = makeSettings({
   theme: 'light',
@@ -65,7 +65,8 @@ const mergePatch = (patch: SettingsPatch): AppSettings => {
         patch.library?.directory === undefined
           ? current.library.directory
           : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
-    }
+    },
+    keyStorage: current.keyStorage
   }
 }
 

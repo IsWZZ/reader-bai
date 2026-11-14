@@ -11,7 +11,8 @@ import type {
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   ai: { profiles: [], activeId: '' },
-  library: { directory: '' }
+  library: { directory: '' },
+  keyStorage: 'encrypted'
 }
 
 /**
@@ -22,7 +23,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({
     theme: DEFAULT_SETTINGS.theme,
     ai: { profiles: [], activeId: '' },
-    library: { directory: '' }
+    library: { directory: '' },
+    keyStorage: DEFAULT_SETTINGS.keyStorage
   })
   const loaded = ref(false)
   const saving = ref(false)
@@ -92,7 +94,8 @@ export const useSettingsStore = defineStore('settings', () => {
       },
       library: {
         directory: patch.library?.directory ?? previous.library.directory
-      }
+      },
+      keyStorage: previous.keyStorage
     }
     // 主题需要即时生效，失败时再回滚
     settings.value = optimistic

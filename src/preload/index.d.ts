@@ -193,10 +193,14 @@ declare global {
     directory: string
   }
 
+  /** 系统安全存储是否可用；不可用时 Key 会明文落盘 */
+  type KeyStorage = 'encrypted' | 'plaintext'
+
   interface AppSettings {
     theme: AppTheme
     ai: AiSettings
     library: LibrarySettings
+    keyStorage: KeyStorage
   }
 
   interface SettingsPatch {

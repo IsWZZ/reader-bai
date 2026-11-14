@@ -274,6 +274,32 @@ test('rewrites legacy AI settings into profiles when saved', async () => {
   await reader.app.close()
 })
 
+test('warns when the system key store is unavailable', async () => {
+  const reader = await launchReader(userDataDir)
+
+  // 模拟没有系统钥匙串的环境，再重新加载渲染进程让设置重新读取
+  await reader.app.evaluate(({ safeStorage }) => {
+    safeStorage.isEncryptionAvailable = (): boolean => false
+  })
+  await reader.page.reload()
+
+  const keyStorage = await reader.page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        api: { getSettings: () => Promise<{ keyStorage: string }> }
+      }
+    ).api
+    return (await api.getSettings()).keyStorage
+  })
+  expect(keyStorage).toBe('plaintext')
+
+  const dialog = await openSettings(reader.page)
+  await dialog.getByRole('button', { name: 'AI 服务' }).click()
+  await expect(dialog.getByText(/系统安全存储不可用/)).toBeVisible()
+
+  await reader.app.close()
+})
+
 test('requires native confirmation before sending an existing key to a new host', async () => {
   const reader = await launchReader(userDataDir)
   const dialog = await openSettings(reader.page)

@@ -28,9 +28,10 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const makeSettings = (settings: Omit<AppSettings, 'library'>): AppSettings => ({
+const makeSettings = (settings: Omit<AppSettings, 'library' | 'keyStorage'>): AppSettings => ({
   ...settings,
-  library: { directory: '' }
+  library: { directory: '' },
+  keyStorage: 'encrypted'
 })
 
 const BASE_SETTINGS = makeSettings({
@@ -126,7 +127,8 @@ describe('AssistantPanel', () => {
           profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
           activeId: patch.ai?.activeId ?? current.ai.activeId
         },
-        library: current.library
+        library: current.library,
+        keyStorage: current.keyStorage
       }
       return structuredClone(current)
     })

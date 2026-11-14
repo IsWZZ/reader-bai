@@ -174,10 +174,14 @@ export interface LibrarySettings {
   directory: string
 }
 
+/** 系统安全存储是否可用；不可用时 Key 会明文落盘 */
+export type KeyStorage = 'encrypted' | 'plaintext'
+
 export interface AppSettings {
   theme: AppTheme
   ai: AiSettings
   library: LibrarySettings
+  keyStorage: KeyStorage
 }
 
 export interface SettingsPatch {

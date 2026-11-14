@@ -30,9 +30,10 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const makeSettings = (settings: Omit<AppSettings, 'library'>): AppSettings => ({
+const makeSettings = (settings: Omit<AppSettings, 'library' | 'keyStorage'>): AppSettings => ({
   ...settings,
-  library: { directory: '' }
+  library: { directory: '' },
+  keyStorage: 'encrypted'
 })
 
 const CONFIGURED = makeSettings({
@@ -173,7 +174,8 @@ describe('assistant store', () => {
         profiles: toPublicProfiles(patch, CONFIGURED.ai.profiles),
         activeId: patch.ai?.activeId ?? CONFIGURED.ai.activeId
       },
-      library: { directory: '' }
+      library: { directory: '' },
+      keyStorage: CONFIGURED.keyStorage
     }))
 
     installApi()
@@ -310,7 +312,8 @@ describe('assistant store', () => {
         profiles: toPublicProfiles(patch, settings.ai.profiles),
         activeId: patch.ai?.activeId ?? settings.ai.activeId
       },
-      library: settings.library
+      library: settings.library,
+      keyStorage: settings.keyStorage
     }))
     setActivePinia(createPinia())
     await useSettingsStore().initialize()

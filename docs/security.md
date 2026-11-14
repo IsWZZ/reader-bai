@@ -37,7 +37,7 @@
 - 标注的新增和删除同样校验论文库归属。
 - AI 请求只在主进程发起（[ai.ts](../src/main/ai.ts)、[ipc/ai.ts](../src/main/ipc/ai.ts)），Key 不经过 `ai:chat` 参数；消息在进入主进程时校验角色、条数和总长度。
 - AI Base URL 只允许 HTTPS；仅 `localhost` / `127.0.0.1` / `[::1]` 可使用 HTTP，保存和发起请求时都会校验。
-- Key 优先用 Electron `safeStorage` 加密后落盘，见 [settings-store.ts](../src/main/settings-store.ts)。
+- Key 优先用 Electron `safeStorage` 加密后落盘，见 [settings-store.ts](../src/main/settings-store.ts)；系统安全存储不可用时 `settings:get` 返回 `keyStorage: 'plaintext'`，设置页会明确提示 Key 将以明文保存。
 - `settings:get` 只返回 `hasApiKey`，不返回明文或密文 Key；`settings:update` 中未带 `apiKey` 的配置保留原有 Key，新增配置必须填写。
 - 已有 Key 的配置一旦更改 origin（协议、主机、端口），`settings:update` 会先弹出主进程原生确认；取消则整体拒绝保存。
 - 设置、书库和 AI 消息都有规范化逻辑，异常文件按空数据降级，不会导致启动失败。
@@ -59,11 +59,11 @@
 8. **更改已有 Key 的配置地址需要原生确认。** 渲染进程无法绕过主进程的确认框把 Key 引到新主机；路径变化不触发确认。
 9. **`annotations:list` 已补上论文库归属校验。** 与 `add` / `remove` 一致，非书库路径一律拒绝。
 10. **标注写入与读取都已逐字段校验。** id、类型、颜色、页码、文本长度和归一化坐标在主进程校验；读盘时坏条目被跳过，不会拖垮整个标注库。
+11. **`safeStorage` 明文降级已对用户可见。** 系统安全存储不可用时设置页提示 Key 将以明文保存；该设置文件仍不应纳入任何同步。
 
 ### P1：待处理
 
-1. **`safeStorage` 不可用时退化为明文存储。** 这是可接受的降级，但必须让用户可见：设置页提示“系统安全存储不可用，Key 将以明文保存”，并避免把该文件纳入任何同步。
-2. **扩展宿主不是安全沙箱。** [host-process.ts](../src/main/plugins/host-process.ts) 运行在 `utilityProcess` 中，只能隔离崩溃和主进程状态，插件 JS 仍可 `require('fs')`、`require('net')` 或读取 `process.env`；manifest 权限只约束平台工具调用。在引入 Node 权限模型、能力进程或 OS 级沙箱之前，应只安装可信插件，并优先补上安装来源校验与签名。不要因为插件声明了权限就把它当成已隔离。
+1. **扩展宿主不是安全沙箱。** [host-process.ts](../src/main/plugins/host-process.ts) 运行在 `utilityProcess` 中，只能隔离崩溃和主进程状态，插件 JS 仍可 `require('fs')`、`require('net')` 或读取 `process.env`；manifest 权限只约束平台工具调用。在引入 Node 权限模型、能力进程或 OS 级沙箱之前，应只安装可信插件，并优先补上安装来源校验与签名。不要因为插件声明了权限就把它当成已隔离。
 
 ### P2：持续清理
 

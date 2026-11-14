@@ -69,7 +69,8 @@ export const createSettingsStore = (
         hasApiKey: profile.apiKey !== ''
       }))
     },
-    library: { directory: resolveLibraryDirectory(stored) }
+    library: { directory: resolveLibraryDirectory(stored) },
+    keyStorage: safeStorage.isEncryptionAvailable() ? 'encrypted' : 'plaintext'
   })
 
   const update = async (patch: SettingsPatch): Promise<AppSettings> => {

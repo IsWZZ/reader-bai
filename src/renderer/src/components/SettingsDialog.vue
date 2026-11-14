@@ -114,6 +114,13 @@
               </p>
             </div>
 
+            <p
+              v-if="settingsStore.settings.keyStorage === 'plaintext'"
+              class="text-destructive text-xs"
+            >
+              系统安全存储不可用，API Key 将以明文保存在本机设置文件中。
+            </p>
+
             <p v-if="profiles.length === 0" class="text-muted-foreground text-xs">
               还没有配置，点击「新增模型」开始。
             </p>
