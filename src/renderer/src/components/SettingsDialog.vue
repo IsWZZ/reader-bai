@@ -5,7 +5,7 @@
     >
       <DialogHeader class="border-b px-5 py-4 pr-12">
         <DialogTitle>设置</DialogTitle>
-        <DialogDescription>调整应用外观、AI 服务与论文库</DialogDescription>
+        <DialogDescription>调整应用外观、AI 服务、论文库与插件</DialogDescription>
       </DialogHeader>
 
       <div class="flex min-h-0 flex-1">
@@ -100,6 +100,10 @@
             <p v-if="settingsStore.error" class="text-destructive text-xs">
               {{ settingsStore.error }}
             </p>
+          </section>
+
+          <section v-else-if="activeSection === 'plugins'" class="space-y-4">
+            <PluginSettings />
           </section>
 
           <section v-else class="space-y-4">
@@ -252,21 +256,23 @@ import {
   DialogTitle
 } from '@renderer/components/ui/dialog'
 import { Input } from '@renderer/components/ui/input'
+import PluginSettings from '@renderer/components/PluginSettings.vue'
 import { useSettingsStore } from '@renderer/store/settings'
 import { aiProfileLabel } from '@renderer/lib/ai'
-import { Eye, EyeOff, FolderOpen, Moon, Palette, Sparkles, Sun } from 'lucide-vue-next'
+import { Eye, EyeOff, FolderOpen, Moon, Palette, Puzzle, Sparkles, Sun } from 'lucide-vue-next'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const settingsStore = useSettingsStore()
 
-type SectionId = 'appearance' | 'ai' | 'library'
+type SectionId = 'appearance' | 'ai' | 'library' | 'plugins'
 
 const sections: { id: SectionId; label: string; icon: typeof Palette }[] = [
   { id: 'library', label: '论文库', icon: FolderOpen },
   { id: 'appearance', label: '外观', icon: Palette },
-  { id: 'ai', label: 'AI 服务', icon: Sparkles }
+  { id: 'ai', label: 'AI 服务', icon: Sparkles },
+  { id: 'plugins', label: '插件', icon: Puzzle }
 ]
 
 const themeOptions: { value: AppTheme; label: string; icon: typeof Sun }[] = [

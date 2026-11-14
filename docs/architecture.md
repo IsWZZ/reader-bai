@@ -219,6 +219,7 @@ C 层按“先验证、再加载”推进，目前完成了发现与启用状态
 - `src/main/plugins/manifest.ts`：manifest 校验（id/version、`engines.readerBai`、激活事件、命令贡献、权限白名单、入口路径不越界）；未知字段一律拒绝。
 - `src/main/plugins/discovery.ts`：扫描 `userData/plugins` 的真实子目录，跳过符号链接，单个插件损坏只记录 issue；不加载代码。
 - `src/main/plugins/host.ts` + `src/main/ipc/plugins.ts`：第三方插件默认关闭，启用状态写入 `plugins.json`；不兼容当前版本的插件不能启用。`plugins:list` / `plugins:setEnabled` 只暴露展示所需字段。
+- `PluginSettings.vue` + `store/plugins.ts`：设置页展示插件、声明的权限、命令和 manifest 错误，并负责启停；启用状态由主进程落盘。
 - 下一步才是扩展宿主进程、participant 输出协议和工具权限执行；插件代码不会在渲染进程或主进程直接 import。
 
 ### AI 插件安全约束

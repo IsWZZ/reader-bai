@@ -43,7 +43,7 @@ npm run test:all    # 发布前：lint + typecheck + unit + E2E
 - `views/Home.vue` 外壳；`LibraryPanel.vue` 书库；`PdfViewer.vue` 渲染/选词/标注（改动前读 [docs/pdf-viewer.md](docs/pdf-viewer.md)）。
 - `AssistantPanel.vue` + `store/assistant.ts` 翻译与 AI 对话；`lib/agent-loop.ts` 是第一方 agent 循环，通过 `window.api.chatWithTools` 和 `executeTool` 使用平台能力。`SettingsDialog.vue` + `store/settings.ts` 主题、多 AI 配置与论文库存储位置。
 - `src/main/platform-tools.ts` 注册平台工具（`library.list`、`paper.get`、`paper.readPage`、`annotations.list/add/remove`）；`src/main/ipc/tools.ts` 提供 `tools:list/execute`，写/删除操作由主进程在执行边界确认；`src/main/pdf-text.ts` 负责主进程侧的 PDF 单页文本提取。
-- `src/main/plugins/` 是 C 层插件宿主的基础：`manifest.ts` 校验 manifest，`discovery.ts` 扫描 `userData/plugins`，`host.ts` 管理启用状态（默认关闭、写入 `plugins.json`）；`ipc/plugins.ts` 提供 `plugins:list/setEnabled`。目前只发现和启停，不执行插件代码。
+- `src/main/plugins/` 是 C 层插件宿主的基础：`manifest.ts` 校验 manifest，`discovery.ts` 扫描 `userData/plugins`，`host.ts` 管理启用状态（默认关闭、写入 `plugins.json`）；`ipc/plugins.ts` 提供 `plugins:list/setEnabled`；设置页的 `PluginSettings.vue` + `store/plugins.ts` 负责展示和启停。目前只发现和启停，不执行插件代码。
 - `components/ui/**` 为 shadcn-vue 生成代码；`lib/pdf.ts` 管 worker 与元数据；`types.ts` 是渲染侧类型副本。
 - 测试：`tests/unit|component`（Vitest，mock `window.api`）、`tests/e2e`（Playwright，独立 `--user-data-dir`）；约定见 [docs/testing.md](docs/testing.md)。
 

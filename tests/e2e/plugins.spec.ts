@@ -112,6 +112,31 @@ test('discovers plugins disabled by default and persists the enabled state', asy
   await second.app.close()
 })
 
+test('manages plugins from the settings dialog', async () => {
+  await writePlugin(userDataDir, 'arxiv', manifest())
+  await writePlugin(userDataDir, 'broken', { id: 'bad' })
+  const { app, page } = await launchReader(userDataDir)
+
+  await page.getByRole('button', { name: '设置' }).click()
+  await page.getByRole('button', { name: '插件' }).click()
+
+  await expect(page.getByText('reader-bai.arxiv-source')).toBeVisible()
+  await expect(page.getByText('broken：manifest.id 格式不正确')).toBeVisible()
+
+  const toggle = page.getByRole('checkbox', { name: '启用 arXiv' })
+  await expect(toggle).not.toBeChecked()
+  await toggle.check()
+
+  await expect
+    .poll(async () => readJsonFile(join(userDataDir, 'plugins.json')))
+    .toEqual({
+      enabled: { 'reader-bai.arxiv-source': true }
+    })
+  await expect(toggle).toBeChecked()
+
+  await app.close()
+})
+
 test('reports broken manifests, incompatible plugins and invalid requests', async () => {
   await writePlugin(userDataDir, 'future', {
     ...manifest({ id: 'reader-bai.future', engines: { readerBai: '^9.0.0' } })
