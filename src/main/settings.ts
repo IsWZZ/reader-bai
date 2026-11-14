@@ -24,8 +24,8 @@ export interface AiProfilePatch {
   baseUrl: string
   model: string
   apiKey?: string
-  /** 省略时沿用该 id 原有状态；新增配置默认启用 */
-  enabled?: boolean
+  /** 是否启用；保存整份配置列表时必须显式提供 */
+  enabled: boolean
 }
 
 /** 回给渲染进程的配置：永不包含明文或密文 Key */
@@ -210,8 +210,8 @@ const normalizeStoredProfile = (
     apiKey,
     apiKeyEncrypted: encrypted && apiKey !== '',
     model: asString(raw.model, MAX_MODEL),
-    // 旧设置没有该字段，默认启用
-    enabled: raw.enabled !== false
+    // 缺失或非 true 一律视为禁用
+    enabled: raw.enabled === true
   }
 }
 
@@ -234,8 +234,8 @@ export const normalizeStoredSettings = (raw: unknown): StoredSettings => {
     ai: { profiles, activeId: normalizeActiveId(ai.activeId, profiles) },
     library: {
       directory: normalizeDirectory(library.directory),
-      // 旧设置没有该字段，保持默认开启
-      autoAnalyze: library.autoAnalyze !== false
+      // 缺失或非 true 一律视为关闭
+      autoAnalyze: library.autoAnalyze === true
     }
   }
 }
@@ -320,8 +320,8 @@ const encodeStoredProfile = (
     apiKey: encoded.apiKey,
     apiKeyEncrypted: encoded.apiKeyEncrypted && encoded.apiKey !== '',
     model: asString(raw.model, MAX_MODEL),
-    // 未显式提供时沿用原状态，避免编辑 Base URL/模型时意外重新启用
-    enabled: raw.enabled === undefined ? (previous?.enabled ?? true) : raw.enabled === true
+    // 补丁必须显式带上 enabled；缺失按禁用处理
+    enabled: raw.enabled === true
   }
 }
 

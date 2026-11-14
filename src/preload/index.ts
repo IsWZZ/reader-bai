@@ -39,8 +39,8 @@ interface AiProfilePatch {
   model: string
   /** 留空表示保留已保存的 Key */
   apiKey?: string
-  /** 省略时沿用原状态；新增配置默认启用 */
-  enabled?: boolean
+  /** 是否启用；保存整份配置列表时必须显式提供 */
+  enabled: boolean
 }
 
 interface AiSettings {

@@ -1,7 +1,13 @@
+// 外壳会间接 import 阅读器；jsdom 里没有 pdfjs 需要的 Worker
+vi.mock('@renderer/lib/pdf', () => ({
+  pdfjsLib: {},
+  readPdfTitle: vi.fn()
+}))
+
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import ActivityBar from '@renderer/components/ActivityBar.vue'
+import Home from '@renderer/views/Home.vue'
 import { setLocale } from '@renderer/lib/i18n'
 import { useSettingsStore } from '@renderer/store/settings'
 import type { AppSettings, SettingsPatch } from '@renderer/types'
@@ -14,11 +20,18 @@ const BASE_SETTINGS: AppSettings = {
   keyStorage: 'encrypted'
 }
 
-// ActivityBar 内部就是活动栏 + 设置弹窗，用来验证语言切换同时作用于两处
-const mountBar = (): VueWrapper =>
-  mount(ActivityBar, {
-    props: { isLibraryOpen: true, isAssistantOpen: false },
-    attachTo: document.body
+// 挂载外壳：活动栏触发设置弹窗，用来验证语言切换同时作用于两处
+const mountHome = (): VueWrapper =>
+  mount(Home, {
+    attachTo: document.body,
+    global: {
+      stubs: {
+        Toolbar: true,
+        LibraryPanel: true,
+        PdfViewer: true,
+        AssistantPanel: true
+      }
+    }
   })
 
 const findButton = (label: string): DOMWrapper<HTMLButtonElement> => {
@@ -53,7 +66,9 @@ describe('interface language switching', () => {
           language: patch.language ?? current.language
         }
         return structuredClone(current)
-      })
+      }),
+      onAiChunk: vi.fn(() => vi.fn()),
+      onAgentEvent: vi.fn(() => vi.fn())
     } as unknown as Api
 
     await useSettingsStore().initialize()
@@ -64,7 +79,7 @@ describe('interface language switching', () => {
   })
 
   it('updates text outside the settings dialog immediately after choosing English', async () => {
-    const wrapper = mountBar()
+    const wrapper = mountHome()
     await flushPromises()
 
     // 切换前：活动栏和设置弹窗都是中文

@@ -425,6 +425,29 @@ describe('LibraryPanel', () => {
     expect(wrapper.text()).toContain('Metadata Title')
   })
 
+  it('asks for AI settings instead of analyzing when no AI is configured', async () => {
+    listPapers.mockResolvedValue({
+      spaces: [],
+      papers: [paper({ id: 'paper-1', title: 'Paper One' })]
+    })
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await wrapper.get('button[aria-label="Paper One 操作"]').trigger('click')
+    await flushPromises()
+
+    const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (element) => element.textContent?.includes('AI 解析论文信息')
+    )
+    if (!item) throw new Error('analyze menu item not found')
+    item.click()
+    await flushPromises()
+
+    expect(wrapper.emitted('requestAiSettings')).toHaveLength(1)
+    expect(analyzePaper).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('shows the empty state when window.api is unavailable', async () => {
     window.api = undefined
 

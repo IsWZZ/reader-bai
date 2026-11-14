@@ -285,11 +285,12 @@ test('disabled AI profiles are persisted and rejected by the main process', asyn
   })
   expect(error).toContain('所选 AI 配置已禁用')
 
-  // 助手面板不提供禁用模型，并提示启用一个
+  // 没有可用的启用配置时，点击辅助面板直接打开 AI 设置，而不是打开面板
   await reader.page.getByRole('button', { name: '辅助面板', exact: true }).click()
-  const panel = reader.page.locator('aside[aria-label="辅助面板"]')
-  await expect(panel).toContainText('所有 AI 配置都已禁用')
-  await expect(panel.getByRole('combobox', { name: '选择模型' })).toHaveCount(0)
+  const dialog = reader.page.getByRole('dialog', { name: '设置' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('已禁用')
+  expect(await reader.page.locator('aside[aria-label="辅助面板"]').count()).toBe(0)
 
   await reader.app.close()
 })

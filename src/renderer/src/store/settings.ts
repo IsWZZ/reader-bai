@@ -103,7 +103,7 @@ export const useSettingsStore = defineStore('settings', () => {
             baseUrl: profile.baseUrl,
             model: profile.model,
             hasApiKey: Boolean(profile.apiKey?.trim()) || (existing?.hasApiKey ?? false),
-            enabled: profile.enabled ?? existing?.enabled ?? true
+            enabled: profile.enabled
           }
         })
       : previous.ai.profiles.map((profile) => ({ ...profile }))
@@ -174,10 +174,10 @@ export const useSettingsStore = defineStore('settings', () => {
       const entry: AiProfilePatch = {
         id,
         baseUrl: baseUrl.trim(),
-        model: model.trim()
+        model: model.trim(),
+        enabled
       }
       if (provider) entry.provider = provider
-      if (enabled !== undefined) entry.enabled = enabled
       const trimmedKey = apiKey?.trim()
       if (trimmedKey) entry.apiKey = trimmedKey
       return entry

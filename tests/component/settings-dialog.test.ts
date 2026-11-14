@@ -71,9 +71,14 @@ const installSettings = (settings: AppSettings): void => {
 }
 
 // DialogContent 会 Teleport 到 body，因此用 DOMWrapper 查询真实 DOM
-const mountDialog = async (): Promise<VueWrapper> => {
+type SettingsSection = 'basic' | 'ai' | 'library' | 'plugins' | 'uninstall'
+
+const mountDialog = async (initialSection?: SettingsSection): Promise<VueWrapper> => {
   // 从关闭切换到打开，watcher 才会重置表单状态
-  const wrapper = mount(SettingsDialog, { props: { open: false }, attachTo: document.body })
+  const wrapper = mount(SettingsDialog, {
+    props: { open: false, initialSection },
+    attachTo: document.body
+  })
   await flushPromises()
   await wrapper.setProps({ open: true })
   await flushPromises()
@@ -216,6 +221,14 @@ describe('SettingsDialog', () => {
     await openLibrarySection()
     expect(hasInput('#auto-analyze-papers')).toBe(false)
 
+    wrapper.unmount()
+  })
+
+  it('opens the section requested by the caller', async () => {
+    const wrapper = await mountDialog('ai')
+
+    expect(document.body.textContent).toContain('还没有配置，点击「新增模型」开始。')
+    expect(findButton('新增模型')).toBeDefined()
     wrapper.unmount()
   })
 

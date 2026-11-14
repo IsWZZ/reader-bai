@@ -28,7 +28,7 @@ const EMPTY_SETTINGS = {
   theme: 'light',
   language: 'zh',
   ai: { profiles: [], activeId: '' },
-  library: { directory: '', autoAnalyze: true }
+  library: { directory: '', autoAnalyze: false }
 }
 
 let dir: string
@@ -78,7 +78,8 @@ describe('createSettingsStore', () => {
             id: 'p1',
             baseUrl: 'https://api.example.com/v1',
             model: 'model-a',
-            apiKey: 'sk-secret'
+            apiKey: 'sk-secret',
+            enabled: true
           }
         ],
         activeId: 'p1'
@@ -117,7 +118,8 @@ describe('createSettingsStore', () => {
             provider: 'anthropic',
             baseUrl: 'https://api.anthropic.com',
             model: 'claude-test',
-            apiKey: 'sk-ant'
+            apiKey: 'sk-ant',
+            enabled: true
           }
         ],
         activeId: 'p1'
@@ -174,7 +176,8 @@ describe('createSettingsStore', () => {
             id: 'p1',
             baseUrl: 'https://api.example.com/v1',
             model: 'model-a',
-            apiKey: 'sk-plain'
+            apiKey: 'sk-plain',
+            enabled: true
           }
         ],
         activeId: 'p1'

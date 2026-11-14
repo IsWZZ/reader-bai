@@ -338,6 +338,7 @@ import type { LibraryData, Paper, Space } from '@renderer/types'
 
 const emit = defineEmits<{
   selectPaper: [paper: Paper]
+  requestAiSettings: []
 }>()
 
 interface PaperGroup {
@@ -526,6 +527,11 @@ const applyPaper = (updated: Paper): void => {
 const analyzePaper = async (paper: Paper): Promise<void> => {
   const api = window.api
   if (!api?.analyzePaper || isAnalyzing(paper.id)) return
+  // 手动点击解析但没有可用配置时，直接打开设置页让用户补全
+  if (!settingsStore.isAiConfigured) {
+    emit('requestAiSettings')
+    return
+  }
 
   setAnalysis(paper.id, { status: 'running' })
   try {

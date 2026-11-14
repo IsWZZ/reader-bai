@@ -5,8 +5,10 @@
       <ActivityBar
         :is-library-open="isLibraryOpen"
         :is-assistant-open="isAssistantOpen"
+        :settings-open="settingsOpen"
         @toggle-library="toggleLibrary"
         @toggle-assistant="toggleAssistant"
+        @open-settings="openSettingsAt('basic')"
       />
       <LibraryPanel
         v-if="isLibraryOpen"
@@ -14,6 +16,7 @@
         :current-paper-id="currentPaper?.id"
         :search-query="searchQuery"
         @select-paper="handleSelectPaper"
+        @request-ai-settings="openAiSettings"
       />
       <!-- 拖拽分隔符 -->
       <div
@@ -44,6 +47,8 @@
         <AssistantPanel :width="assistantWidth" @close="isAssistantOpen = false" />
       </template>
     </div>
+
+    <SettingsDialog v-model:open="settingsOpen" :initial-section="settingsSection" />
   </div>
 </template>
 
@@ -54,7 +59,9 @@ import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
+import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import { useAssistantStore } from '@renderer/store/assistant'
+import { useSettingsStore } from '@renderer/store/settings'
 import { t } from '@renderer/lib/i18n'
 import type { Paper } from '@renderer/types'
 
@@ -67,7 +74,11 @@ const currentPaper = ref<Paper | null>(null)
 const searchQuery = ref('')
 
 const assistantStore = useAssistantStore()
+const settingsStore = useSettingsStore()
 const isAssistantOpen = ref(false)
+type SettingsSection = 'basic' | 'ai' | 'library' | 'plugins' | 'uninstall'
+const settingsOpen = ref(false)
+const settingsSection = ref<SettingsSection>('basic')
 const assistantWidth = ref(340)
 const minAssistantWidth = 280
 const maxAssistantWidth = 560
@@ -94,7 +105,19 @@ const toggleLibrary = (): void => {
   isLibraryOpen.value = !isLibraryOpen.value
 }
 
+const openSettingsAt = (section: SettingsSection): void => {
+  settingsSection.value = section
+  settingsOpen.value = true
+}
+
+const openAiSettings = (): void => openSettingsAt('ai')
+
 const toggleAssistant = (): void => {
+  // 没有可用的 AI 配置时，先把用户带到设置页，而不是打开一个无法工作的面板
+  if (!isAssistantOpen.value && !settingsStore.isAiConfigured) {
+    openAiSettings()
+    return
+  }
   isAssistantOpen.value = !isAssistantOpen.value
 }
 

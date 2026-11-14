@@ -246,14 +246,30 @@ describe('settings store', () => {
     await store.initialize()
 
     const saved = await store.saveAiProfiles(
-      [{ id: 'a', baseUrl: '  https://api.example.com/v1/  ', apiKey: '  sk-a  ', model: '  m  ' }],
+      [
+        {
+          id: 'a',
+          baseUrl: '  https://api.example.com/v1/  ',
+          apiKey: '  sk-a  ',
+          model: '  m  ',
+          enabled: true
+        }
+      ],
       'a'
     )
 
     expect(saved).toBe(true)
     expect(updateSettings).toHaveBeenCalledWith({
       ai: {
-        profiles: [{ id: 'a', baseUrl: 'https://api.example.com/v1/', model: 'm', apiKey: 'sk-a' }],
+        profiles: [
+          {
+            id: 'a',
+            baseUrl: 'https://api.example.com/v1/',
+            model: 'm',
+            apiKey: 'sk-a',
+            enabled: true
+          }
+        ],
         activeId: 'a'
       }
     })
@@ -274,14 +290,16 @@ describe('settings store', () => {
     await store.initialize()
 
     const saved = await store.saveAiProfiles(
-      [{ id: 'a', baseUrl: 'https://api.example.com/v2', model: 'model-a2' }],
+      [{ id: 'a', baseUrl: 'https://api.example.com/v2', model: 'model-a2', enabled: true }],
       'a'
     )
 
     expect(saved).toBe(true)
     expect(updateSettings).toHaveBeenCalledWith({
       ai: {
-        profiles: [{ id: 'a', baseUrl: 'https://api.example.com/v2', model: 'model-a2' }],
+        profiles: [
+          { id: 'a', baseUrl: 'https://api.example.com/v2', model: 'model-a2', enabled: true }
+        ],
         activeId: 'a'
       }
     })
@@ -306,7 +324,8 @@ describe('settings store', () => {
           provider: 'anthropic',
           baseUrl: ' https://api.anthropic.com ',
           apiKey: ' sk-ant ',
-          model: ' claude-test '
+          model: ' claude-test ',
+          enabled: true
         }
       ],
       'a'
@@ -321,7 +340,8 @@ describe('settings store', () => {
             provider: 'anthropic',
             baseUrl: 'https://api.anthropic.com',
             model: 'claude-test',
-            apiKey: 'sk-ant'
+            apiKey: 'sk-ant',
+            enabled: true
           }
         ],
         activeId: 'a'
@@ -343,7 +363,15 @@ describe('settings store', () => {
     await store.initialize()
 
     const pending = store.saveAiProfiles(
-      [{ id: 'a', baseUrl: 'https://api.example.com/v2', model: 'm', apiKey: 'sk-new' }],
+      [
+        {
+          id: 'a',
+          baseUrl: 'https://api.example.com/v2',
+          model: 'm',
+          apiKey: 'sk-new',
+          enabled: true
+        }
+      ],
       'a'
     )
 

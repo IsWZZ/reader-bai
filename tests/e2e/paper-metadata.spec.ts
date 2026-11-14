@@ -8,6 +8,7 @@ import {
   launchReader,
   readJsonFile,
   removeUserDataDir,
+  seedLibrary,
   stubOpenDialog,
   writeSamplePdf
 } from './helpers'
@@ -115,7 +116,8 @@ const seedSettings = async (autoAnalyze: boolean): Promise<void> => {
               baseUrl: stub.baseUrl,
               model: 'stub-model',
               apiKey: 'sk-e2e-test',
-              apiKeyEncrypted: false
+              apiKeyEncrypted: false,
+              enabled: true
             }
           ],
           activeId: 'default'
@@ -161,6 +163,24 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
+})
+
+test('opens AI settings when analysis is requested without a configured profile', async () => {
+  const pdfPath = join(userDataDir, 'sample.pdf')
+  await writeSamplePdf(pdfPath)
+  await seedLibrary(userDataDir, {
+    papers: [{ id: 'paper-1', title: 'Sample Paper', path: pdfPath, titleSource: 'user' }]
+  })
+
+  const reader = await launchReader(userDataDir)
+  await reader.page.getByRole('button', { name: 'Sample Paper 操作' }).click()
+  await reader.page.getByRole('menuitem', { name: 'AI 解析论文信息' }).click()
+
+  const dialog = reader.page.getByRole('dialog', { name: '设置' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('还没有配置，点击「新增模型」开始。')
+
+  await reader.app.close()
 })
 
 test('analyzes an imported paper and stores its metadata', async () => {

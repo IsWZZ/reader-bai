@@ -93,8 +93,8 @@ declare global {
     model: string
     /** 留空或省略时保留该 id 已保存的 Key；新增配置必须填写 */
     apiKey?: string
-    /** 省略时沿用原状态；新增配置默认启用 */
-    enabled?: boolean
+    /** 是否启用；保存整份配置列表时必须显式提供 */
+    enabled: boolean
   }
 
   interface AiSettings {

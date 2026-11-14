@@ -25,11 +25,24 @@ const withProfiles = (): StoredSettings =>
     theme: 'dark',
     ai: {
       profiles: [
-        { id: 'a', baseUrl: 'https://a.example/v1', apiKey: 'sk-a', model: 'model-a' },
-        { id: 'b', baseUrl: 'https://b.example/v1', apiKey: 'sk-b', model: 'model-b' }
+        {
+          id: 'a',
+          baseUrl: 'https://a.example/v1',
+          apiKey: 'sk-a',
+          model: 'model-a',
+          enabled: true
+        },
+        {
+          id: 'b',
+          baseUrl: 'https://b.example/v1',
+          apiKey: 'sk-b',
+          model: 'model-b',
+          enabled: true
+        }
       ],
       activeId: 'b'
-    }
+    },
+    library: { autoAnalyze: true }
   })
 
 describe('normalizeStoredSettings', () => {
@@ -43,7 +56,8 @@ describe('normalizeStoredSettings', () => {
             baseUrl: ' https://api.example.com/v1 ',
             apiKey: ' sk-test ',
             apiKeyEncrypted: false,
-            model: ' gpt-test '
+            model: ' gpt-test ',
+            enabled: true
           }
         ],
         activeId: 'a'
@@ -67,7 +81,7 @@ describe('normalizeStoredSettings', () => {
         ],
         activeId: 'a'
       },
-      library: { directory: '', autoAnalyze: true }
+      library: { directory: '', autoAnalyze: false }
     })
   })
 
@@ -111,25 +125,28 @@ describe('normalizeStoredSettings', () => {
   it('keeps an absolute library directory and drops invalid ones', () => {
     expect(
       normalizeStoredSettings({ library: { directory: ` ${LIBRARY_DIRECTORY} ` } }).library
-    ).toEqual({ directory: LIBRARY_DIRECTORY, autoAnalyze: true })
+    ).toEqual({ directory: LIBRARY_DIRECTORY, autoAnalyze: false })
     expect(normalizeStoredSettings({ library: { directory: 'relative/papers' } }).library).toEqual({
       directory: '',
-      autoAnalyze: true
+      autoAnalyze: false
     })
     expect(normalizeStoredSettings({ library: { directory: 42 } }).library).toEqual({
       directory: '',
-      autoAnalyze: true
+      autoAnalyze: false
     })
-    expect(normalizeStoredSettings({}).library).toEqual({ directory: '', autoAnalyze: true })
+    expect(normalizeStoredSettings({}).library).toEqual({ directory: '', autoAnalyze: false })
   })
 
-  it('keeps the auto-analyze switch and defaults it to on', () => {
-    expect(normalizeStoredSettings({}).library.autoAnalyze).toBe(true)
+  it('keeps an explicit auto-analyze switch and treats other values as off', () => {
+    expect(normalizeStoredSettings({}).library.autoAnalyze).toBe(false)
+    expect(normalizeStoredSettings({ library: { autoAnalyze: true } }).library.autoAnalyze).toBe(
+      true
+    )
     expect(normalizeStoredSettings({ library: { autoAnalyze: false } }).library.autoAnalyze).toBe(
       false
     )
     expect(normalizeStoredSettings({ library: { autoAnalyze: 'no' } }).library.autoAnalyze).toBe(
-      true
+      false
     )
   })
 
@@ -144,13 +161,21 @@ describe('normalizeStoredSettings', () => {
   it('generates stable ids for missing or duplicate ids', () => {
     const first = normalizeStoredSettings({
       ai: {
-        profiles: [{ baseUrl: 'https://a' }, { id: 'x' }, { id: 'x' }],
+        profiles: [
+          { baseUrl: 'https://a', enabled: true },
+          { id: 'x', enabled: true },
+          { id: 'x', enabled: true }
+        ],
         activeId: 'missing'
       }
     })
     const second = normalizeStoredSettings({
       ai: {
-        profiles: [{ baseUrl: 'https://a' }, { id: 'x' }, { id: 'x' }],
+        profiles: [
+          { baseUrl: 'https://a', enabled: true },
+          { id: 'x', enabled: true },
+          { id: 'x', enabled: true }
+        ],
         activeId: 'missing'
       }
     })
@@ -165,25 +190,30 @@ describe('normalizeStoredSettings', () => {
     // 生成的兜底 id 不能和已有 id 冲突
     const collision = normalizeStoredSettings({
       ai: {
-        profiles: [{ id: 'profile-2', baseUrl: 'https://a' }, { baseUrl: 'https://b' }],
+        profiles: [
+          { id: 'profile-2', baseUrl: 'https://a', enabled: true },
+          { baseUrl: 'https://b', enabled: true }
+        ],
         activeId: 'profile-2'
       }
     })
     expect(collision.ai.profiles.map((profile) => profile.id)).toEqual(['profile-2', 'profile-2-2'])
   })
 
-  it('defaults profiles to enabled and skips disabled ones when choosing activeId', () => {
+  it('requires an explicit enabled flag and skips disabled profiles for activeId', () => {
     const result = normalizeStoredSettings({
       ai: {
         profiles: [
-          { id: 'a', baseUrl: 'https://a', model: 'm' },
-          { id: 'b', baseUrl: 'https://b', model: 'm', enabled: false }
+          { id: 'a', baseUrl: 'https://a', model: 'm', enabled: true },
+          { id: 'b', baseUrl: 'https://b', model: 'm', enabled: false },
+          { id: 'c', baseUrl: 'https://c', model: 'm' }
         ],
         activeId: 'b'
       }
     })
 
-    expect(result.ai.profiles.map((profile) => profile.enabled)).toEqual([true, false])
+    // 缺失 enabled 按禁用处理
+    expect(result.ai.profiles.map((profile) => profile.enabled)).toEqual([true, false, false])
     expect(result.ai.activeId).toBe('a')
   })
 
@@ -226,7 +256,8 @@ describe('normalizeStoredSettings', () => {
       id: `p-${index}`,
       baseUrl: 'https://example.com/v1',
       apiKey: 'sk',
-      model: 'm'
+      model: 'm',
+      enabled: true
     }))
 
     const result = normalizeStoredSettings({ ai: { profiles, activeId: 'p-24' } })
@@ -247,7 +278,13 @@ describe('applySettingsPatch', () => {
       {
         ai: {
           profiles: [
-            { id: 'c', baseUrl: ' https://c.example/v1 ', apiKey: ' secret ', model: ' model-c ' }
+            {
+              id: 'c',
+              baseUrl: ' https://c.example/v1 ',
+              apiKey: ' secret ',
+              model: ' model-c ',
+              enabled: true
+            }
           ]
         }
       },
@@ -280,7 +317,8 @@ describe('applySettingsPatch', () => {
             baseUrl: 'https://a',
             apiKey: 'c'.repeat(800),
             apiKeyEncrypted: true,
-            model: 'm'
+            model: 'm',
+            enabled: true
           }
         ],
         activeId: 'a'
@@ -302,7 +340,7 @@ describe('applySettingsPatch', () => {
       {
         ai: {
           profiles: [
-            { id: 'a', baseUrl: 'https://a.example/v1', model: 'model-a' },
+            { id: 'a', baseUrl: 'https://a.example/v1', model: 'model-a', enabled: true },
             { id: 'b', baseUrl: 'https://b.example/v1', model: 'model-b', enabled: false }
           ]
         }
@@ -411,7 +449,7 @@ describe('applySettingsPatch', () => {
       base,
       {
         ai: {
-          profiles: [{ id: 'a', baseUrl: 'https://a.example/v2', model: 'model-a2' }]
+          profiles: [{ id: 'a', baseUrl: 'https://a.example/v2', model: 'model-a2', enabled: true }]
         }
       },
       encode
@@ -436,7 +474,11 @@ describe('applySettingsPatch', () => {
 
     const next = applySettingsPatch(
       withProfiles(),
-      { ai: { profiles: [{ id: 'new', baseUrl: 'https://new.example/v1', model: 'm' }] } },
+      {
+        ai: {
+          profiles: [{ id: 'new', baseUrl: 'https://new.example/v1', model: 'm', enabled: true }]
+        }
+      },
       encode
     )
 

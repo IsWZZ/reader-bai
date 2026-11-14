@@ -9,8 +9,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Home from '@renderer/views/Home.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
+import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
+import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import Toolbar from '@renderer/components/Toolbar.vue'
 import { useSettingsStore } from '@renderer/store/settings'
 import type { AiProfile, AppSettings, ChatMessage, Paper } from '@renderer/types'
@@ -97,6 +99,41 @@ describe('Home search wiring', () => {
 
     expect(wrapper.findComponent(LibraryPanel).exists()).toBe(true)
     expect(wrapper.findComponent(LibraryPanel).props('searchQuery')).toBe('attention')
+  })
+
+  it('opens AI settings instead of the assistant when no AI is configured', async () => {
+    useSettingsStore().$patch({ settings: { ...SETTINGS, ai: { profiles: [], activeId: '' } } })
+    const wrapper = mountHome()
+
+    wrapper.findComponent(ActivityBar).vm.$emit('toggle-assistant')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(AssistantPanel).exists()).toBe(false)
+    const dialog = wrapper.findComponent(SettingsDialog)
+    expect(dialog.props('open')).toBe(true)
+    expect(dialog.props('initialSection')).toBe('ai')
+  })
+
+  it('opens the requested settings section from the shell', async () => {
+    const wrapper = mountHome()
+
+    wrapper.findComponent(ActivityBar).vm.$emit('openSettings')
+    await wrapper.vm.$nextTick()
+
+    const dialog = wrapper.findComponent(SettingsDialog)
+    expect(dialog.props('open')).toBe(true)
+    expect(dialog.props('initialSection')).toBe('basic')
+  })
+
+  it('opens AI settings when the library requests configuration', async () => {
+    const wrapper = mountHome()
+
+    wrapper.findComponent(LibraryPanel).vm.$emit('request-ai-settings')
+    await wrapper.vm.$nextTick()
+
+    const dialog = wrapper.findComponent(SettingsDialog)
+    expect(dialog.props('open')).toBe(true)
+    expect(dialog.props('initialSection')).toBe('ai')
   })
 })
 

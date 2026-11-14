@@ -481,7 +481,7 @@ import {
   Trash2
 } from 'lucide-vue-next'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; initialSection?: SectionId }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const settingsStore = useSettingsStore()
@@ -518,6 +518,15 @@ const modelPlaceholder = computed(() =>
 )
 
 const activeSection = ref<SectionId>('basic')
+
+// 打开时跳到指定分区；调用方未指定时仍从基础设置开始
+watch(
+  () => [props.open, props.initialSection] as const,
+  ([open]) => {
+    if (open) activeSection.value = props.initialSection ?? 'basic'
+  },
+  { immediate: true }
+)
 const profiles = computed(() => settingsStore.aiProfiles)
 // 默认只展示已保存的配置，点「新增模型」或「编辑」才展开表单
 const editingId = ref<string | null>(null)
@@ -742,7 +751,7 @@ const saveProfile = async (): Promise<void> => {
     // 编辑禁用配置时保持禁用；新增配置默认启用
     enabled: editingIsNew.value
       ? true
-      : (profiles.value.find((profile) => profile.id === id)?.enabled ?? true)
+      : (profiles.value.find((profile) => profile.id === id)?.enabled ?? false)
   }
   if (typedKey) entry.apiKey = typedKey
   const index = next.findIndex((profile) => profile.id === id)

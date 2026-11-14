@@ -19,6 +19,7 @@ interface StoredAiProfile {
   apiKey: string
   apiKeyEncrypted: boolean
   model: string
+  enabled: boolean
 }
 
 interface StoredSettings {
@@ -218,7 +219,16 @@ const seedAiProfiles = async (profiles: StoredAiProfile[], activeId: string): Pr
 
 const seedSingleProfile = (url: string, model = 'stub-model'): Promise<void> =>
   seedAiProfiles(
-    [{ id: 'default', baseUrl: url, model, apiKey: 'sk-e2e-test', apiKeyEncrypted: false }],
+    [
+      {
+        id: 'default',
+        baseUrl: url,
+        model,
+        apiKey: 'sk-e2e-test',
+        apiKeyEncrypted: false,
+        enabled: true
+      }
+    ],
     'default'
   )
 
@@ -252,6 +262,19 @@ const openAssistant = async (page: Page): Promise<Locator> => {
 }
 
 const modelSelect = (panel: Locator): Locator => panel.getByRole('combobox', { name: '选择模型' })
+
+test('opens AI settings when the assistant is used without a configured profile', async () => {
+  const reader = await launchReader(userDataDir)
+
+  await reader.page.getByRole('button', { name: '辅助面板', exact: true }).click()
+
+  const dialog = reader.page.getByRole('dialog', { name: '设置' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('还没有配置，点击「新增模型」开始。')
+  expect(await reader.page.locator('aside[aria-label="辅助面板"]').count()).toBe(0)
+
+  await reader.app.close()
+})
 
 test('translates the selected word and streams the result into the panel', async () => {
   await seedPaper()
@@ -305,14 +328,16 @@ test('switches the model from the panel dropdown and remembers it after relaunch
         baseUrl: primary.baseUrl,
         model: 'model-a',
         apiKey: 'sk-a',
-        apiKeyEncrypted: false
+        apiKeyEncrypted: false,
+        enabled: true
       },
       {
         id: 'b',
         baseUrl: secondary.baseUrl,
         model: 'model-b',
         apiKey: 'sk-b',
-        apiKeyEncrypted: false
+        apiKeyEncrypted: false,
+        enabled: true
       }
     ],
     'a'

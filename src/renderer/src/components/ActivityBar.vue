@@ -49,12 +49,12 @@
             variant="ghost"
             size="icon-sm"
             :aria-label="t('activity.settings')"
-            :aria-pressed="settingsOpen"
+            :aria-pressed="$props.settingsOpen"
             :class="[
               'rounded-lg transition-colors',
-              settingsOpen ? 'bg-accent text-accent-foreground' : ''
+              $props.settingsOpen ? 'bg-accent text-accent-foreground' : ''
             ]"
-            @click="settingsOpen = true"
+            @click="emit('openSettings')"
           >
             <Settings class="size-5" />
           </Button>
@@ -62,13 +62,10 @@
         <TooltipContent side="right">{{ t('activity.settings') }}</TooltipContent>
       </Tooltip>
     </div>
-
-    <SettingsDialog v-model:open="settingsOpen" />
   </TooltipProvider>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { Button } from '@renderer/components/ui/button'
 import {
   Tooltip,
@@ -76,20 +73,22 @@ import {
   TooltipContent,
   TooltipProvider
 } from '@renderer/components/ui/tooltip'
-import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import { t } from '@renderer/lib/i18n'
 import { LibraryBig, Settings, Sparkles } from 'lucide-vue-next'
 
-defineProps<{
-  isLibraryOpen: boolean
-  isAssistantOpen: boolean
-}>()
-
-const settingsOpen = ref(false)
+withDefaults(
+  defineProps<{
+    isLibraryOpen: boolean
+    isAssistantOpen: boolean
+    settingsOpen?: boolean
+  }>(),
+  { settingsOpen: false }
+)
 
 const emit = defineEmits<{
   toggleLibrary: []
   toggleAssistant: []
+  openSettings: []
 }>()
 
 const toggleLibrary = (): void => {
