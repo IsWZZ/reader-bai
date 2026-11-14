@@ -8,7 +8,7 @@
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="论文库"
+            :aria-label="t('activity.library')"
             :aria-pressed="$props.isLibraryOpen"
             :class="[
               'rounded-lg transition-colors',
@@ -19,7 +19,7 @@
             <LibraryBig class="size-5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="right">论文库</TooltipContent>
+        <TooltipContent side="right">{{ t('activity.library') }}</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -27,7 +27,7 @@
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="辅助面板"
+            :aria-label="t('activity.assistant')"
             :aria-pressed="$props.isAssistantOpen"
             :class="[
               'rounded-lg transition-colors',
@@ -38,7 +38,7 @@
             <Sparkles class="size-5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="right">翻译与 AI</TooltipContent>
+        <TooltipContent side="right">{{ t('assistant.title') }}</TooltipContent>
       </Tooltip>
 
       <div class="flex-1" />
@@ -48,7 +48,7 @@
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="设置"
+            :aria-label="t('activity.settings')"
             :aria-pressed="settingsOpen"
             :class="[
               'rounded-lg transition-colors',
@@ -59,7 +59,7 @@
             <Settings class="size-5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="right">设置</TooltipContent>
+        <TooltipContent side="right">{{ t('activity.settings') }}</TooltipContent>
       </Tooltip>
     </div>
 
@@ -77,6 +77,7 @@ import {
   TooltipProvider
 } from '@renderer/components/ui/tooltip'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
+import { t } from '@renderer/lib/i18n'
 import { LibraryBig, Settings, Sparkles } from 'lucide-vue-next'
 
 defineProps<{

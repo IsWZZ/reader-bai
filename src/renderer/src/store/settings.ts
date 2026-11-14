@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { setLocale, t, DEFAULT_LOCALE, normalizeLocale } from '@renderer/lib/i18n'
 import type {
   AiProfile,
   AiProfilePatch,
+  AppLanguage,
   AppSettings,
   AppTheme,
   SettingsPatch
@@ -10,18 +12,20 @@ import type {
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
+  language: DEFAULT_LOCALE,
   ai: { profiles: [], activeId: '' },
   library: { directory: '' },
   keyStorage: 'encrypted'
 }
 
 /**
- * 全局设置：主题与多份 AI 配置。
+ * 全局设置：主题、界面语言与多份 AI 配置。
  * 其他模块通过 aiProfiles / activeAiProfile 读取当前选中的模型配置。
  */
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>({
     theme: DEFAULT_SETTINGS.theme,
+    language: DEFAULT_SETTINGS.language,
     ai: { profiles: [], activeId: '' },
     library: { directory: '' },
     keyStorage: DEFAULT_SETTINGS.keyStorage
@@ -41,6 +45,7 @@ export const useSettingsStore = defineStore('settings', () => {
     return Boolean(profile?.baseUrl.trim() && profile.hasApiKey && profile.model.trim())
   })
   const theme = computed<AppTheme>(() => settings.value.theme)
+  const language = computed<AppLanguage>(() => settings.value.language)
 
   const applyTheme = (value: AppTheme): void => {
     const dark = value === 'dark'
@@ -48,23 +53,31 @@ export const useSettingsStore = defineStore('settings', () => {
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   }
 
-  const adopt = (next: AppSettings): void => {
-    settings.value = next
-    applyTheme(next.theme)
+  const applyLanguage = (value: AppLanguage): void => {
+    setLocale(value)
   }
 
-  // 应用启动时加载设置并立即应用主题，避免明暗闪烁
+  const adopt = (next: AppSettings): void => {
+    // 主进程只校验语言标签格式；渲染进程负责把未注册的语言归一后再落到 store
+    const language = normalizeLocale(next.language)
+    settings.value = { ...next, language }
+    applyTheme(next.theme)
+    applyLanguage(language)
+  }
+
+  // 应用启动时加载设置并立即应用主题和语言，避免首屏闪烁
   const initialize = async (): Promise<void> => {
     if (loaded.value) return
     loaded.value = true
     applyTheme(settings.value.theme)
+    applyLanguage(settings.value.language)
 
     const api = window.api
     if (!api) return
     try {
       adopt(await api.getSettings())
     } catch (e) {
-      error.value = e instanceof Error ? e.message : '读取设置失败'
+      error.value = e instanceof Error ? e.message : t('settings.error.read')
     }
   }
 
@@ -87,6 +100,7 @@ export const useSettingsStore = defineStore('settings', () => {
       : previous.ai.profiles.map((profile) => ({ ...profile }))
     const optimistic: AppSettings = {
       theme: patch.theme ?? previous.theme,
+      language: patch.language ?? previous.language,
       ai: {
         // 只切换 activeId 时也要保留完整列表
         profiles: optimisticProfiles,
@@ -97,15 +111,17 @@ export const useSettingsStore = defineStore('settings', () => {
       },
       keyStorage: previous.keyStorage
     }
-    // 主题需要即时生效，失败时再回滚
+    // 主题和语言需要即时生效，失败时再回滚
     settings.value = optimistic
     applyTheme(optimistic.theme)
+    applyLanguage(optimistic.language)
 
     const api = window.api
     if (!api) {
       settings.value = previous
       applyTheme(previous.theme)
-      error.value = '当前环境无法访问设置存储'
+      applyLanguage(previous.language)
+      error.value = t('settings.error.noStorage')
       return false
     }
 
@@ -117,7 +133,8 @@ export const useSettingsStore = defineStore('settings', () => {
     } catch (e) {
       settings.value = previous
       applyTheme(previous.theme)
-      error.value = e instanceof Error ? e.message : '保存设置失败'
+      applyLanguage(previous.language)
+      error.value = e instanceof Error ? e.message : t('settings.error.save')
       return false
     } finally {
       saving.value = false
@@ -125,6 +142,10 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   const setTheme = (next: AppTheme): Promise<boolean> => persist({ theme: next })
+
+  /** 只接受注册表里已有的语言；未知标签回退到默认语言 */
+  const setLanguage = (next: AppLanguage): Promise<boolean> =>
+    persist({ language: normalizeLocale(next) })
 
   /**
    * 保存整份配置列表。补丁未带 apiKey 的配置由主进程保留原有 Key，
@@ -161,12 +182,14 @@ export const useSettingsStore = defineStore('settings', () => {
     saving,
     error,
     theme,
+    language,
     aiProfiles,
     activeAiProfile,
     isAiConfigured,
     libraryDirectory,
     initialize,
     setTheme,
+    setLanguage,
     saveAiProfiles,
     setActiveAiProfile,
     setLibraryDirectory,

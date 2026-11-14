@@ -30,7 +30,7 @@
           />
         </div>
         <div v-else class="flex items-center justify-center h-full">
-          <p class="text-muted-foreground">选择论文开始阅读</p>
+          <p class="text-muted-foreground">{{ t('home.empty') }}</p>
         </div>
       </main>
 
@@ -54,6 +54,7 @@ import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import { useAssistantStore } from '@renderer/store/assistant'
+import { t } from '@renderer/lib/i18n'
 import type { Paper } from '@renderer/types'
 
 const isLibraryOpen = ref(true)

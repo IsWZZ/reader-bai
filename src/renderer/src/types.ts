@@ -30,6 +30,9 @@ export interface LibraryData {
 
 export type AppTheme = 'light' | 'dark'
 
+/** BCP 47 风格的语言标签；实际支持的语言由 lib/i18n 的 locale 注册表决定 */
+export type AppLanguage = string
+
 export interface AiProfile {
   id: string
   baseUrl: string
@@ -179,6 +182,7 @@ export type KeyStorage = 'encrypted' | 'plaintext'
 
 export interface AppSettings {
   theme: AppTheme
+  language: AppLanguage
   ai: AiSettings
   library: LibrarySettings
   keyStorage: KeyStorage
@@ -186,6 +190,7 @@ export interface AppSettings {
 
 export interface SettingsPatch {
   theme?: AppTheme
+  language?: AppLanguage
   ai?: {
     /** 传入时整体替换配置列表；未提供 apiKey 的配置保留原 Key */
     profiles?: AiProfilePatch[]

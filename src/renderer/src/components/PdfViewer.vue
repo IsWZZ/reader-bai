@@ -8,14 +8,14 @@
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="缩小"
+              :aria-label="t('pdf.zoomOut')"
               :disabled="zoom <= MIN_ZOOM"
               @click="stepZoom(-1)"
             >
               <ZoomOut class="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>缩小</TooltipContent>
+          <TooltipContent>{{ t('pdf.zoomOut') }}</TooltipContent>
         </Tooltip>
         <span class="w-12 text-center text-xs tabular-nums text-muted-foreground">
           {{ zoomPercent }}%
@@ -25,22 +25,27 @@
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="放大"
+              :aria-label="t('pdf.zoomIn')"
               :disabled="zoom >= MAX_ZOOM"
               @click="stepZoom(1)"
             >
               <ZoomIn class="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>放大</TooltipContent>
+          <TooltipContent>{{ t('pdf.zoomIn') }}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon-sm" aria-label="适应宽度" @click="resetZoom">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              :aria-label="t('pdf.fitWidth')"
+              @click="resetZoom"
+            >
               <Scan class="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>适应宽度</TooltipContent>
+          <TooltipContent>{{ t('pdf.fitWidth') }}</TooltipContent>
         </Tooltip>
 
         <Separator orientation="vertical" class="mx-1 h-5" />
@@ -50,7 +55,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="高亮"
+              :aria-label="t('pdf.highlight')"
               :disabled="!pendingSelection"
               @mousedown.prevent
               @click="applyAnnotation('highlight')"
@@ -58,14 +63,14 @@
               <Highlighter class="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>高亮</TooltipContent>
+          <TooltipContent>{{ t('pdf.highlight') }}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="下划线"
+              :aria-label="t('pdf.underline')"
               :disabled="!pendingSelection"
               @mousedown.prevent
               @click="applyAnnotation('underline')"
@@ -73,14 +78,14 @@
               <Underline class="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>下划线</TooltipContent>
+          <TooltipContent>{{ t('pdf.underline') }}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="取消标记"
+              :aria-label="t('pdf.clearMarks')"
               :disabled="removableAnnotations.length === 0"
               @mousedown.prevent
               @click="removeSelectedAnnotations"
@@ -88,7 +93,7 @@
               <Eraser class="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>取消标记</TooltipContent>
+          <TooltipContent>{{ t('pdf.clearMarks') }}</TooltipContent>
         </Tooltip>
       </div>
     </TooltipProvider>
@@ -96,7 +101,7 @@
     <div ref="containerRef" class="relative flex-1 overflow-auto rounded-lg bg-muted/30">
       <!-- 加载状态 -->
       <div v-if="loading" class="absolute inset-0 flex items-center justify-center">
-        <p class="text-sm text-muted-foreground">正在加载论文…</p>
+        <p class="text-sm text-muted-foreground">{{ t('pdf.loading') }}</p>
       </div>
 
       <!-- 错误状态 -->
@@ -145,6 +150,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from 'pdfjs-dist'
+import { t } from '@renderer/lib/i18n'
 import { pdfjsLib } from '@renderer/lib/pdf'
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
@@ -532,7 +538,7 @@ const loadDocument = async (): Promise<void> => {
     const data = await window.api.readPaper(props.src)
     if (currentGeneration !== generation) return
     if (!data || data.byteLength === 0) {
-      throw new Error('无法读取论文文件')
+      throw new Error(t('pdf.readFailed'))
     }
 
     const doc = await pdfjsLib.getDocument({ data }).promise
@@ -577,7 +583,7 @@ const loadDocument = async (): Promise<void> => {
     // 过期请求的报错（如 Transport destroyed）不应影响当前论文
     if (currentGeneration !== generation) return
     console.error('加载 PDF 失败:', err)
-    error.value = err instanceof Error ? err.message : '加载论文失败'
+    error.value = err instanceof Error ? err.message : t('pdf.loadFailed')
     loading.value = false
   }
 }

@@ -1,15 +1,20 @@
 <template>
   <aside
-    aria-label="辅助面板"
+    :aria-label="t('assistant.panel')"
     class="bg-card flex h-full shrink-0 flex-col overflow-hidden rounded-lg border"
     :style="{ width: width + 'px' }"
   >
     <header class="flex items-center justify-between border-b px-3 py-2">
       <div class="flex items-center gap-2">
         <Sparkles class="text-muted-foreground size-4" />
-        <h2 class="text-sm font-medium">翻译与 AI</h2>
+        <h2 class="text-sm font-medium">{{ t('assistant.title') }}</h2>
       </div>
-      <Button variant="ghost" size="icon-sm" aria-label="关闭辅助面板" @click="emit('close')">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        :aria-label="t('assistant.close')"
+        @click="emit('close')"
+      >
         <X class="size-4" />
       </Button>
     </header>
@@ -19,7 +24,7 @@
       class="flex items-center gap-2 border-b px-3 py-2"
     >
       <select
-        aria-label="选择模型"
+        :aria-label="t('assistant.selectModel')"
         class="border-input focus-visible:ring-ring/50 w-full rounded-md border bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
         :value="settingsStore.activeAiProfile?.id ?? ''"
         :disabled="store.chatLoading || settingsStore.saving"
@@ -31,17 +36,17 @@
       </select>
       <label
         class="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap"
-        title="允许 AI 调用论文库等只读工具"
+        :title="t('assistant.toolsTitle')"
       >
         <input
           type="checkbox"
-          aria-label="使用工具"
+          :aria-label="t('assistant.useTools')"
           class="accent-primary size-3.5"
           :checked="store.agentMode"
           :disabled="store.chatLoading"
           @change="handleAgentModeChange"
         />
-        工具
+        {{ t('assistant.tools') }}
       </label>
     </div>
 
@@ -49,23 +54,25 @@
       v-if="settingsStore.aiProfiles.length === 0"
       class="text-muted-foreground border-b px-3 py-2 text-xs leading-relaxed"
     >
-      请先在设置 → AI 服务中添加并补全配置。
+      {{ t('assistant.setupHint') }}
     </p>
     <p
       v-else-if="!store.isConfigured"
       class="text-muted-foreground border-b px-3 py-2 text-xs leading-relaxed"
     >
-      所选 AI 服务的 Base URL、API Key 或模型不完整，请到设置中补全。
+      {{ t('assistant.incompleteHint') }}
     </p>
 
-    <section class="shrink-0 border-b px-3 py-2" aria-label="译文">
+    <section class="shrink-0 border-b px-3 py-2" :aria-label="t('assistant.translation')">
       <div class="flex items-center justify-between">
-        <h3 class="text-muted-foreground text-xs font-medium">译文</h3>
-        <span v-if="translation?.loading" class="text-muted-foreground text-xs">翻译中…</span>
+        <h3 class="text-muted-foreground text-xs font-medium">{{ t('assistant.translation') }}</h3>
+        <span v-if="translation?.loading" class="text-muted-foreground text-xs">
+          {{ t('assistant.translating') }}
+        </span>
       </div>
 
       <p v-if="!translation" class="text-muted-foreground mt-2 text-xs leading-relaxed">
-        在阅读区选中文本即可自动查看译文。
+        {{ t('assistant.selectionHint') }}
       </p>
       <template v-else>
         <p class="text-muted-foreground mt-2 line-clamp-2 text-xs">{{ translation.source }}</p>
@@ -89,7 +96,7 @@
       aria-live="polite"
     >
       <p v-if="store.messages.length === 0" class="text-muted-foreground text-xs leading-relaxed">
-        也可以直接向 AI 提问，回答会流式显示在这里。
+        {{ t('assistant.chatHint') }}
       </p>
       <div v-for="entry in store.messages" :key="entry.id" class="space-y-1">
         <div :class="entry.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
@@ -107,7 +114,11 @@
             >
           </p>
         </div>
-        <ul v-if="entry.toolNotes?.length" class="space-y-0.5 pl-1" aria-label="工具调用记录">
+        <ul
+          v-if="entry.toolNotes?.length"
+          class="space-y-0.5 pl-1"
+          :aria-label="t('assistant.toolLog')"
+        >
           <li
             v-for="(note, index) in entry.toolNotes"
             :key="index"
@@ -126,16 +137,27 @@
       <div class="flex items-end gap-2">
         <textarea
           v-model="draft"
-          aria-label="向 AI 提问"
+          :aria-label="t('assistant.ask')"
           rows="2"
-          placeholder="向 AI 提问，Enter 发送，Shift+Enter 换行"
+          :placeholder="t('assistant.placeholder')"
           class="border-input placeholder:text-muted-foreground focus-visible:ring-ring/50 max-h-32 min-h-9 flex-1 resize-none rounded-md border bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:ring-2"
           @keydown="handleKeydown"
         />
-        <Button v-if="store.chatLoading" size="icon-sm" aria-label="停止" @click="store.stopChat()">
+        <Button
+          v-if="store.chatLoading"
+          size="icon-sm"
+          :aria-label="t('assistant.stop')"
+          @click="store.stopChat()"
+        >
           <Square class="size-4" />
         </Button>
-        <Button v-else size="icon-sm" aria-label="发送" :disabled="!draft.trim()" @click="submit">
+        <Button
+          v-else
+          size="icon-sm"
+          :aria-label="t('assistant.send')"
+          :disabled="!draft.trim()"
+          @click="submit"
+        >
           <Send class="size-4" />
         </Button>
       </div>
@@ -150,6 +172,7 @@ import { Skeleton } from '@renderer/components/ui/skeleton'
 import { useAssistantStore, type ChatEntry } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
 import { aiProfileLabel } from '@renderer/lib/ai'
+import { t } from '@renderer/lib/i18n'
 import { Send, Sparkles, Square, X } from 'lucide-vue-next'
 
 defineProps<{ width: number }>()

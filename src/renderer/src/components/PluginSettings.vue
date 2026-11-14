@@ -1,19 +1,18 @@
 <template>
   <section class="space-y-4">
     <div>
-      <h3 class="text-sm font-medium">插件</h3>
+      <h3 class="text-sm font-medium">{{ t('plugins.title') }}</h3>
       <p class="text-muted-foreground mt-1 text-xs">
-        从应用数据目录的 plugins 文件夹发现插件。第三方插件默认关闭；启用后也只能使用 manifest
-        声明的权限，写操作仍需逐次确认。
+        {{ t('plugins.description') }}
       </p>
     </div>
 
     <p v-if="store.error" class="text-destructive text-xs">{{ store.error }}</p>
     <p v-if="store.loading && store.plugins.length === 0" class="text-muted-foreground text-xs">
-      加载中…
+      {{ t('common.loading') }}
     </p>
     <p v-else-if="store.plugins.length === 0" class="text-muted-foreground text-xs">
-      还没有发现插件。将插件目录放入应用数据目录下的 plugins 文件夹后重新打开设置。
+      {{ t('plugins.empty') }}
     </p>
 
     <ul v-else class="divide-y rounded-md border">
@@ -45,21 +44,21 @@
             <input
               type="checkbox"
               class="accent-primary size-3.5"
-              :aria-label="`启用 ${plugin.name}`"
+              :aria-label="t('plugins.enableAria', { name: plugin.name })"
               :checked="plugin.enabled"
               :disabled="!plugin.compatible || store.savingId === plugin.id"
               @change="toggle(plugin, $event)"
             />
-            {{ store.savingId === plugin.id ? '保存中…' : '启用' }}
+            {{ store.savingId === plugin.id ? t('common.saving') : t('plugins.enable') }}
           </label>
         </div>
 
         <p v-if="!plugin.compatible" class="text-destructive text-xs">
-          与当前应用版本不兼容，无法启用。
+          {{ t('plugins.incompatible') }}
         </p>
 
         <div v-if="plugin.permissions.length > 0" class="flex flex-wrap items-center gap-1">
-          <span class="text-muted-foreground text-[10px]">权限</span>
+          <span class="text-muted-foreground text-[10px]">{{ t('plugins.permissions') }}</span>
           <span
             v-for="permission in plugin.permissions"
             :key="permission"
@@ -68,18 +67,22 @@
             {{ permission }}
           </span>
         </div>
-        <p v-else class="text-muted-foreground text-xs">未声明权限</p>
+        <p v-else class="text-muted-foreground text-xs">{{ t('plugins.noPermissions') }}</p>
 
         <p v-if="plugin.commands.length > 0" class="text-muted-foreground text-xs">
-          命令：{{ plugin.commands.map((command) => command.title).join('、') }}
+          {{
+            t('plugins.commands', {
+              commands: plugin.commands.map((command) => command.title).join(', ')
+            })
+          }}
         </p>
       </li>
     </ul>
 
     <div v-if="store.issues.length > 0" class="space-y-1 rounded-md border border-dashed p-3">
-      <p class="text-xs font-medium">无法加载的插件</p>
+      <p class="text-xs font-medium">{{ t('plugins.issues') }}</p>
       <p v-for="issue in store.issues" :key="issue.directoryName" class="text-destructive text-xs">
-        {{ issue.directoryName }}：{{ issue.message }}
+        {{ t('plugins.issueLine', { directory: issue.directoryName, message: issue.message }) }}
       </p>
     </div>
   </section>
@@ -87,25 +90,20 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
-import type { PluginInfo, PluginRuntimeState, PluginRuntimeStatus } from '@renderer/types'
+import type { PluginInfo, PluginRuntimeState } from '@renderer/types'
+import { t } from '@renderer/lib/i18n'
 import { usePluginsStore } from '@renderer/store/plugins'
 
 const store = usePluginsStore()
 let unsubscribe: (() => void) | undefined
 
-const RUNTIME_LABELS: Record<PluginRuntimeStatus, string> = {
-  inactive: '未启动',
-  activating: '启动中…',
-  active: '运行中',
-  error: '启动失败'
+const runtimeLabel = (pluginId: string): string => {
+  const state = store.runtimeFor(pluginId)
+  if (!state) return ''
+  return t(`plugins.runtime.${state.status}`)
 }
 
 const runtimeFor = (pluginId: string): PluginRuntimeState | undefined => store.runtimeFor(pluginId)
-
-const runtimeLabel = (pluginId: string): string => {
-  const state = store.runtimeFor(pluginId)
-  return state ? RUNTIME_LABELS[state.status] : ''
-}
 
 onMounted(() => {
   void store.load()

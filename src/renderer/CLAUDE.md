@@ -20,7 +20,8 @@ src/renderer/src/
                                # SettingsDialog、PluginSettings、Toolbar
   components/ui/               # shadcn-vue 生成代码
   store/                       # assistant、settings、plugins
-  lib/                         # agent-loop、ai、pdf
+  lib/                         # agent-loop、ai、pdf、i18n
+  lib/locales/                 # zh.ts 消息源与 en.ts 译文
   types.ts
   assets/css/                  # reset.css 设计 token、index.css、common.css
 ```
@@ -76,8 +77,8 @@ src/renderer/src/
 
 ## 设置与插件界面
 
-- `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：主题、AI 配置、论文库目录、存储分区和插件分区。
-- 「存储」分区通过 `window.api.clearCache()` 清理 Electron 的 HTTP、代码和 DNS 缓存；只展示成功/失败状态，不要在渲染进程推断文件系统缓存。
+- `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：基础设置（外观、语言）、存储、AI 配置和插件分区；默认打开「基础设置」。
+- 「存储」分区上方管理论文库目录，下方通过 `window.api.clearCache()` 清理 Electron 的 HTTP、代码和 DNS 缓存；只展示成功/失败状态，不要在渲染进程推断文件系统缓存。
 - Base URL 校验与主进程一致：默认 HTTPS，仅 `localhost` / `127.0.0.1` / `[::1]` 可用 HTTP；新增配置必须有 Key。
 - `settings.keyStorage === 'plaintext'` 时明确提示 Key 会以明文落盘。
 - `PluginSettings.vue` + [store/plugins.ts](src/store/plugins.ts)：
@@ -85,6 +86,16 @@ src/renderer/src/
   - 启用开关失败时恢复原状态，保持界面与主进程一致。
   - 监听 `onPluginRuntime` 并在卸载时取消订阅。
   - 插件不兼容或宿主不可用时只展示错误，不影响设置页其他功能。
+
+## 国际化
+
+- 所有用户可见文本走 [lib/i18n.ts](src/lib/i18n.ts) 的 `t(key, params)`；不要在组件、store 或 lib 里硬编码中文/英文界面文案。
+- 消息键的唯一来源是 [locales/zh.ts](src/lib/locales/zh.ts)，`MessageKey` 由它推导；每个语言包用 `satisfies LocaleMessages` 保证键齐全。
+- 当前支持 `zh`、`en`，注册表在 `i18n.ts` 的 `LOCALES`。默认语言是 `zh`；`normalizeLocale` 先精确匹配，再退到基础语言（`en-US` → `en`），最后回退默认语言。
+- 切换语言通过 `settingsStore.setLanguage(code)`：`setLocale` 立即生效并同步 `<html lang>`，持久化失败时回滚；不要只调 `setLocale` 而不写设置。
+- 增加新语言：新增 `locales/<code>.ts`（实现全部 `MessageKey`）→ 在 `LOCALES` 追加 `{ code, label, messages }`。主进程不需要改，`language` 只做 BCP 47 格式校验。
+- 插值使用 `{name}` 占位符，参数放第二个对象；缺失参数会保留占位符，便于发现漏传。
+- 系统提示词、日志和主进程返回的错误信息不属于界面文案，保持现状；AI 系统提示不要跟随界面语言，避免改变翻译/工具行为。
 
 ## 测试
 

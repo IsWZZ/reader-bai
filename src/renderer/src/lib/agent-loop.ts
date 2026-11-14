@@ -2,6 +2,7 @@
 // 这里刻意不直接依赖 window.api：模型调用和工具执行由调用方注入，
 // 平台只提供网关、工具和确认边界，loop 属于模块/插件自己。
 
+import { t } from '@renderer/lib/i18n'
 import type { AiChatResult, ChatMessage, ChatToolCallResult, ToolResult } from '@renderer/types'
 
 export interface AgentToolCallEvent {
@@ -107,7 +108,7 @@ export const runAgentLoop = async (options: AgentLoopOptions): Promise<AgentRunR
       try {
         input = parseArguments(call.arguments)
       } catch {
-        const message = '工具参数不是合法的 JSON'
+        const message = t('assistant.tool.argsInvalid')
         emit({ type: 'tool-error', callId: call.id, name: call.name, error: message })
         messages.push({ role: 'tool', tool_call_id: call.id, content: message })
         continue
@@ -125,7 +126,7 @@ export const runAgentLoop = async (options: AgentLoopOptions): Promise<AgentRunR
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
-          content: `工具执行失败：${message}`
+          content: t('assistant.tool.failed', { message })
         })
       }
     }

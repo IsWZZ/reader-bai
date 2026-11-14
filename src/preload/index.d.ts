@@ -46,6 +46,8 @@ declare global {
   }
 
   type AppTheme = 'light' | 'dark'
+  /** BCP 47 风格的语言标签；支持的语言列表由渲染进程维护 */
+  type AppLanguage = string
 
   interface AiProfile {
     id: string
@@ -198,6 +200,7 @@ declare global {
 
   interface AppSettings {
     theme: AppTheme
+    language: AppLanguage
     ai: AiSettings
     library: LibrarySettings
     keyStorage: KeyStorage
@@ -205,6 +208,7 @@ declare global {
 
   interface SettingsPatch {
     theme?: AppTheme
+    language?: AppLanguage
     ai?: {
       /** 传入时整体替换配置列表；未提供 apiKey 的配置保留原 Key */
       profiles?: AiProfilePatch[]

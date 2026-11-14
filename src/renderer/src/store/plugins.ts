@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { PluginInfo, PluginIssue, PluginRuntimeState } from '@renderer/types'
+import { t } from '@renderer/lib/i18n'
 
 const errorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback
@@ -17,7 +18,7 @@ export const usePluginsStore = defineStore('plugins', () => {
   const load = async (): Promise<void> => {
     const api = window.api
     if (!api?.listPlugins) {
-      error.value = '当前环境不支持插件'
+      error.value = t('plugins.error.unsupported')
       return
     }
 
@@ -28,7 +29,7 @@ export const usePluginsStore = defineStore('plugins', () => {
       plugins.value = result.plugins
       issues.value = result.issues
     } catch (e) {
-      error.value = errorMessage(e, '加载插件失败')
+      error.value = errorMessage(e, t('plugins.error.load'))
     } finally {
       loading.value = false
     }
@@ -54,7 +55,7 @@ export const usePluginsStore = defineStore('plugins', () => {
   const setEnabled = async (id: string, enabled: boolean): Promise<boolean> => {
     const api = window.api
     if (!api?.setPluginEnabled) {
-      error.value = '当前环境不支持插件'
+      error.value = t('plugins.error.unsupported')
       return false
     }
 
@@ -65,7 +66,7 @@ export const usePluginsStore = defineStore('plugins', () => {
       plugins.value = plugins.value.map((plugin) => (plugin.id === updated.id ? updated : plugin))
       return true
     } catch (e) {
-      error.value = errorMessage(e, '更新插件状态失败')
+      error.value = errorMessage(e, t('plugins.error.update'))
       return false
     } finally {
       savingId.value = null

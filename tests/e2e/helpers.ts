@@ -43,7 +43,8 @@ export async function launchReader(userDataDir: string): Promise<ReaderInstance>
   const app = await electron.launch({ args, env })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
-  await page.getByRole('button', { name: '设置' }).waitFor()
+  // 界面语言由设置决定，等待渲染进程加载完设置后再继续
+  await page.getByRole('button', { name: /^(设置|Settings)$/ }).waitFor()
   return { app, page }
 }
 

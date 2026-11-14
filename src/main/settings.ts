@@ -5,6 +5,12 @@ import { isAbsolute } from 'node:path'
 
 export type AppTheme = 'light' | 'dark'
 
+/**
+ * 界面语言使用 BCP 47 风格的语言标签，具体支持哪些语言由渲染进程的 locale 注册表决定。
+ * 主进程只做格式校验，这样以后增加语言不需要改设置文件的读写逻辑。
+ */
+export type AppLanguage = string
+
 /** 传给主进程的配置补丁；apiKey 为空表示保留该 id 已保存的 Key */
 export interface AiProfilePatch {
   id: string
@@ -36,6 +42,7 @@ export type KeyStorage = 'encrypted' | 'plaintext'
 
 export interface AppSettings {
   theme: AppTheme
+  language: AppLanguage
   ai: AiSettings
   library: LibrarySettings
   keyStorage: KeyStorage
@@ -43,6 +50,7 @@ export interface AppSettings {
 
 export interface SettingsPatch {
   theme?: AppTheme
+  language?: AppLanguage
   ai?: {
     profiles?: AiProfilePatch[]
     activeId?: string
@@ -69,6 +77,7 @@ export interface StoredAiSettings {
 
 export interface StoredSettings {
   theme: AppTheme
+  language: AppLanguage
   ai: StoredAiSettings
   library: LibrarySettings
 }
@@ -85,6 +94,10 @@ const MAX_ID = 100
 const MAX_BASE_URL = 500
 const MAX_API_KEY = 500
 const MAX_DIRECTORY = 2000
+const MAX_LANGUAGE = 35
+const DEFAULT_LANGUAGE = 'zh'
+// 形如 zh、en、zh-Hans、pt-BR；只保留语言标签字符，避免写入任意字符串
+const LANGUAGE_PATTERN = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i
 // safeStorage 的密文是 base64，长度会明显超过明文
 const MAX_STORED_KEY = 4096
 const MAX_MODEL = 120
@@ -114,6 +127,12 @@ const normalizeTheme = (value: unknown): AppTheme =>
 
 const asString = (value: unknown, max: number): string =>
   typeof value === 'string' ? value.trim().slice(0, max) : ''
+
+/** 缺失、格式不合法或尚未支持的语言统一回退到中文 */
+const normalizeLanguage = (value: unknown): AppLanguage => {
+  const language = asString(value, MAX_LANGUAGE)
+  return LANGUAGE_PATTERN.test(language) ? language : DEFAULT_LANGUAGE
+}
 
 /** 只接受绝对路径；空路径表示使用默认目录 */
 const normalizeDirectory = (value: unknown): string => {
@@ -204,6 +223,7 @@ export const normalizeStoredSettings = (raw: unknown): StoredSettings => {
 
   return {
     theme: normalizeTheme(source.theme),
+    language: normalizeLanguage(source.language),
     ai: { profiles, activeId: normalizeActiveId(ai.activeId, profiles) },
     library: { directory: normalizeDirectory(library.directory) }
   }
@@ -300,6 +320,7 @@ export const applySettingsPatch = (
 ): StoredSettings => {
   const next: StoredSettings = {
     theme: stored.theme,
+    language: stored.language,
     ai: {
       profiles: stored.ai.profiles.map((profile) => ({ ...profile })),
       activeId: stored.ai.activeId
@@ -311,6 +332,7 @@ export const applySettingsPatch = (
   if (!source) return next
 
   if (source.theme !== undefined) next.theme = normalizeTheme(source.theme)
+  if (source.language !== undefined) next.language = normalizeLanguage(source.language)
 
   const libraryPatch = objectOf(source.library)
   if (libraryPatch && typeof libraryPatch.directory === 'string') {

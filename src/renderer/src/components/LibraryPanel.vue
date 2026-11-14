@@ -7,7 +7,7 @@
           <SidebarHeader class="border-b px-4 py-1">
             <div class="flex items-center justify-between">
               <h2 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                论文库
+                {{ t('library.title') }}
               </h2>
               <div class="flex items-center">
                 <Tooltip>
@@ -16,13 +16,13 @@
                       variant="ghost"
                       size="icon-sm"
                       class="rounded-lg"
-                      aria-label="新建空间"
+                      :aria-label="t('library.newSpace')"
                       @click="startCreateSpace"
                     >
                       <FolderPlus class="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">新建空间</TooltipContent>
+                  <TooltipContent side="right">{{ t('library.newSpace') }}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger as-child>
@@ -30,13 +30,13 @@
                       variant="ghost"
                       size="icon-sm"
                       class="rounded-lg"
-                      aria-label="导入论文"
+                      :aria-label="t('library.importPaper')"
                       @click="importPaper()"
                     >
                       <Plus class="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">导入论文</TooltipContent>
+                  <TooltipContent side="right">{{ t('library.importPaper') }}</TooltipContent>
                 </Tooltip>
               </div>
             </div>
@@ -50,7 +50,7 @@
                 v-model="newSpaceName"
                 data-inline-input
                 class="h-7 px-2 text-sm"
-                placeholder="空间名称"
+                :placeholder="t('library.spaceNamePlaceholder')"
                 @keydown.enter.prevent="confirmCreateSpace"
                 @keydown.esc.stop="cancelCreateSpace"
                 @blur="confirmCreateSpace"
@@ -63,8 +63,8 @@
               class="flex flex-col items-center justify-center h-full text-center p-6"
             >
               <LibraryBig class="size-12 text-muted-foreground/40 mb-3" />
-              <p class="text-sm text-muted-foreground">暂无论文</p>
-              <p class="text-xs text-muted-foreground/70 mt-1">导入论文后显示在此处</p>
+              <p class="text-sm text-muted-foreground">{{ t('library.empty') }}</p>
+              <p class="text-xs text-muted-foreground/70 mt-1">{{ t('library.emptyHint') }}</p>
             </div>
 
             <!-- 空间与论文 -->
@@ -114,20 +114,20 @@
                       <button
                         type="button"
                         class="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-                        :aria-label="`导入到${group.name}`"
+                        :aria-label="t('library.importTo', { name: group.name })"
                         @click.stop="importPaper(group.space.id)"
                       >
                         <FilePlus class="size-3.5" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="right">导入</TooltipContent>
+                    <TooltipContent side="right">{{ t('library.import') }}</TooltipContent>
                   </Tooltip>
                   <DropdownMenu v-if="group.space">
                     <DropdownMenuTrigger as-child>
                       <button
                         type="button"
                         class="flex size-6 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:opacity-100 group-hover/space:opacity-100 data-[state=open]:opacity-100"
-                        :aria-label="`${group.name} 操作`"
+                        :aria-label="t('library.spaceActions', { name: group.name })"
                         @click.stop
                       >
                         <MoreHorizontal class="size-4" />
@@ -136,14 +136,14 @@
                     <DropdownMenuContent side="right" align="start">
                       <DropdownMenuItem @select="startRenameSpace(group.space)">
                         <Pencil class="size-4" />
-                        重命名空间
+                        {{ t('library.renameSpace') }}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         class="text-destructive focus:text-destructive"
                         @select="deleteSpace(group.space)"
                       >
                         <Trash2 class="size-4" />
-                        删除空间
+                        {{ t('library.deleteSpace') }}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -185,7 +185,7 @@
                         <DropdownMenuTrigger as-child>
                           <SidebarMenuAction
                             show-on-hover
-                            :aria-label="`${paper.title} 操作`"
+                            :aria-label="t('library.paperActions', { title: paper.title })"
                             @click.stop
                             @mousedown.stop
                             @dblclick.stop
@@ -196,9 +196,9 @@
                         <DropdownMenuContent side="right" align="start">
                           <DropdownMenuItem @select="startRenamePaper(paper)">
                             <Pencil class="size-4" />
-                            重命名
+                            {{ t('library.rename') }}
                           </DropdownMenuItem>
-                          <DropdownMenuLabel>移动到空间</DropdownMenuLabel>
+                          <DropdownMenuLabel>{{ t('library.moveToSpace') }}</DropdownMenuLabel>
                           <DropdownMenuItem
                             v-for="target in moveTargets"
                             :key="target.id ?? 'unassigned'"
@@ -214,7 +214,7 @@
                             @select="removePaper(paper)"
                           >
                             <Trash2 class="size-4" />
-                            从论文库移除
+                            {{ t('library.remove') }}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -267,6 +267,7 @@ import {
   Plus,
   Trash2
 } from 'lucide-vue-next'
+import { t } from '@renderer/lib/i18n'
 import { readPdfTitle } from '@renderer/lib/pdf'
 import type { LibraryData, Paper, Space } from '@renderer/types'
 
@@ -317,13 +318,18 @@ const groups = computed<PaperGroup[]>(() => {
     (paper) => !paper.spaceId || !spaces.value.some((space) => space.id === paper.spaceId)
   )
   if (unassigned.length > 0) {
-    result.push({ key: 'unassigned', space: null, name: '未分类', papers: unassigned })
+    result.push({
+      key: 'unassigned',
+      space: null,
+      name: t('common.uncategorized'),
+      papers: unassigned
+    })
   }
   return result
 })
 
 const moveTargets = computed<{ id: string | null; name: string }[]>(() => [
-  { id: null, name: '未分类' },
+  { id: null, name: t('common.uncategorized') },
   ...spaces.value.map((space) => ({ id: space.id, name: space.name }))
 ])
 

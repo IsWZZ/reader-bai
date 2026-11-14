@@ -30,8 +30,12 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const makeSettings = (settings: Omit<AppSettings, 'library' | 'keyStorage'>): AppSettings => ({
+const makeSettings = (
+  settings: Omit<AppSettings, 'library' | 'keyStorage' | 'language'>,
+  language = 'zh'
+): AppSettings => ({
   ...settings,
+  language,
   library: { directory: '' },
   keyStorage: 'encrypted'
 })
@@ -170,6 +174,7 @@ describe('assistant store', () => {
     getSettings.mockResolvedValue(structuredClone(CONFIGURED))
     updateSettings.mockImplementation(async (patch) => ({
       theme: patch.theme ?? CONFIGURED.theme,
+      language: patch.language ?? CONFIGURED.language,
       ai: {
         profiles: toPublicProfiles(patch, CONFIGURED.ai.profiles),
         activeId: patch.ai?.activeId ?? CONFIGURED.ai.activeId
@@ -308,6 +313,7 @@ describe('assistant store', () => {
     getSettings.mockResolvedValue(structuredClone(settings))
     updateSettings.mockImplementation(async (patch) => ({
       theme: patch.theme ?? settings.theme,
+      language: patch.language ?? settings.language,
       ai: {
         profiles: toPublicProfiles(patch, settings.ai.profiles),
         activeId: patch.ai?.activeId ?? settings.ai.activeId

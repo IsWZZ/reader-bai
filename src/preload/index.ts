@@ -11,6 +11,8 @@ interface PaperAnnotation {
 }
 
 type AppTheme = 'light' | 'dark'
+/** BCP 47 风格的语言标签；支持的语言列表由渲染进程维护 */
+type AppLanguage = string
 
 interface AiProfile {
   id: string
@@ -63,6 +65,7 @@ type KeyStorage = 'encrypted' | 'plaintext'
 
 interface AppSettings {
   theme: AppTheme
+  language: AppLanguage
   ai: AiSettings
   library: LibrarySettings
   keyStorage: KeyStorage
@@ -122,6 +125,7 @@ interface AgentRunInfo {
 
 interface SettingsPatch {
   theme?: AppTheme
+  language?: AppLanguage
   ai?: {
     profiles?: AiProfilePatch[]
     activeId?: string

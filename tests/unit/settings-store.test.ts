@@ -20,9 +20,10 @@ const PROFILE_B: AiProfile = {
 const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
 
 const makeSettings = (
-  settings: Omit<AppSettings, 'library' | 'keyStorage'>,
-  directory = DEFAULT_LIBRARY_DIRECTORY
-): AppSettings => ({ ...settings, library: { directory }, keyStorage: 'encrypted' })
+  settings: Omit<AppSettings, 'library' | 'keyStorage' | 'language'>,
+  directory = DEFAULT_LIBRARY_DIRECTORY,
+  language = 'zh'
+): AppSettings => ({ ...settings, language, library: { directory }, keyStorage: 'encrypted' })
 
 const BASE_SETTINGS = makeSettings({
   theme: 'light',
@@ -56,6 +57,7 @@ const mergePatch = (patch: SettingsPatch): AppSettings => {
     : current.ai.profiles.map((profile) => ({ ...profile }))
   return {
     theme: patch.theme ?? current.theme,
+    language: patch.language ?? current.language,
     ai: {
       profiles,
       activeId: patch.ai?.activeId ?? current.ai.activeId
@@ -161,6 +163,70 @@ describe('settings store', () => {
     expect(saved).toBe(true)
     expect(store.theme).toBe('light')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('applies the saved language on initialize', async () => {
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }, undefined, 'en')
+    )
+    const store = useSettingsStore()
+
+    await store.initialize()
+
+    expect(store.language).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
+  })
+
+  it('normalizes an unsupported saved language to Chinese', async () => {
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }, undefined, 'fr-FR')
+    )
+    const store = useSettingsStore()
+
+    await store.initialize()
+
+    // 主进程保存的是格式合法的标签，渲染进程只认已注册的语言
+    expect(store.language).toBe('zh')
+    expect(document.documentElement.lang).toBe('zh')
+  })
+
+  it('persists language changes and updates the document language', async () => {
+    const store = useSettingsStore()
+    await store.initialize()
+    expect(document.documentElement.lang).toBe('zh')
+
+    const saved = await store.setLanguage('en')
+
+    expect(saved).toBe(true)
+    expect(updateSettings).toHaveBeenCalledWith({ language: 'en' })
+    expect(store.language).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
+  })
+
+  it('normalizes an unsupported language before saving', async () => {
+    const store = useSettingsStore()
+    await store.initialize()
+
+    const saved = await store.setLanguage('fr')
+
+    expect(saved).toBe(true)
+    // 未注册的语言回退到默认中文，并持久化归一后的值
+    expect(updateSettings).toHaveBeenCalledWith({ language: 'zh' })
+    expect(store.language).toBe('zh')
+    expect(document.documentElement.lang).toBe('zh')
+  })
+
+  it('rolls back the language when saving fails', async () => {
+    updateSettings.mockRejectedValue(new Error('磁盘写入失败'))
+    const store = useSettingsStore()
+    await store.initialize()
+
+    const saved = await store.setLanguage('en')
+
+    expect(saved).toBe(false)
+    expect(store.language).toBe('zh')
+    expect(document.documentElement.lang).toBe('zh')
+    expect(store.error).toBe('磁盘写入失败')
   })
 
   it('trims AI profiles and submits profiles with activeId in one patch', async () => {

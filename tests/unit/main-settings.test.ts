@@ -52,6 +52,7 @@ describe('normalizeStoredSettings', () => {
 
     expect(result).toEqual({
       theme: 'dark',
+      language: 'zh',
       ai: {
         profiles: [
           {
@@ -73,6 +74,17 @@ describe('normalizeStoredSettings', () => {
     expect(normalizeStoredSettings({ theme: 'mono' }).theme).toBe('light')
     expect(normalizeStoredSettings({ theme: 'unknown' }).theme).toBe('light')
     expect(normalizeStoredSettings({}).theme).toBe('light')
+  })
+
+  it('keeps valid language tags and falls back to Chinese', () => {
+    expect(normalizeStoredSettings({ language: ' zh ' }).language).toBe('zh')
+    expect(normalizeStoredSettings({ language: 'en' }).language).toBe('en')
+    // 允许 BCP 47 变体，以后新增语言不需要改主进程
+    expect(normalizeStoredSettings({ language: 'pt-BR' }).language).toBe('pt-BR')
+    expect(normalizeStoredSettings({ language: 'zh-Hans' }).language).toBe('zh-Hans')
+    expect(normalizeStoredSettings({ language: 'not a language' }).language).toBe('zh')
+    expect(normalizeStoredSettings({ language: 42 }).language).toBe('zh')
+    expect(normalizeStoredSettings({}).language).toBe('zh')
   })
 
   it('keeps an absolute library directory and drops invalid ones', () => {
@@ -273,6 +285,22 @@ describe('applySettingsPatch', () => {
 
     expect(next.theme).toBe('light')
     expect(next.ai).toEqual(base.ai)
+  })
+
+  it('applies language patches independently from other settings', () => {
+    const base = withProfiles()
+
+    const next = applySettingsPatch(base, { language: 'en' }, plainEncode)
+
+    expect(next.language).toBe('en')
+    expect(next.theme).toBe(base.theme)
+    expect(next.ai).toEqual(base.ai)
+    expect(next.library).toEqual(base.library)
+
+    // 未提供 language 时保持原值
+    expect(applySettingsPatch(next, { theme: 'light' }, plainEncode).language).toBe('en')
+    // 非法标签回退到默认语言
+    expect(applySettingsPatch(next, { language: 'en US' }, plainEncode).language).toBe('zh')
   })
 
   it('sets and resets the library directory', () => {

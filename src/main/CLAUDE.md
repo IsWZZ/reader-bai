@@ -30,7 +30,8 @@
 - 数据文件（`userData/data` 下）：
   - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 兼容旧格式；移除论文/空间不删除 PDF。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。
-  - `settings.json`：`{ theme, ai: { profiles, activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`，不回写。
+  - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`，不回写。
+- `language` 使用 BCP 47 风格标签（`zh`、`en`、`zh-Hans`、`pt-BR`），主进程只校验格式、默认回退 `zh`，不维护语言白名单；实际支持哪些语言由渲染进程的 locale 注册表决定。
 - 导入 PDF 时复制到论文库目录，同名自动加 ` (2)` 等后缀；`path` 指向副本，`sourcePath` 记录原文件用于去重；已在目录内的文件不重复复制。
 - `titleSource`（`file` | `metadata` | `user`）防止元数据回填覆盖用户重命名。
 - 发送数据到渲染进程前剥离 Vue 代理；需要跨进程的结构只保留普通对象、数组和原始值。

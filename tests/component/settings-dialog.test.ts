@@ -29,9 +29,10 @@ interface ProfileDraft {
 const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
 
 const makeSettings = (
-  settings: Omit<AppSettings, 'library' | 'keyStorage'>,
-  directory = DEFAULT_LIBRARY_DIRECTORY
-): AppSettings => ({ ...settings, library: { directory }, keyStorage: 'encrypted' })
+  settings: Omit<AppSettings, 'library' | 'keyStorage' | 'language'>,
+  directory = DEFAULT_LIBRARY_DIRECTORY,
+  language = 'zh'
+): AppSettings => ({ ...settings, language, library: { directory }, keyStorage: 'encrypted' })
 
 const BASE_SETTINGS = makeSettings({
   theme: 'light',
@@ -86,7 +87,7 @@ const openAiSection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
 }
 
 const openLibrarySection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
-  const button = findButton('论文库')
+  const button = findButton('存储')
   await button.trigger('click')
   return button
 }
@@ -122,6 +123,7 @@ describe('SettingsDialog', () => {
         : current.ai.profiles.map((profile) => ({ ...profile }))
       current = {
         theme: patch.theme ?? current.theme,
+        language: patch.language ?? current.language,
         ai: {
           profiles,
           activeId: patch.ai?.activeId ?? current.ai.activeId
@@ -142,10 +144,26 @@ describe('SettingsDialog', () => {
     await store.initialize()
   })
 
-  it('switches the theme from the appearance section', async () => {
+  it('opens on the basic section with appearance and language', async () => {
     const wrapper = await mountDialog()
 
-    await findButton('外观').trigger('click')
+    // 基础设置为默认分区，不再有独立的外观入口
+    expect(findButton('基础设置')).toBeDefined()
+    expect(() => findButton('外观')).toThrow()
+    // 论文库和存储合并为一个分区，侧栏名称保留「存储」
+    expect(findButton('存储')).toBeDefined()
+    expect(() => findButton('论文库')).toThrow()
+    expect(findButton('浅色')).toBeDefined()
+    expect(findButton('深色')).toBeDefined()
+    expect(findButton('中文')).toBeDefined()
+    expect(findButton('English')).toBeDefined()
+    expect(document.body.textContent).toContain('界面语言')
+    wrapper.unmount()
+  })
+
+  it('switches the theme from the basic section', async () => {
+    const wrapper = await mountDialog()
+
     await findButton('深色').trigger('click')
     await flushPromises()
 
@@ -157,12 +175,47 @@ describe('SettingsDialog', () => {
 
   it('offers only light and dark themes', async () => {
     const wrapper = await mountDialog()
-    await findButton('外观').trigger('click')
 
     expect(findButton('浅色')).toBeDefined()
     expect(findButton('深色')).toBeDefined()
     expect(() => findButton('跟随系统')).toThrow()
     expect(() => findButton('黑白')).toThrow()
+    wrapper.unmount()
+  })
+
+  it('switches the interface language and keeps the choice', async () => {
+    const wrapper = await mountDialog()
+
+    expect(document.documentElement.lang).toBe('zh')
+    expect(findButton('English').attributes('aria-pressed')).toBe('false')
+
+    await findButton('English').trigger('click')
+    await flushPromises()
+
+    expect(updateSettings).toHaveBeenCalledWith({ language: 'en' })
+    expect(useSettingsStore().language).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
+    expect(findButton('English').attributes('aria-pressed')).toBe('true')
+    // 整个设置界面切换为英文
+    expect(findButton('General')).toBeDefined()
+    expect(findButton('Storage')).toBeDefined()
+    expect(document.body.textContent).toContain('Choose the interface language')
+    expect(document.body.textContent).toContain('Settings')
+    wrapper.unmount()
+  })
+
+  it('falls back to Chinese when an unsupported language is restored', async () => {
+    installSettings(
+      makeSettings({ theme: 'light', ai: { profiles: [], activeId: '' } }, undefined, 'fr')
+    )
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = await mountDialog()
+
+    expect(useSettingsStore().language).toBe('zh')
+    expect(document.documentElement.lang).toBe('zh')
+    expect(findButton('中文').attributes('aria-pressed')).toBe('true')
     wrapper.unmount()
   })
 
@@ -398,8 +451,9 @@ describe('SettingsDialog', () => {
     wrapper.unmount()
   })
 
-  it('opens on the library section and shows the current directory', async () => {
+  it('shows the current directory in the library section', async () => {
     const wrapper = await mountDialog()
+    await openLibrarySection()
 
     expect(findInput('#library-directory').element.value).toBe(DEFAULT_LIBRARY_DIRECTORY)
     expect(document.body.textContent).toContain('新导入的 PDF 会复制到此目录')
@@ -468,7 +522,7 @@ describe('SettingsDialog', () => {
 
   it('clears Electron caches from the storage section', async () => {
     const wrapper = await mountDialog()
-    await findButton('存储').trigger('click')
+    await openLibrarySection()
 
     expect(document.body.textContent).toContain('Electron 缓存')
     await findButton('清理缓存').trigger('click')
@@ -482,7 +536,7 @@ describe('SettingsDialog', () => {
   it('reports a cache clearing failure', async () => {
     clearCache.mockRejectedValueOnce(new Error('缓存清理失败'))
     const wrapper = await mountDialog()
-    await findButton('存储').trigger('click')
+    await openLibrarySection()
 
     await findButton('清理缓存').trigger('click')
     await flushPromises()

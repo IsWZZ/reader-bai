@@ -28,8 +28,12 @@ const PROFILE_B: AiProfile = {
   model: 'model-b'
 }
 
-const makeSettings = (settings: Omit<AppSettings, 'library' | 'keyStorage'>): AppSettings => ({
+const makeSettings = (
+  settings: Omit<AppSettings, 'library' | 'keyStorage' | 'language'>,
+  language = 'zh'
+): AppSettings => ({
   ...settings,
+  language,
   library: { directory: '' },
   keyStorage: 'encrypted'
 })
@@ -123,6 +127,7 @@ describe('AssistantPanel', () => {
     updateSettings.mockImplementation(async (patch) => {
       current = {
         theme: patch.theme ?? current.theme,
+        language: patch.language ?? current.language,
         ai: {
           profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
           activeId: patch.ai?.activeId ?? current.ai.activeId

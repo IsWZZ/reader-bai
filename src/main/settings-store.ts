@@ -59,6 +59,7 @@ export const createSettingsStore = (
 
   const toPublic = (stored: StoredSettings): AppSettings => ({
     theme: stored.theme,
+    language: stored.language,
     ai: {
       activeId: stored.ai.activeId,
       // 渲染进程只需要知道是否已配置 Key，明文和密文都留在主进程

@@ -27,6 +27,7 @@ interface StoredAiProfile {
 
 interface StoredSettings {
   theme: string
+  language?: string
   ai: {
     profiles?: StoredAiProfile[]
     activeId?: string
@@ -61,7 +62,8 @@ test('applies the selected theme and restores it after relaunch', async () => {
   let reader = await launchReader(userDataDir)
   const dialog = await openSettings(reader.page)
 
-  await dialog.getByRole('button', { name: '外观' }).click()
+  // 基础设置是默认分区，外观和语言都在这里
+  await dialog.getByRole('button', { name: '基础设置' }).click()
   await dialog.getByRole('button', { name: '深色' }).click()
   await expect(reader.page.locator('html')).toHaveClass(/dark/)
   await expect
@@ -75,14 +77,40 @@ test('applies the selected theme and restores it after relaunch', async () => {
   await reader.app.close()
 })
 
+test('switches the interface language and restores it after relaunch', async () => {
+  let reader = await launchReader(userDataDir)
+  const dialog = await openSettings(reader.page)
+
+  await dialog.getByRole('button', { name: 'English' }).click()
+  await expect(reader.page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect
+    .poll(async () => (await readJsonFile<StoredSettings>(settingsFile()))?.language)
+    .toBe('en')
+
+  // 切换后整个设置界面立即使用英文
+  const englishDialog = reader.page.getByRole('dialog', { name: 'Settings' })
+  await expect(englishDialog.getByRole('button', { name: 'General' })).toBeVisible()
+  await expect(englishDialog.getByRole('button', { name: 'English' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+
+  await reader.app.close()
+
+  reader = await launchReader(userDataDir)
+  await expect(reader.page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect(reader.page.getByRole('button', { name: 'Settings' })).toBeVisible()
+  await reader.app.close()
+})
+
 test('copies imported PDFs into the configured library directory', async () => {
   const customDirectory = join(userDataDir, 'custom-papers')
   const pdfPath = join(userDataDir, 'sample.pdf')
   await writeSamplePdf(pdfPath)
 
   const reader = await launchReader(userDataDir)
-  // 设置默认打开论文库分区
   const dialog = await openSettings(reader.page)
+  await dialog.getByRole('button', { name: '存储' }).click()
 
   // 未配置时显示应用数据目录下的默认位置
   await expect(dialog.locator('#library-directory')).toHaveValue(

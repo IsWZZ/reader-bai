@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
 import type { AiChunk, ChatMessage } from '@renderer/types'
 import { runAgentLoop } from '@renderer/lib/agent-loop'
+import { t } from '@renderer/lib/i18n'
 import { useSettingsStore } from '@renderer/store/settings'
 
 const TRANSLATE_DEBOUNCE_MS = 250
@@ -24,8 +25,6 @@ export interface TranslationState {
   loading: boolean
   error: string
 }
-
-const CONFIG_HINT = '请先在设置 → AI 服务中配置 Base URL、API Key 和模型'
 
 const TRANSLATE_SYSTEM_PROMPT =
   '你是学术论文翻译助手。请把用户提供的文本翻译成简体中文，保留术语与公式，只输出译文，不要解释。'
@@ -99,12 +98,17 @@ export const useAssistantStore = defineStore('assistant', () => {
   const translate = async (source: string): Promise<void> => {
     const api = window.api
     if (!api) {
-      translation.value = { source, text: '', loading: false, error: '当前环境无法调用 AI 服务' }
+      translation.value = {
+        source,
+        text: '',
+        loading: false,
+        error: t('assistant.error.environment')
+      }
       return
     }
     const profile = settingsStore.activeAiProfile
     if (!profile || !isConfigured.value) {
-      translation.value = { source, text: '', loading: false, error: CONFIG_HINT }
+      translation.value = { source, text: '', loading: false, error: t('assistant.configHint') }
       return
     }
 
@@ -130,7 +134,7 @@ export const useAssistantStore = defineStore('assistant', () => {
       if (translateRequestId !== requestId) return
       if (translation.value) {
         translation.value.loading = false
-        translation.value.error = cleanError(error, '翻译失败，请稍后重试')
+        translation.value.error = cleanError(error, t('assistant.error.translate'))
       }
     } finally {
       if (translateRequestId === requestId) translateRequestId = null
@@ -157,7 +161,7 @@ export const useAssistantStore = defineStore('assistant', () => {
         source,
         text: '',
         loading: false,
-        error: `选中的文本过长（最多 ${MAX_SELECTION_CHARS} 字符）`
+        error: t('assistant.error.tooLong', { max: MAX_SELECTION_CHARS })
       }
       return
     }
@@ -199,12 +203,12 @@ export const useAssistantStore = defineStore('assistant', () => {
     chatError.value = ''
     const api = window.api
     if (!api) {
-      chatError.value = '当前环境无法调用 AI 服务'
+      chatError.value = t('assistant.error.environment')
       return
     }
     const profile = settingsStore.activeAiProfile
     if (!profile || !isConfigured.value) {
-      chatError.value = CONFIG_HINT
+      chatError.value = t('assistant.configHint')
       return
     }
 
@@ -267,9 +271,9 @@ export const useAssistantStore = defineStore('assistant', () => {
         executeTool: (name, toolInput) => api.executeTool(name, toolInput),
         onEvent: (event) => {
           if (event.type === 'tool-call') {
-            addToolNote(`调用工具：${event.name}`)
+            addToolNote(t('assistant.tool.call', { name: event.name }))
           } else if (event.type === 'tool-error') {
-            addToolNote(`工具 ${event.name} 失败：${event.error}`)
+            addToolNote(t('assistant.tool.error', { name: event.name, error: event.error }))
           }
         }
       })
@@ -283,7 +287,7 @@ export const useAssistantStore = defineStore('assistant', () => {
       if (!reply.content) {
         messages.value = messages.value.filter((item) => item.id !== reply.id)
       }
-      chatError.value = cleanError(error, 'AI 回复失败，请稍后重试')
+      chatError.value = cleanError(error, t('assistant.error.reply'))
     } finally {
       if (runId) {
         if (controller.signal.aborted) {
