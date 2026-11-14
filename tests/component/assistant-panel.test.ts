@@ -17,14 +17,14 @@ import type {
 const PROFILE_A: AiProfile = {
   id: 'a',
   baseUrl: 'https://api.example.com/v1',
-  apiKey: 'sk-a',
+  hasApiKey: true,
   model: 'gpt-test'
 }
 
 const PROFILE_B: AiProfile = {
   id: 'b',
   baseUrl: 'https://api2.example.com/v1',
-  apiKey: 'sk-b',
+  hasApiKey: true,
   model: 'model-b'
 }
 
@@ -170,7 +170,7 @@ describe('AssistantPanel', () => {
         ai: {
           profiles: [
             PROFILE_A,
-            { id: 'c', baseUrl: 'https://api3.example.com/v1', apiKey: 'sk-c', model: '' }
+            { id: 'c', baseUrl: 'https://api3.example.com/v1', hasApiKey: true, model: '' }
           ],
           activeId: 'a'
         }

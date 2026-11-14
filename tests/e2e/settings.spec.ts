@@ -156,7 +156,30 @@ test('saves AI settings, encrypting the API key when available', async () => {
   await dialog.getByRole('button', { name: '编辑' }).click()
   await expect(dialog.locator('#ai-base-url')).toHaveValue('https://api.example.com/v1')
   await expect(dialog.locator('#ai-model')).toHaveValue('deepseek-chat')
-  await expect(dialog.locator('#ai-api-key')).toHaveValue('sk-e2e-secret')
+  // Key 不回填到渲染进程，只能看到“已保存”的提示
+  await expect(dialog.locator('#ai-api-key')).toHaveValue('')
+  await expect(dialog.getByPlaceholder('留空表示保持现有 Key')).toBeVisible()
+
+  // 渲染进程侧的设置只暴露 hasApiKey，不含明文或密文
+  const publicProfile = await reader.page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        api: { getSettings: () => Promise<{ ai: { profiles: Record<string, unknown>[] } }> }
+      }
+    ).api
+    const settings = await api.getSettings()
+    return settings.ai.profiles[0]
+  })
+  expect(publicProfile).toMatchObject({ hasApiKey: true, model: 'deepseek-chat' })
+  expect(publicProfile).not.toHaveProperty('apiKey')
+  expect(publicProfile).not.toHaveProperty('apiKeyEncrypted')
+
+  // preload 只暴露 window.api，不再暴露 electronAPI
+  const bridge = await reader.page.evaluate(() => ({
+    hasElectron: 'electron' in globalThis,
+    apiType: typeof (globalThis as { api?: unknown }).api
+  }))
+  expect(bridge).toEqual({ hasElectron: false, apiType: 'object' })
   await reader.app.close()
 })
 
@@ -243,9 +266,33 @@ test('rewrites legacy AI settings into profiles when saved', async () => {
   expect(stored?.ai.profiles?.[0]).toMatchObject({
     id: 'default',
     baseUrl: 'https://legacy.example/v1',
+    apiKey: 'sk-legacy',
     model: 'legacy-model'
   })
   expect(stored?.ai.activeId).toBe('default')
+  await reader.app.close()
+})
+
+test('blocks in-app navigation, window.open and permission requests', async () => {
+  const reader = await launchReader(userDataDir)
+  const before = reader.page.url()
+
+  // 非 http(s) 的外链既不打开窗口，也不交给系统浏览器
+  const opened = await reader.page.evaluate(() => window.open('file:///etc/passwd'))
+  expect(opened).toBeNull()
+  expect(reader.page.url()).toBe(before)
+
+  // 主窗口导航被拒绝，应用不会被带到本地文件
+  await reader.page.evaluate(() => {
+    window.location.href = 'file:///etc/passwd'
+  })
+  await expect.poll(() => reader.page.url()).toBe(before)
+
+  const permission = await reader.page.evaluate(() =>
+    navigator.permissions.query({ name: 'geolocation' }).then((status) => status.state)
+  )
+  expect(permission).toBe('denied')
+
   await reader.app.close()
 })
 
@@ -258,7 +305,9 @@ test('rejects an invalid Base URL', async () => {
   await dialog.locator('#ai-base-url').fill('ftp://example.com')
   await dialog.getByRole('button', { name: '保存' }).click()
 
-  await expect(dialog.getByText('Base URL 需要是以 http:// 或 https:// 开头的地址')).toBeVisible()
+  await expect(
+    dialog.getByText('Base URL 需要是 HTTPS 地址；本机服务可使用 http://localhost')
+  ).toBeVisible()
   await expect.poll(async () => readJsonFile<StoredSettings>(settingsFile())).toBeNull()
   await reader.app.close()
 })

@@ -8,15 +8,22 @@ import type { AiProfile, AppSettings, SettingsPatch } from '@renderer/types'
 const PROFILE_A: AiProfile = {
   id: 'a',
   baseUrl: 'https://api.example.com/v1',
-  apiKey: 'sk-a',
+  hasApiKey: true,
   model: 'model-a'
 }
 
 const PROFILE_B: AiProfile = {
   id: 'b',
   baseUrl: 'https://api2.example.com/v1',
-  apiKey: 'sk-b',
+  hasApiKey: true,
   model: 'model-b'
+}
+
+/** 表单里填写的草稿：Key 是本次新输入的，不会来自已保存配置 */
+interface ProfileDraft {
+  baseUrl: string
+  model: string
+  apiKey: string
 }
 
 const DEFAULT_LIBRARY_DIRECTORY = '/tmp/reader-bai-papers'
@@ -83,7 +90,7 @@ const openLibrarySection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
   return button
 }
 
-const fillProfile = async (profile: AiProfile): Promise<void> => {
+const fillProfile = async (profile: ProfileDraft): Promise<void> => {
   await findInput('#ai-base-url').setValue(profile.baseUrl)
   await findInput('#ai-model').setValue(profile.model)
   await findInput('#ai-api-key').setValue(profile.apiKey)
@@ -98,10 +105,22 @@ describe('SettingsDialog', () => {
     chooseDirectory.mockResolvedValue(null)
     installSettings(BASE_SETTINGS)
     updateSettings.mockImplementation(async (patch) => {
+      // 模拟主进程：没带 apiKey 的配置保留已保存的 Key
+      const profiles: AiProfile[] = patch.ai?.profiles
+        ? patch.ai.profiles.map((profile) => {
+            const existing = current.ai.profiles.find((item) => item.id === profile.id)
+            return {
+              id: profile.id,
+              baseUrl: profile.baseUrl,
+              model: profile.model,
+              hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
+            }
+          })
+        : current.ai.profiles.map((profile) => ({ ...profile }))
       current = {
         theme: patch.theme ?? current.theme,
         ai: {
-          profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
+          profiles,
           activeId: patch.ai?.activeId ?? current.ai.activeId
         },
         library: {
@@ -164,7 +183,6 @@ describe('SettingsDialog', () => {
     await openAiSection()
     await findButton('新增模型').trigger('click')
     await fillProfile({
-      id: '',
       baseUrl: 'https://api.example.com/v1/',
       apiKey: '  sk-test  ',
       model: '  gpt-test  '
@@ -201,7 +219,7 @@ describe('SettingsDialog', () => {
     expect(document.body.textContent).toContain('使用中')
 
     await findButton('新增模型').trigger('click')
-    await fillProfile(PROFILE_B)
+    await fillProfile({ ...PROFILE_B, apiKey: 'sk-b' })
     await findButton('保存').trigger('click')
     await flushPromises()
 
@@ -231,6 +249,11 @@ describe('SettingsDialog', () => {
 
     expect(findInput('#ai-base-url').element.value).toBe('https://api.example.com/v1')
     expect(findInput('#ai-model').element.value).toBe('model-a')
+    // 已保存的 Key 不回填到渲染进程
+    expect(findInput('#ai-api-key').element.value).toBe('')
+    expect(findInput('#ai-api-key').element.getAttribute('placeholder')).toBe(
+      '留空表示保持现有 Key'
+    )
     expect(document.body.textContent).toContain('编辑模型')
     wrapper.unmount()
   })
@@ -249,10 +272,53 @@ describe('SettingsDialog', () => {
 
     expect(updateSettings).toHaveBeenCalledTimes(1)
     const patch = updateSettings.mock.calls[0][0]
-    expect(patch.ai?.profiles).toEqual([{ ...PROFILE_A, model: 'model-a2' }])
+    // 没重新填写 Key，补丁里不带 apiKey，主进程会保留原 Key
+    expect(patch.ai?.profiles).toEqual([
+      { id: 'a', baseUrl: 'https://api.example.com/v1', model: 'model-a2' }
+    ])
     expect(patch.ai?.activeId).toBe('a')
     expect(document.body.textContent).toContain('model-a2 · api.example.com')
     expect(hasInput('#ai-model')).toBe(false)
+    expect(useSettingsStore().aiProfiles[0]?.hasApiKey).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('sends a newly typed key when editing an existing profile', async () => {
+    installSettings(makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'a' } }))
+    setActivePinia(createPinia())
+    await useSettingsStore().initialize()
+
+    const wrapper = await mountDialog()
+    await openAiSection()
+    await findButton('编辑').trigger('click')
+    await findInput('#ai-api-key').setValue('  sk-rotated  ')
+    await findButton('保存').trigger('click')
+    await flushPromises()
+
+    const patch = updateSettings.mock.calls[0][0]
+    expect(patch.ai?.profiles).toEqual([
+      {
+        id: 'a',
+        baseUrl: 'https://api.example.com/v1',
+        model: 'model-a',
+        apiKey: 'sk-rotated'
+      }
+    ])
+    wrapper.unmount()
+  })
+
+  it('requires an API key when creating a new profile', async () => {
+    const wrapper = await mountDialog()
+    await openAiSection()
+    await findButton('新增模型').trigger('click')
+
+    await findInput('#ai-base-url').setValue('https://api.example.com/v1')
+    await findInput('#ai-model').setValue('gpt-test')
+    await findButton('保存').trigger('click')
+    await flushPromises()
+
+    expect(updateSettings).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('新增配置需要填写 API Key')
     wrapper.unmount()
   })
 
@@ -260,7 +326,7 @@ describe('SettingsDialog', () => {
     const wrapper = await mountDialog()
     await openAiSection()
     await findButton('新增模型').trigger('click')
-    await fillProfile(PROFILE_A)
+    await fillProfile({ ...PROFILE_A, apiKey: 'sk-a' })
     await findButton('取消').trigger('click')
     await flushPromises()
 
@@ -287,7 +353,9 @@ describe('SettingsDialog', () => {
 
     expect(updateSettings).toHaveBeenCalledTimes(1)
     const patch = updateSettings.mock.calls[0][0]
-    expect(patch.ai?.profiles).toEqual([PROFILE_A])
+    expect(patch.ai?.profiles).toEqual([
+      { id: 'a', baseUrl: 'https://api.example.com/v1', model: 'model-a' }
+    ])
     expect(patch.ai?.activeId).toBe('a')
     expect(document.body.textContent).not.toContain('model-b · api2.example.com')
     wrapper.unmount()
@@ -389,9 +457,35 @@ describe('SettingsDialog', () => {
     await flushPromises()
 
     expect(updateSettings).not.toHaveBeenCalled()
-    expect(document.body.textContent).toContain('Base URL 需要是以 http:// 或 https:// 开头的地址')
+    expect(document.body.textContent).toContain('Base URL 需要是 HTTPS 地址')
     // 表单保持展开，方便修改
     expect(hasInput('#ai-base-url')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('rejects plain HTTP for remote hosts but allows localhost', async () => {
+    const wrapper = await mountDialog()
+    await openAiSection()
+    await findButton('新增模型').trigger('click')
+    await fillProfile({
+      baseUrl: 'http://api.example.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-test'
+    })
+    await findButton('保存').trigger('click')
+    await flushPromises()
+
+    expect(updateSettings).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Base URL 需要是 HTTPS 地址')
+
+    await findInput('#ai-base-url').setValue('http://localhost:11434/v1')
+    await findButton('保存').trigger('click')
+    await flushPromises()
+
+    expect(updateSettings).toHaveBeenCalledTimes(1)
+    expect(updateSettings.mock.calls[0][0].ai?.profiles?.[0]?.baseUrl).toBe(
+      'http://localhost:11434/v1'
+    )
     wrapper.unmount()
   })
 

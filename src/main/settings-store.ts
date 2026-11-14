@@ -61,11 +61,12 @@ export const createSettingsStore = (
     theme: stored.theme,
     ai: {
       activeId: stored.ai.activeId,
+      // 渲染进程只需要知道是否已配置 Key，明文和密文都留在主进程
       profiles: stored.ai.profiles.map((profile) => ({
         id: profile.id,
         baseUrl: profile.baseUrl,
-        apiKey: decodeApiKey(profile),
-        model: profile.model
+        model: profile.model,
+        hasApiKey: profile.apiKey !== ''
       }))
     },
     library: { directory: resolveLibraryDirectory(stored) }

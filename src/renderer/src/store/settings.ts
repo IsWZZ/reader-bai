@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { AiProfile, AppSettings, AppTheme, SettingsPatch } from '@renderer/types'
+import type {
+  AiProfile,
+  AiProfilePatch,
+  AppSettings,
+  AppTheme,
+  SettingsPatch
+} from '@renderer/types'
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
@@ -30,7 +36,7 @@ export const useSettingsStore = defineStore('settings', () => {
   })
   const isAiConfigured = computed(() => {
     const profile = activeAiProfile.value
-    return Boolean(profile?.baseUrl.trim() && profile.apiKey.trim() && profile.model.trim())
+    return Boolean(profile?.baseUrl.trim() && profile.hasApiKey && profile.model.trim())
   })
   const theme = computed<AppTheme>(() => settings.value.theme)
 
@@ -65,11 +71,23 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const previous = settings.value
     const aiPatch = patch.ai
+    // 补丁里没有 apiKey 的配置沿用原来的 hasApiKey；填了新 Key 的视为已配置
+    const optimisticProfiles: AiProfile[] = aiPatch?.profiles
+      ? aiPatch.profiles.map((profile) => {
+          const existing = previous.ai.profiles.find((item) => item.id === profile.id)
+          return {
+            id: profile.id,
+            baseUrl: profile.baseUrl,
+            model: profile.model,
+            hasApiKey: Boolean(profile.apiKey?.trim()) || (existing?.hasApiKey ?? false)
+          }
+        })
+      : previous.ai.profiles.map((profile) => ({ ...profile }))
     const optimistic: AppSettings = {
       theme: patch.theme ?? previous.theme,
       ai: {
         // 只切换 activeId 时也要保留完整列表
-        profiles: (aiPatch?.profiles ?? previous.ai.profiles).map((profile) => ({ ...profile })),
+        profiles: optimisticProfiles,
         activeId: aiPatch?.activeId ?? previous.ai.activeId
       },
       library: {
@@ -105,13 +123,21 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const setTheme = (next: AppTheme): Promise<boolean> => persist({ theme: next })
 
-  const saveAiProfiles = (profiles: AiProfile[], activeId?: string): Promise<boolean> => {
-    const next = profiles.map(({ id, baseUrl, apiKey, model }) => ({
-      id,
-      baseUrl: baseUrl.trim(),
-      apiKey: apiKey.trim(),
-      model: model.trim()
-    }))
+  /**
+   * 保存整份配置列表。补丁未带 apiKey 的配置由主进程保留原有 Key，
+   * 因此编辑时不需要、也无法把已保存的 Key 回填到表单。
+   */
+  const saveAiProfiles = (profiles: AiProfilePatch[], activeId?: string): Promise<boolean> => {
+    const next = profiles.map(({ id, baseUrl, model, apiKey }) => {
+      const entry: AiProfilePatch = {
+        id,
+        baseUrl: baseUrl.trim(),
+        model: model.trim()
+      }
+      const trimmedKey = apiKey?.trim()
+      if (trimmedKey) entry.apiKey = trimmedKey
+      return entry
+    })
     return persist({
       ai: activeId === undefined ? { profiles: next } : { profiles: next, activeId }
     })

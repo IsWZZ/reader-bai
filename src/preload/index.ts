@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 
 interface PaperAnnotation {
   id: string
@@ -16,8 +15,16 @@ type AppTheme = 'light' | 'dark'
 interface AiProfile {
   id: string
   baseUrl: string
-  apiKey: string
   model: string
+  hasApiKey: boolean
+}
+
+interface AiProfilePatch {
+  id: string
+  baseUrl: string
+  model: string
+  /** 留空表示保留已保存的 Key */
+  apiKey?: string
 }
 
 interface AiSettings {
@@ -113,7 +120,7 @@ interface AgentRunInfo {
 interface SettingsPatch {
   theme?: AppTheme
   ai?: {
-    profiles?: AiProfile[]
+    profiles?: AiProfilePatch[]
     activeId?: string
   }
   library?: {
@@ -187,23 +194,5 @@ const api = {
   }
 }
 
-console.log('preload script running, contextIsolated:', process.contextIsolated)
-
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
-    console.log('api exposed via contextBridge')
-  } catch (error) {
-    console.error('contextBridge error:', error)
-  }
-} else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
-  console.log('api exposed via window assignment')
-}
+// 只暴露最小接口；不向渲染进程开放 Electron、Node 或文件系统能力
+contextBridge.exposeInMainWorld('api', api)

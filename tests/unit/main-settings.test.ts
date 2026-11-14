@@ -2,7 +2,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  AI_BASE_URL_ERROR,
   applySettingsPatch,
+  isAllowedAiBaseUrl,
   normalizeStoredSettings,
   type EncodeApiKey,
   type StoredSettings
@@ -296,5 +298,83 @@ describe('applySettingsPatch', () => {
     expect(() =>
       applySettingsPatch(base, { library: { directory: 'relative/papers' } }, plainEncode)
     ).toThrow('论文库存储位置需要是绝对路径')
+  })
+
+  it('keeps the stored key when a redacted profile is submitted without apiKey', () => {
+    const encode = vi.fn(encryptedEncode)
+    const base = withProfiles()
+
+    const next = applySettingsPatch(
+      base,
+      {
+        ai: {
+          profiles: [{ id: 'a', baseUrl: 'https://a.example/v2', model: 'model-a2' }]
+        }
+      },
+      encode
+    )
+
+    expect(encode).not.toHaveBeenCalled()
+    expect(next.ai.profiles[0]).toEqual({
+      id: 'a',
+      baseUrl: 'https://a.example/v2',
+      apiKey: 'sk-a',
+      apiKeyEncrypted: false,
+      model: 'model-a2'
+    })
+    // 未提交的配置被移除，其 Key 也不会带回来
+    expect(next.ai.profiles).toHaveLength(1)
+  })
+
+  it('leaves a new profile without apiKey empty', () => {
+    const encode = vi.fn(encryptedEncode)
+
+    const next = applySettingsPatch(
+      withProfiles(),
+      { ai: { profiles: [{ id: 'new', baseUrl: 'https://new.example/v1', model: 'm' }] } },
+      encode
+    )
+
+    expect(encode).not.toHaveBeenCalled()
+    expect(next.ai.profiles[0]).toEqual({
+      id: 'new',
+      baseUrl: 'https://new.example/v1',
+      apiKey: '',
+      apiKeyEncrypted: false,
+      model: 'm'
+    })
+  })
+
+  it('rejects AI base URLs that would send the key over plain HTTP', () => {
+    expect(isAllowedAiBaseUrl('https://api.example.com/v1')).toBe(true)
+    expect(isAllowedAiBaseUrl('http://localhost:11434/v1')).toBe(true)
+    expect(isAllowedAiBaseUrl('http://127.0.0.1:11434/v1')).toBe(true)
+    expect(isAllowedAiBaseUrl('http://[::1]:11434/v1')).toBe(true)
+    expect(isAllowedAiBaseUrl('http://api.example.com/v1')).toBe(false)
+    expect(isAllowedAiBaseUrl('file:///etc/passwd')).toBe(false)
+    expect(isAllowedAiBaseUrl('not a url')).toBe(false)
+    expect(isAllowedAiBaseUrl('')).toBe(false)
+  })
+
+  it('rejects saving a non-HTTPS base URL', () => {
+    expect(() =>
+      applySettingsPatch(
+        withProfiles(),
+        {
+          ai: {
+            profiles: [{ id: 'a', baseUrl: 'http://evil.example/v1', apiKey: 'sk', model: 'm' }]
+          }
+        },
+        plainEncode
+      )
+    ).toThrow(AI_BASE_URL_ERROR)
+
+    expect(() =>
+      applySettingsPatch(
+        withProfiles(),
+        { ai: { profiles: [{ id: 'a', baseUrl: 'file:///tmp/key', model: 'm' }] } },
+        plainEncode
+      )
+    ).toThrow(AI_BASE_URL_ERROR)
   })
 })

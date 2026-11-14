@@ -6,14 +6,14 @@ import type { AiProfile, AppSettings, SettingsPatch } from '@renderer/types'
 const PROFILE_A: AiProfile = {
   id: 'a',
   baseUrl: 'https://api.example.com/v1',
-  apiKey: 'sk-a',
+  hasApiKey: true,
   model: 'model-a'
 }
 
 const PROFILE_B: AiProfile = {
   id: 'b',
   baseUrl: 'https://api2.example.com/v1',
-  apiKey: 'sk-b',
+  hasApiKey: true,
   model: 'model-b'
 }
 
@@ -41,20 +41,33 @@ const installSettings = (settings: AppSettings): void => {
   getSettings.mockResolvedValue(clone(current))
 }
 
-// 模拟主进程：未提供的字段保持不变；空目录表示恢复默认
-const mergePatch = (patch: SettingsPatch): AppSettings => ({
-  theme: patch.theme ?? current.theme,
-  ai: {
-    profiles: (patch.ai?.profiles ?? current.ai.profiles).map((profile) => ({ ...profile })),
-    activeId: patch.ai?.activeId ?? current.ai.activeId
-  },
-  library: {
-    directory:
-      patch.library?.directory === undefined
-        ? current.library.directory
-        : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
+// 模拟主进程：未提供的字段保持不变；空目录表示恢复默认；没带 Key 的配置保留原 Key
+const mergePatch = (patch: SettingsPatch): AppSettings => {
+  const profiles: AiProfile[] = patch.ai?.profiles
+    ? patch.ai.profiles.map((profile) => {
+        const existing = current.ai.profiles.find((item) => item.id === profile.id)
+        return {
+          id: profile.id,
+          baseUrl: profile.baseUrl,
+          model: profile.model,
+          hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
+        }
+      })
+    : current.ai.profiles.map((profile) => ({ ...profile }))
+  return {
+    theme: patch.theme ?? current.theme,
+    ai: {
+      profiles,
+      activeId: patch.ai?.activeId ?? current.ai.activeId
+    },
+    library: {
+      directory:
+        patch.library?.directory === undefined
+          ? current.library.directory
+          : patch.library.directory || DEFAULT_LIBRARY_DIRECTORY
+    }
   }
-})
+}
 
 const installApi = (): void => {
   window.api = { getSettings, updateSettings } as unknown as Api
@@ -107,7 +120,7 @@ describe('settings store', () => {
     installSettings(
       makeSettings({
         theme: 'light',
-        ai: { profiles: [{ ...PROFILE_A, apiKey: '' }], activeId: 'a' }
+        ai: { profiles: [{ ...PROFILE_A, hasApiKey: false }], activeId: 'a' }
       })
     )
     const store = useSettingsStore()
@@ -161,17 +174,75 @@ describe('settings store', () => {
     expect(saved).toBe(true)
     expect(updateSettings).toHaveBeenCalledWith({
       ai: {
-        profiles: [{ id: 'a', baseUrl: 'https://api.example.com/v1/', apiKey: 'sk-a', model: 'm' }],
+        profiles: [{ id: 'a', baseUrl: 'https://api.example.com/v1/', model: 'm', apiKey: 'sk-a' }],
         activeId: 'a'
       }
     })
     expect(store.aiProfiles[0]).toEqual({
       id: 'a',
       baseUrl: 'https://api.example.com/v1/',
-      apiKey: 'sk-a',
+      hasApiKey: true,
       model: 'm'
     })
     expect(store.activeAiProfile?.id).toBe('a')
+  })
+
+  it('omits apiKey for unchanged profiles so the stored key is preserved', async () => {
+    installSettings(makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'a' } }))
+    const store = useSettingsStore()
+    await store.initialize()
+
+    const saved = await store.saveAiProfiles(
+      [{ id: 'a', baseUrl: 'https://api.example.com/v2', model: 'model-a2' }],
+      'a'
+    )
+
+    expect(saved).toBe(true)
+    expect(updateSettings).toHaveBeenCalledWith({
+      ai: {
+        profiles: [{ id: 'a', baseUrl: 'https://api.example.com/v2', model: 'model-a2' }],
+        activeId: 'a'
+      }
+    })
+    expect(store.aiProfiles[0]).toEqual({
+      id: 'a',
+      baseUrl: 'https://api.example.com/v2',
+      hasApiKey: true,
+      model: 'model-a2'
+    })
+  })
+
+  it('marks a profile as configured while its key is being saved', async () => {
+    installSettings(makeSettings({ theme: 'light', ai: { profiles: [PROFILE_A], activeId: 'a' } }))
+    let resolveUpdate: (value: AppSettings) => void = () => undefined
+    updateSettings.mockImplementation(
+      () =>
+        new Promise<AppSettings>((resolve) => {
+          resolveUpdate = resolve
+        })
+    )
+    const store = useSettingsStore()
+    await store.initialize()
+
+    const pending = store.saveAiProfiles(
+      [{ id: 'a', baseUrl: 'https://api.example.com/v2', model: 'm', apiKey: 'sk-new' }],
+      'a'
+    )
+
+    // 乐观更新期间立刻显示为已配置
+    expect(store.aiProfiles[0]?.hasApiKey).toBe(true)
+    expect(store.isAiConfigured).toBe(true)
+
+    resolveUpdate(
+      makeSettings({
+        theme: 'light',
+        ai: {
+          profiles: [{ ...PROFILE_A, baseUrl: 'https://api.example.com/v2', model: 'm' }],
+          activeId: 'a'
+        }
+      })
+    )
+    await expect(pending).resolves.toBe(true)
   })
 
   it('switches only activeId without dropping the profile list', async () => {

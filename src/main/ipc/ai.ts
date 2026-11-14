@@ -1,21 +1,13 @@
 import { ipcMain } from 'electron'
 import { normalizeChatMessages, streamChat, type ChatToolDefinition } from '../ai'
 import type { AgentRun, RunManager } from '../ai-run'
+import { AI_BASE_URL_ERROR, isAllowedAiBaseUrl } from '../settings'
 import type { SettingsStore } from '../settings-store'
 import { toChatToolDefinition, type ToolRegistry } from '../tool-registry'
 
 const MAX_TOOLS = 50
 const MAX_TOOL_NAME_LENGTH = 100
 const MAX_RUN_ID_LENGTH = 100
-
-const isHttpUrl = (value: string): boolean => {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
 
 /** 只接受平台注册表里的工具名，schema 由主进程决定，渲染进程不能伪造 */
 const resolveTools = (input: unknown, registry: ToolRegistry): ChatToolDefinition[] => {
@@ -79,8 +71,8 @@ export const registerAiIpc = (
         if (profile.apiKeyEncrypted) throw new Error('API Key 解密失败，请重新填写')
         throw new Error('请先补全所选 AI 服务的 Base URL、API Key 和模型')
       }
-      if (!isHttpUrl(profile.baseUrl)) {
-        throw new Error('Base URL 需要是以 http:// 或 https:// 开头的地址')
+      if (!isAllowedAiBaseUrl(profile.baseUrl)) {
+        throw new Error(AI_BASE_URL_ERROR)
       }
 
       // run 边界：每次模型调用计一步；超出预算或已被取消时不再发起请求

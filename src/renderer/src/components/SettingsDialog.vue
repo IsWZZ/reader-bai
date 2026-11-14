@@ -205,7 +205,7 @@
                     v-model="apiKey"
                     :type="showKey ? 'text' : 'password'"
                     class="pr-9"
-                    placeholder="sk-..."
+                    :placeholder="editingProfileHasKey ? '留空表示保持现有 Key' : 'sk-...'"
                     autocomplete="off"
                     spellcheck="false"
                   />
@@ -220,7 +220,12 @@
                   </button>
                 </div>
                 <p class="text-muted-foreground text-xs">
-                  API Key 保存在本机应用数据目录，系统支持时会加密存储。
+                  <template v-if="editingProfileHasKey">
+                    已保存 Key，渲染进程拿不到它；留空表示保持不变。
+                  </template>
+                  <template v-else>
+                    API Key 只在主进程中保存和使用，系统支持时会加密存储。
+                  </template>
                 </p>
               </div>
 
@@ -246,7 +251,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { AiProfile, AppTheme } from '@renderer/types'
+import type { AiProfile, AiProfilePatch, AppTheme } from '@renderer/types'
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
@@ -293,6 +298,11 @@ const status = ref<'idle' | 'saved'>('idle')
 const formError = ref('')
 
 const editing = computed(() => editingId.value !== null)
+const editingProfileHasKey = computed(() =>
+  editingId.value === null
+    ? false
+    : Boolean(profiles.value.find((profile) => profile.id === editingId.value)?.hasApiKey)
+)
 
 const createId = (): string =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -318,7 +328,8 @@ const startEdit = (profile: AiProfile): void => {
   editingId.value = profile.id
   editingIsNew.value = false
   baseUrl.value = profile.baseUrl
-  apiKey.value = profile.apiKey
+  // 渲染进程拿不到已保存的 Key，编辑时始终留空
+  apiKey.value = ''
   model.value = profile.model
 }
 
@@ -367,13 +378,20 @@ const chooseLibraryDirectory = async (): Promise<void> => {
 
 const resetLibraryDirectory = (): Promise<void> => saveLibraryDirectory('')
 
+const isLoopbackHost = (hostname: string): boolean =>
+  hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+
+// 与主进程策略保持一致：HTTPS，或指向本机服务的 http
 const normalizeBaseUrl = (value: string): string | null => {
   const trimmed = value.trim()
   if (!trimmed) return null
   try {
     const parsed = new URL(trimmed)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
-    return trimmed.replace(/\/+$/, '')
+    if (parsed.protocol === 'https:') return trimmed.replace(/\/+$/, '')
+    if (parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname)) {
+      return trimmed.replace(/\/+$/, '')
+    }
+    return null
   } catch {
     return null
   }
@@ -386,17 +404,33 @@ const saveProfile = async (): Promise<void> => {
 
   const normalized = normalizeBaseUrl(baseUrl.value)
   if (normalized === null) {
-    formError.value = 'Base URL 需要是以 http:// 或 https:// 开头的地址'
+    formError.value = 'Base URL 需要是 HTTPS 地址；本机服务可使用 http://localhost'
+    return
+  }
+  const trimmedModel = model.value.trim()
+  if (!trimmedModel) {
+    formError.value = '请填写模型名称'
     return
   }
 
-  const entry: AiProfile = {
+  const typedKey = apiKey.value.trim()
+  if (editingIsNew.value && !typedKey) {
+    formError.value = '新增配置需要填写 API Key'
+    return
+  }
+
+  // 未重新填写 Key 的配置不带 apiKey，主进程会保留原有 Key
+  const next: AiProfilePatch[] = profiles.value.map((profile) => ({
+    id: profile.id,
+    baseUrl: profile.baseUrl,
+    model: profile.model
+  }))
+  const entry: AiProfilePatch = {
     id,
     baseUrl: normalized,
-    apiKey: apiKey.value.trim(),
-    model: model.value.trim()
+    model: trimmedModel
   }
-  const next = profiles.value.map((profile) => ({ ...profile }))
+  if (typedKey) entry.apiKey = typedKey
   const index = next.findIndex((profile) => profile.id === id)
   if (index >= 0) {
     next[index] = entry
@@ -421,7 +455,9 @@ const saveProfile = async (): Promise<void> => {
 
 const removeProfile = async (profile: AiProfile): Promise<void> => {
   formError.value = ''
-  const next = profiles.value.filter((item) => item.id !== profile.id).map((item) => ({ ...item }))
+  const next: AiProfilePatch[] = profiles.value
+    .filter((item) => item.id !== profile.id)
+    .map((item) => ({ id: item.id, baseUrl: item.baseUrl, model: item.model }))
   const currentActiveId = settingsStore.activeAiProfile?.id
   const nextActiveId = next.some((item) => item.id === currentActiveId)
     ? currentActiveId

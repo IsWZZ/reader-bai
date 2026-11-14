@@ -19,14 +19,14 @@ import type {
 const PROFILE_A: AiProfile = {
   id: 'a',
   baseUrl: 'https://api.example.com/v1',
-  apiKey: 'sk-test',
+  hasApiKey: true,
   model: 'gpt-test'
 }
 
 const PROFILE_B: AiProfile = {
   id: 'b',
   baseUrl: 'https://api2.example.com/v1',
-  apiKey: 'sk-test-b',
+  hasApiKey: true,
   model: 'model-b'
 }
 
@@ -39,6 +39,20 @@ const CONFIGURED = makeSettings({
   theme: 'light',
   ai: { profiles: [PROFILE_A], activeId: 'a' }
 })
+
+/** 模拟主进程：补丁里没有 Key 的配置沿用原来的 hasApiKey */
+const toPublicProfiles = (patch: SettingsPatch | undefined, base: AiProfile[]): AiProfile[] => {
+  if (!patch?.ai?.profiles) return base.map((profile) => ({ ...profile }))
+  return patch.ai.profiles.map((profile) => {
+    const existing = base.find((item) => item.id === profile.id)
+    return {
+      id: profile.id,
+      baseUrl: profile.baseUrl,
+      model: profile.model,
+      hasApiKey: Boolean(profile.apiKey) || Boolean(existing?.hasApiKey)
+    }
+  })
+}
 
 const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
@@ -156,7 +170,7 @@ describe('assistant store', () => {
     updateSettings.mockImplementation(async (patch) => ({
       theme: patch.theme ?? CONFIGURED.theme,
       ai: {
-        profiles: patch.ai?.profiles ?? CONFIGURED.ai.profiles,
+        profiles: toPublicProfiles(patch, CONFIGURED.ai.profiles),
         activeId: patch.ai?.activeId ?? CONFIGURED.ai.activeId
       },
       library: { directory: '' }
@@ -293,7 +307,7 @@ describe('assistant store', () => {
     updateSettings.mockImplementation(async (patch) => ({
       theme: patch.theme ?? settings.theme,
       ai: {
-        profiles: patch.ai?.profiles ?? settings.ai.profiles,
+        profiles: toPublicProfiles(patch, settings.ai.profiles),
         activeId: patch.ai?.activeId ?? settings.ai.activeId
       },
       library: settings.library

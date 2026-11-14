@@ -33,9 +33,18 @@ export type AppTheme = 'light' | 'dark'
 export interface AiProfile {
   id: string
   baseUrl: string
-  apiKey: string
   /** 调用 OpenAI 兼容接口时使用的模型名 */
   model: string
+  /** 是否已在主进程保存 Key；渲染进程拿不到 Key 本身 */
+  hasApiKey: boolean
+}
+
+export interface AiProfilePatch {
+  id: string
+  baseUrl: string
+  model: string
+  /** 留空或省略时保留该 id 已保存的 Key；新增配置必须填写 */
+  apiKey?: string
 }
 
 export interface AiSettings {
@@ -174,8 +183,8 @@ export interface AppSettings {
 export interface SettingsPatch {
   theme?: AppTheme
   ai?: {
-    /** 传入时整体替换配置列表 */
-    profiles?: AiProfile[]
+    /** 传入时整体替换配置列表；未提供 apiKey 的配置保留原 Key */
+    profiles?: AiProfilePatch[]
     /** 只切换当前配置 */
     activeId?: string
   }

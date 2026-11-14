@@ -5,15 +5,24 @@ import { isAbsolute } from 'node:path'
 
 export type AppTheme = 'light' | 'dark'
 
-export interface AiProfile {
+/** 传给主进程的配置补丁；apiKey 为空表示保留该 id 已保存的 Key */
+export interface AiProfilePatch {
   id: string
   baseUrl: string
-  apiKey: string
   model: string
+  apiKey?: string
+}
+
+/** 回给渲染进程的配置：永不包含明文或密文 Key */
+export interface PublicAiProfile {
+  id: string
+  baseUrl: string
+  model: string
+  hasApiKey: boolean
 }
 
 export interface AiSettings {
-  profiles: AiProfile[]
+  profiles: PublicAiProfile[]
   activeId: string
 }
 
@@ -31,7 +40,7 @@ export interface AppSettings {
 export interface SettingsPatch {
   theme?: AppTheme
   ai?: {
-    profiles?: AiProfile[]
+    profiles?: AiProfilePatch[]
     activeId?: string
   }
   library?: {
@@ -75,6 +84,25 @@ const MAX_DIRECTORY = 2000
 // safeStorage 的密文是 base64，长度会明显超过明文
 const MAX_STORED_KEY = 4096
 const MAX_MODEL = 120
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/**
+ * AI 服务地址只允许 HTTPS；本机模型服务允许 HTTP。
+ * 这条规则同时用于保存和发起请求，避免把 Key 发到明文连接。
+ */
+export const isAllowedAiBaseUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'https:') return true
+    if (url.protocol !== 'http:') return false
+    return LOOPBACK_HOSTS.has(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+export const AI_BASE_URL_ERROR =
+  'Base URL 需要是 HTTPS 地址；本机服务可以使用 http://localhost 或 http://127.0.0.1'
 
 // 旧版本的 'system' 等已移除，读取时按浅色处理
 const normalizeTheme = (value: unknown): AppTheme =>
@@ -181,12 +209,25 @@ const encodeStoredProfile = (
   raw: Record<string, unknown>,
   index: number,
   used: Set<string>,
+  existing: Map<string, StoredAiProfile>,
   encodeKey: EncodeApiKey
 ): StoredAiProfile => {
-  const encoded = encodeKey(asString(raw.apiKey, MAX_API_KEY))
+  const id = normalizeId(raw.id, index, used)
+  const baseUrl = asString(raw.baseUrl, MAX_BASE_URL)
+  if (baseUrl && !isAllowedAiBaseUrl(baseUrl)) throw new Error(AI_BASE_URL_ERROR)
+
+  const plainKey = asString(raw.apiKey, MAX_API_KEY)
+  const previous = existing.get(id)
+  // 回传的配置不含 Key：留空表示沿用该 id 已保存的 Key
+  const encoded = plainKey
+    ? encodeKey(plainKey)
+    : previous
+      ? { apiKey: previous.apiKey, apiKeyEncrypted: previous.apiKeyEncrypted }
+      : { apiKey: '', apiKeyEncrypted: false }
+
   return {
-    id: normalizeId(raw.id, index, used),
-    baseUrl: asString(raw.baseUrl, MAX_BASE_URL),
+    id,
+    baseUrl,
     apiKey: encoded.apiKey,
     apiKeyEncrypted: encoded.apiKeyEncrypted && encoded.apiKey !== '',
     model: asString(raw.model, MAX_MODEL)
@@ -231,11 +272,12 @@ export const applySettingsPatch = (
   if (aiPatch) {
     if (Array.isArray(aiPatch.profiles)) {
       const used = new Set<string>()
+      const existing = new Map(stored.ai.profiles.map((profile) => [profile.id, profile]))
       next.ai.profiles = aiPatch.profiles
         .slice(0, MAX_PROFILES)
         .map(objectOf)
         .filter((item): item is Record<string, unknown> => item !== null)
-        .map((item, index) => encodeStoredProfile(item, index, used, encodeKey))
+        .map((item, index) => encodeStoredProfile(item, index, used, existing, encodeKey))
     }
     if (typeof aiPatch.activeId === 'string') {
       next.ai.activeId = aiPatch.activeId.trim().slice(0, MAX_ID)
