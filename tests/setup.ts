@@ -38,7 +38,8 @@ if (!('IntersectionObserver' in globalThis)) {
     IntersectionObserverMock as unknown as typeof IntersectionObserver
 }
 
-if (!window.matchMedia) {
+// node 环境的测试（如主进程模块）没有 window/document，只补浏览器环境需要的 polyfill
+if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = vi.fn().mockImplementation(
     (query: string): MediaQueryList =>
       ({
@@ -54,12 +55,14 @@ if (!window.matchMedia) {
   )
 }
 
-if (!HTMLElement.prototype.scrollIntoView) {
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView = vi.fn()
 }
 
-afterEach(() => {
-  document.body.innerHTML = ''
-  document.documentElement.classList.remove('dark')
-  document.documentElement.style.colorScheme = ''
-})
+if (typeof document !== 'undefined') {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    document.documentElement.classList.remove('dark')
+    document.documentElement.style.colorScheme = ''
+  })
+}

@@ -6,7 +6,8 @@ import {
   readJsonFile,
   removeUserDataDir,
   seedLibrary,
-  stubMessageBox
+  stubMessageBox,
+  writeSamplePdf
 } from './helpers'
 
 interface ToolInfo {
@@ -75,6 +76,7 @@ test('lists platform tools and executes a read-only tool', async () => {
   expect(tools.map((tool) => tool.name)).toEqual([
     'library.list',
     'paper.get',
+    'paper.readPage',
     'annotations.list',
     'annotations.add',
     'annotations.remove'
@@ -86,6 +88,27 @@ test('lists platform tools and executes a read-only tool', async () => {
     total: 1,
     papers: [{ id: 'paper-1', title: 'Attention Is All You Need' }]
   })
+
+  await app.close()
+})
+
+test('reads a page from a registered PDF', async () => {
+  const pdfPath = paperPath(userDataDir)
+  await writeSamplePdf(pdfPath)
+  await seedLibrary(userDataDir, {
+    papers: [{ id: 'paper-1', title: 'Attention Is All You Need', path: pdfPath }]
+  })
+  const { app, page } = await launchReader(userDataDir)
+
+  const result = JSON.parse(
+    (await executeTool(page, 'paper.readPage', { paperId: 'paper-1', page: 1 })).content
+  ) as { page: number; pageCount: number; text: string; truncated: boolean }
+  expect(result).toMatchObject({ page: 1, pageCount: 1, truncated: false })
+  expect(result.text).toContain('Hello reader-bai')
+
+  expect(await executeToolError(page, 'paper.readPage', { paperId: 'paper-1', page: 2 })).toContain(
+    '页码超出范围'
+  )
 
   await app.close()
 })

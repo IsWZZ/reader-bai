@@ -203,7 +203,8 @@ for (let step = 0; step < 12 && !run.signal.aborted; step++) {
 - `src/main/ai.ts`：把流式文本和 `tool_calls` 归一化为 `StreamChatResult`；工具参数分片会拼装完整后再返回；旧的 `streamChatCompletion` 保留为只取文本的兼容包装。
 - `src/main/ai-run.ts`：`runId`、取消、步数/token 预算和超时；agent loop 仍由插件实现。
 - `src/main/tool-registry.ts`：工具注册、JSON Schema、风险等级、AI 暴露白名单、`authorize`/`onInvoke` 钩子。
-- `src/main/platform-tools.ts`：第一批平台工具 `library.list`、`paper.get`、`annotations.list/add/remove`；只读工具直接执行，写入和删除默认拒绝，必须经过确认钩子。
+- `src/main/platform-tools.ts`：第一批平台工具 `library.list`、`paper.get`、`paper.readPage`、`annotations.list/add/remove`；只读工具直接执行，写入和删除默认拒绝，必须经过确认钩子。
+- `src/main/pdf-text.ts`：主进程侧的 PDF 单页文本提取，pdfjs 按需动态加载，限制文件大小和解析超时；渲染进程和插件都不需要直接读文件。
 - `src/main/ipc/tools.ts`：`tools:list` / `tools:execute` 执行边界；渲染进程只能按名字调用已注册工具，写操作由主进程弹出确认弹窗，插件无法跳过。
 - `src/main/ipc/ai.ts`：`ai:chat` 接受工具名列表，由主进程注册表解析成工具定义后再发给模型，返回归一化的文本、`toolCalls` 和结束原因；工具 schema 不能由渲染进程伪造。
 - `src/renderer/src/lib/agent-loop.ts`：第一方 agent loop（模型 → 工具 → 模型），通过注入的模型请求和工具执行接口工作；平台只提供能力，循环属于模块。

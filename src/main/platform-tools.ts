@@ -18,6 +18,7 @@ const MAX_QUERY_LENGTH = 200
 const MAX_RESULTS = 50
 const DEFAULT_RESULTS = 20
 const MAX_ANNOTATION_TEXT = 2000
+const MAX_PAGE_TEXT_CHARS = 12_000
 const MAX_RECTS = 50
 const MAX_REMOVE_IDS = 100
 const MAX_ID_LENGTH = 100
@@ -33,6 +34,10 @@ interface LibraryListInput {
 
 interface PaperRefInput {
   paperId: string
+}
+
+interface ReadPageInput extends PaperRefInput {
+  page: number
 }
 
 interface AnnotationsListInput extends PaperRefInput {
@@ -234,6 +239,47 @@ const paperGetTool = (
   }
 })
 
+const paperReadPageTool = (
+  library: LibraryStore,
+  readPageText: (paper: PaperInfo, page: number) => Promise<PageTextResult>
+): ToolDefinition<ReadPageInput> => ({
+  name: 'paper.readPage',
+  title: '读取论文页面',
+  description:
+    '按论文 id 和页码读取该页正文文本，用于回答论文内容相关问题。只读；扫描版 PDF 可能没有文本层。',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      paperId: { type: 'string', description: 'library.list 返回的论文 id' },
+      page: { type: 'integer', minimum: 1, description: '页码，从 1 开始' }
+    },
+    required: ['paperId', 'page'],
+    additionalProperties: false
+  },
+  risk: 'read',
+  exposeToAi: true,
+  validate: (input) => {
+    const record = asRecord(input)
+    const page = readInteger(record, 'page', 1, Number.MAX_SAFE_INTEGER)
+    if (page === undefined) throw new Error('缺少参数 page')
+    return {
+      paperId: readRequiredString(record, 'paperId', MAX_ID_LENGTH),
+      page
+    }
+  },
+  execute: async (input, context) => {
+    assertActive(context)
+    const paper = await findPaper(library, input.paperId)
+    const result = await readPageText(paper, input.page)
+    return jsonResult({
+      page: input.page,
+      pageCount: result.pageCount,
+      text: result.text.slice(0, MAX_PAGE_TEXT_CHARS),
+      truncated: result.text.length > MAX_PAGE_TEXT_CHARS
+    })
+  }
+})
+
 const annotationsListTool = (
   library: LibraryStore,
   annotations: AnnotationStore
@@ -410,9 +456,16 @@ const annotationsRemoveTool = (
   }
 })
 
+export interface PageTextResult {
+  text: string
+  pageCount: number
+}
+
 export interface PlatformToolsOptions {
   library: LibraryStore
   annotations: AnnotationStore
+  /** 读取论文某页文本；未提供时不注册 paper.readPage */
+  readPageText?: (paper: PaperInfo, page: number) => Promise<PageTextResult>
   /**
    * 非只读工具的确认钩子。未提供时直接拒绝，
    * 避免插件或渲染进程在没有用户确认的情况下写入标注。
@@ -432,6 +485,9 @@ export const createPlatformToolRegistry = (options: PlatformToolsOptions): ToolR
 
   registry.register(libraryListTool(library))
   registry.register(paperGetTool(library, annotations))
+  if (options.readPageText) {
+    registry.register(paperReadPageTool(library, options.readPageText))
+  }
   registry.register(annotationsListTool(library, annotations))
   registry.register(annotationsAddTool(library, annotations))
   registry.register(annotationsRemoveTool(library, annotations))

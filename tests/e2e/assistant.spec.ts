@@ -430,6 +430,7 @@ test('uses read-only platform tools through the agent loop', async () => {
   expect(requests[0].body.tools?.map((tool) => tool.function.name)).toEqual([
     'library.list',
     'paper.get',
+    'paper.readPage',
     'annotations.list'
   ])
   const toolMessage = requests[1].body.messages.find((message) => message.role === 'tool')

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, type Mock } from 'vitest'
 import type { AnnotationMap, AnnotationStore, PaperAnnotation } from '../../src/main/annotations'
 import type { LibraryStore, PaperInfo } from '../../src/main/library'
-import { createPlatformToolRegistry } from '../../src/main/platform-tools'
+import { createPlatformToolRegistry, type PageTextResult } from '../../src/main/platform-tools'
 import type { ToolContext, ToolInvocation, ToolRegistry } from '../../src/main/tool-registry'
 
 const PAPERS: PaperInfo[] = [
@@ -85,18 +85,25 @@ interface SetupResult {
   library: LibraryStore
   annotations: FakeAnnotations
   confirm: Mock
+  readPageText: Mock<(paper: PaperInfo, page: number) => Promise<PageTextResult>>
 }
 
-const setup = (
-  options: { confirm?: (invocation: ToolInvocation) => boolean | Promise<boolean> } = {}
-): SetupResult => {
+interface SetupOptions {
+  confirm?: (invocation: ToolInvocation) => boolean | Promise<boolean>
+  readPageText?: (paper: PaperInfo, page: number) => Promise<PageTextResult>
+}
+
+const setup = (options: SetupOptions = {}): SetupResult => {
   const library = createLibrary()
   const annotations = createAnnotations({ '/papers/attention.pdf': [EXISTING, SECOND] })
   const confirm = vi.fn(
     options.confirm ?? ((async () => true) as (invocation: ToolInvocation) => Promise<boolean>)
   )
-  const registry = createPlatformToolRegistry({ library, annotations, confirm })
-  return { registry, library, annotations, confirm }
+  const readPageText = vi.fn(
+    options.readPageText ?? (async () => ({ text: 'attention is all you need', pageCount: 5 }))
+  )
+  const registry = createPlatformToolRegistry({ library, annotations, readPageText, confirm })
+  return { registry, library, annotations, confirm, readPageText }
 }
 
 const parse = (content: string): Record<string, unknown> =>
@@ -109,6 +116,7 @@ describe('platform tools', () => {
     expect(registry.list({ forAi: true }).map((tool) => [tool.name, tool.risk])).toEqual([
       ['library.list', 'read'],
       ['paper.get', 'read'],
+      ['paper.readPage', 'read'],
       ['annotations.list', 'read'],
       ['annotations.add', 'write'],
       ['annotations.remove', 'destructive']
@@ -181,6 +189,63 @@ describe('platform tools', () => {
     await expect(registry.execute('paper.get', { paperId: 'missing' }, context())).rejects.toThrow(
       '论文不存在'
     )
+  })
+
+  it('reads a page through the injected extractor', async () => {
+    const { registry, readPageText, confirm } = setup()
+
+    const page = parse(
+      (await registry.execute('paper.readPage', { paperId: 'paper-1', page: 2 }, context())).content
+    )
+
+    expect(readPageText).toHaveBeenCalledWith(expect.objectContaining({ id: 'paper-1' }), 2)
+    expect(page).toEqual({
+      page: 2,
+      pageCount: 5,
+      text: 'attention is all you need',
+      truncated: false
+    })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('truncates long page text and reports it', async () => {
+    const { registry } = setup({
+      readPageText: async () => ({ text: 'x'.repeat(12_001), pageCount: 1 })
+    })
+
+    const page = parse(
+      (await registry.execute('paper.readPage', { paperId: 'paper-1', page: 1 }, context())).content
+    )
+
+    expect((page.text as string).length).toBe(12_000)
+    expect(page.truncated).toBe(true)
+  })
+
+  it('rejects malformed page reads', async () => {
+    const { registry, readPageText } = setup()
+
+    await expect(
+      registry.execute('paper.readPage', { paperId: 'paper-1', page: 0 }, context())
+    ).rejects.toThrow('参数 page 必须是')
+    await expect(
+      registry.execute('paper.readPage', { paperId: 'paper-1', page: 1.5 }, context())
+    ).rejects.toThrow('参数 page 必须是')
+    await expect(
+      registry.execute('paper.readPage', { paperId: 'paper-1' }, context())
+    ).rejects.toThrow('缺少参数 page')
+    await expect(
+      registry.execute('paper.readPage', { paperId: 'missing', page: 1 }, context())
+    ).rejects.toThrow('论文不存在')
+    expect(readPageText).not.toHaveBeenCalled()
+  })
+
+  it('does not register paper.readPage without an extractor', () => {
+    const registry = createPlatformToolRegistry({
+      library: createLibrary(),
+      annotations: createAnnotations()
+    })
+
+    expect(registry.list({ forAi: true }).map((tool) => tool.name)).not.toContain('paper.readPage')
   })
 
   it('lists annotations and filters by page', async () => {

@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
+import { readPdfPageText } from './pdf-text'
 import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
 import { createWindow } from './window'
@@ -33,6 +34,7 @@ app.whenReady().then(() => {
   const tools = createPlatformToolRegistry({
     library,
     annotations,
+    readPageText: (paper, page) => readPdfPageText(paper.path, page),
     confirm: confirmToolInvocation
   })
 
