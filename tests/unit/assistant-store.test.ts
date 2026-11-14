@@ -178,6 +178,7 @@ describe('assistant store', () => {
     pendingChat()
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('Hello world')
     expect(chat).not.toHaveBeenCalled()
@@ -209,6 +210,7 @@ describe('assistant store', () => {
     pendingChat()
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('first')
     await vi.advanceTimersByTimeAsync(250)
@@ -235,6 +237,7 @@ describe('assistant store', () => {
     pendingChat()
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('   ')
     await vi.advanceTimersByTimeAsync(250)
@@ -262,6 +265,7 @@ describe('assistant store', () => {
 
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
     store.handleSelection('hello')
     await vi.advanceTimersByTimeAsync(250)
 
@@ -312,6 +316,7 @@ describe('assistant store', () => {
     pendingChat()
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     await useSettingsStore().setActiveAiProfile('b')
     store.handleSelection('hello')
@@ -327,6 +332,7 @@ describe('assistant store', () => {
     )
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('hello')
     await vi.advanceTimersByTimeAsync(250)
@@ -352,6 +358,7 @@ describe('assistant store', () => {
     chat.mockRejectedValueOnce('offline')
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('hello')
     await vi.advanceTimersByTimeAsync(250)
@@ -363,6 +370,7 @@ describe('assistant store', () => {
     window.api = undefined
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('hello')
     await vi.advanceTimersByTimeAsync(250)
@@ -377,12 +385,72 @@ describe('assistant store', () => {
   it('rejects an oversized selection without calling the API', async () => {
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('x'.repeat(4001))
     await vi.advanceTimersByTimeAsync(250)
 
     expect(chat).not.toHaveBeenCalled()
     expect(store.translation?.error).toContain('选中的文本过长')
+  })
+
+  it('does not translate a selection while the panel is closed', async () => {
+    const store = useAssistantStore()
+    store.initialize()
+
+    store.handleSelection('Hello world')
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).not.toHaveBeenCalled()
+    expect(store.translation).toBeNull()
+  })
+
+  it('translates only the latest selection when the panel opens', async () => {
+    pendingChat()
+    const store = useAssistantStore()
+    store.initialize()
+
+    store.handleSelection('first')
+    store.handleSelection('Hello world')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(chat).not.toHaveBeenCalled()
+
+    store.setAutoTranslate(true)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect(chat.mock.calls[0][1][1]).toEqual({ role: 'user', content: 'Hello world' })
+  })
+
+  it('does not repeat the remembered selection when the panel reopens', async () => {
+    pendingChat()
+    const store = useAssistantStore()
+    store.initialize()
+    store.setAutoTranslate(true)
+
+    store.handleSelection('hello')
+    await vi.advanceTimersByTimeAsync(250)
+    resolveChat('你好')
+    await flush()
+
+    store.setAutoTranslate(false)
+    store.setAutoTranslate(true)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the remembered selection when the paper changes', async () => {
+    const store = useAssistantStore()
+    store.initialize()
+
+    store.handleSelection('hello')
+    store.resetTranslation()
+    store.setAutoTranslate(true)
+    await vi.advanceTimersByTimeAsync(250)
+
+    expect(chat).not.toHaveBeenCalled()
+    expect(store.translation).toBeNull()
   })
 
   it('starts an agent session with recent history and streams its events', async () => {
@@ -602,6 +670,7 @@ describe('assistant store', () => {
     pendingChat()
     const store = useAssistantStore()
     store.initialize()
+    store.setAutoTranslate(true)
 
     store.handleSelection('hello')
     await vi.advanceTimersByTimeAsync(250)

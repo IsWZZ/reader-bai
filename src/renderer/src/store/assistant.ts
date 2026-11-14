@@ -61,6 +61,9 @@ export const useAssistantStore = defineStore('assistant', () => {
   let unsubscribeAgent: (() => void) | null = null
   let translateTimer: ReturnType<typeof setTimeout> | undefined
   let translateRequestId: string | null = null
+  /** 面板可见时才自动翻译；关闭时只记录最近一次选区 */
+  let autoTranslate = false
+  let pendingSource: string | null = null
 
   let chatStatus: ChatStatus = 'idle'
   let currentSessionId: string | null = null
@@ -191,11 +194,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
   }
 
-  /** PdfViewer 每次选中文本时调用：防抖后自动翻译 */
-  const handleSelection = (text: string): void => {
-    const source = text.trim()
-    if (!source) return
-
+  const scheduleTranslation = (source: string): void => {
     const current = translation.value
     // 同一段文本不重复翻译；上次失败时允许重新选中重试
     if (current && current.source === source && !current.error) return
@@ -222,7 +221,27 @@ export const useAssistantStore = defineStore('assistant', () => {
     }, TRANSLATE_DEBOUNCE_MS)
   }
 
-  /** 切换论文时清空译文，聊天记录保留 */
+  /**
+   * PdfViewer 每次选中文本时调用。
+   * 面板关闭时只记住最新选区，避免在用户看不到结果时发起请求；
+   * 打开面板时由 setAutoTranslate 触发这段选区的翻译。
+   */
+  const handleSelection = (text: string): void => {
+    const source = text.trim()
+    if (!source) return
+
+    pendingSource = source
+    if (autoTranslate) scheduleTranslation(source)
+  }
+
+  /** 由外壳在面板显示/隐藏时调用 */
+  const setAutoTranslate = (enabled: boolean): void => {
+    if (autoTranslate === enabled) return
+    autoTranslate = enabled
+    if (enabled && pendingSource) scheduleTranslation(pendingSource)
+  }
+
+  /** 切换论文时清空译文和待翻译选区，聊天记录保留 */
   const resetTranslation = (): void => {
     if (translateTimer) {
       clearTimeout(translateTimer)
@@ -230,6 +249,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     }
     abortTranslation()
     translation.value = null
+    pendingSource = null
   }
 
   const sendChat = async (input: string): Promise<void> => {
@@ -344,6 +364,7 @@ export const useAssistantStore = defineStore('assistant', () => {
     isConfigured,
     initialize,
     handleSelection,
+    setAutoTranslate,
     resetTranslation,
     sendChat,
     stopChat

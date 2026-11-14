@@ -73,6 +73,9 @@ onMounted(() => {
   assistantStore.initialize()
 })
 
+// 面板关闭时只记录选区；打开后再翻译最近一次选区
+watch(isAssistantOpen, (open) => assistantStore.setAutoTranslate(open), { immediate: true })
+
 // 切换论文时清空译文，聊天记录保留
 watch(
   () => currentPaper.value?.id,

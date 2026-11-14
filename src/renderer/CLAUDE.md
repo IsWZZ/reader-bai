@@ -44,6 +44,7 @@ src/renderer/src/
 ## AI 面板与 agent loop
 
 - `AssistantPanel.vue` + [store/assistant.ts](src/store/assistant.ts) 负责翻译和对话；翻译和对话是两条独立请求，不要混用状态。
+- 选词翻译只在面板打开时发起：`Home.vue` 用 `setAutoTranslate` 同步面板状态，关闭时 `handleSelection` 只记住最新选区，打开后再翻译；切换论文要清空待翻译选区。
 - 第一方 agent loop 在独立的 `agent-host` utilityProcess（[src/main/agent/](../../src/main/agent/)），渲染进程只发会话事件：
   - 只传消息、`profileId` 和 `mode`；步数、超时、工具白名单和 Key 都由主进程决定。
   - `chat` 模式只有 1 步，`agent` 模式最多 6 步，且只开放 `risk === 'read'` 且 `exposeToAi` 的工具。
