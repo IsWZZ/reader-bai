@@ -67,6 +67,29 @@ describe('createAnnotationStore', () => {
 
     await expect(store.read()).resolves.toEqual({ '/papers/attention.pdf': [highlight] })
   })
+
+  it('removes every annotation of one paper without touching other papers', async () => {
+    const store = createAnnotationStore(annotationsFile)
+    await store.write({
+      '/papers/attention.pdf': [highlight],
+      '/papers/bert.pdf': [{ ...highlight, id: 'b1' }]
+    })
+
+    await store.removePaper('/papers/attention.pdf')
+
+    await expect(store.read()).resolves.toEqual({
+      '/papers/bert.pdf': [{ ...highlight, id: 'b1' }]
+    })
+  })
+
+  it('leaves the store unchanged when the paper has no annotations', async () => {
+    const store = createAnnotationStore(annotationsFile)
+    await store.write({ '/papers/bert.pdf': [highlight] })
+
+    await store.removePaper('/papers/attention.pdf')
+
+    await expect(store.read()).resolves.toEqual({ '/papers/bert.pdf': [highlight] })
+  })
 })
 
 describe('parsePaperAnnotation', () => {

@@ -9,10 +9,15 @@ import {
   type PaperInfo,
   type PaperTitleSource
 } from '../library'
+import type { AnnotationStore } from '../annotations'
 import type { SettingsStore } from '../settings-store'
 
 /** 论文库与 PDF 文件相关的 IPC */
-export const registerLibraryIpc = (library: LibraryStore, settings: SettingsStore): void => {
+export const registerLibraryIpc = (
+  library: LibraryStore,
+  annotations: AnnotationStore,
+  settings: SettingsStore
+): void => {
   ipcMain.handle('library:list', () => library.read())
 
   ipcMain.handle('library:createSpace', async (_event, name: unknown) => {
@@ -83,13 +88,20 @@ export const registerLibraryIpc = (library: LibraryStore, settings: SettingsStor
     return state
   })
 
-  // 从论文库移除（不删除磁盘上的文件）
+  // 从论文库移除（不删除磁盘上的文件），并清空该论文的标注
   ipcMain.handle('library:removePaper', async (_event, id: string) => {
     const state = await library.read()
     const index = state.papers.findIndex((item) => item.id === id)
     if (index !== -1) {
-      state.papers.splice(index, 1)
+      const [paper] = state.papers.splice(index, 1)
       await library.write(state)
+      // 标注以论文路径为键；书库记录删除后 hasPaperPath 不再放行，不清理就永远访问不到
+      try {
+        await annotations.removePaper(paper.path)
+      } catch (error) {
+        // 书库记录已经删除，不因标注清理失败让界面停在旧状态
+        console.error('清理论文标注失败', error)
+      }
     }
     return state
   })

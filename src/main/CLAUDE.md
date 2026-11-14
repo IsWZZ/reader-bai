@@ -30,7 +30,7 @@
 - 应用数据统一放在 `userData/Userdata`，与 Electron/Chromium 在 `userData` 根目录生成的缓存和配置分开；路径由 [user-data.ts](user-data.ts) 统一生成，启动时只负责创建目录。
 - `app:uninstall` 的清理逻辑在 [app-data.ts](app-data.ts)：只删除当前论文库目录内已登记的普通论文文件，再递归删除 `userData/Userdata`；自定义论文库目录本身、目录里的其他文件和符号链接都不动。确认框默认「取消」，文案必须明确提示本地论文会被删除。
 - 数据文件（`userData/Userdata` 下）：
-  - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；移除论文/空间不删除 PDF。
+  - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；移除论文/空间不删除 PDF，但移除论文时要同步清空该论文在 `annotations.json` 中的标注。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。
   - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory } }`；只接受 `ai.profiles` 数组格式。
 - `language` 使用 BCP 47 风格标签（`zh`、`en`、`zh-Hans`、`pt-BR`），主进程只校验格式、默认回退 `zh`，不维护语言白名单；实际支持哪些语言由渲染进程的 locale 注册表决定。

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { access } from 'node:fs/promises'
+import { access, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
@@ -192,11 +192,29 @@ test('deleting a space moves its papers to uncategorized without deleting files'
   await reader.app.close()
 })
 
-test('removing a paper only removes the library entry', async () => {
+test('removing a paper clears its annotations and keeps the PDF', async () => {
   const pdfPath = await createPaperPdf()
+  const annotationsFile = join(userDataDir, 'Userdata', 'annotations.json')
   await seedLibrary(userDataDir, {
     papers: [{ id: 'paper-1', title: 'Paper A', path: pdfPath, titleSource: 'user' }]
   })
+  await writeFile(
+    annotationsFile,
+    JSON.stringify({
+      [pdfPath]: [
+        {
+          id: 'a-1',
+          type: 'highlight',
+          color: '#facc15',
+          page: 1,
+          rects: [{ x: 0.1, y: 0.2, width: 0.3, height: 0.02 }],
+          text: 'highlighted text',
+          createdAt: 1
+        }
+      ]
+    }),
+    'utf8'
+  )
 
   const reader = await launchReader(userDataDir)
   await reader.page.getByRole('button', { name: 'Paper A', exact: true }).hover()
@@ -205,6 +223,12 @@ test('removing a paper only removes the library entry', async () => {
 
   await expect(reader.page.getByText('暂无论文')).toBeVisible()
   await expect.poll(async () => (await readLibrary())?.papers.length).toBe(0)
+  await expect
+    .poll(async () => {
+      const stored = await readJsonFile<Record<string, unknown>>(annotationsFile)
+      return Object.keys(stored ?? {})
+    })
+    .toEqual([])
   await expect(access(pdfPath)).resolves.toBeUndefined()
 
   await reader.app.close()

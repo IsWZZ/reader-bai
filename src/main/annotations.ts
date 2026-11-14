@@ -23,6 +23,8 @@ export type AnnotationMap = Record<string, PaperAnnotation[]>
 export interface AnnotationStore {
   read: () => Promise<AnnotationMap>
   write: (store: AnnotationMap) => Promise<void>
+  /** 论文从书库移除后清空它的标注，避免留下无法再访问的孤儿数据 */
+  removePaper: (filePath: string) => Promise<void>
 }
 
 const MAX_ID_LENGTH = 100
@@ -137,5 +139,12 @@ export const createAnnotationStore = (annotationsFile: string): AnnotationStore 
     await writeFile(annotationsFile, JSON.stringify(store, null, 2), 'utf-8')
   }
 
-  return { read, write }
+  const removePaper = async (filePath: string): Promise<void> => {
+    const store = await read()
+    if (!(filePath in store)) return
+    delete store[filePath]
+    await write(store)
+  }
+
+  return { read, write, removePaper }
 }

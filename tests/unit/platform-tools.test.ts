@@ -71,6 +71,9 @@ const createAnnotations = (initial: AnnotationMap = {}): FakeAnnotations => {
     write: async (next) => {
       data = structuredClone(next)
     },
+    removePaper: async (filePath) => {
+      delete data[filePath]
+    },
     snapshot: () => structuredClone(data)
   }
 }

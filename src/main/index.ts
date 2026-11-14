@@ -36,6 +36,7 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // 提供单独的userData目录
   const userData = app.getPath('userData')
   const paths = createUserDataPaths(userData)
   try {
@@ -50,7 +51,9 @@ app.whenReady().then(async () => {
     return
   }
 
+  // 存的是论文的原始数据
   const library = createLibraryStore(paths.libraryFile)
+  // 存的是论文的批注数据,比如高亮数据
   const annotations = createAnnotationStore(paths.annotationsFile)
   const settings = createSettingsStore(paths.settingsFile, paths.papersDirectory)
   const runs = createRunManager()
@@ -78,7 +81,7 @@ app.whenReady().then(async () => {
     onLog: (entry) => console.info(`[plugin:${entry.pluginId}] [${entry.level}] ${entry.message}`)
   })
 
-  registerLibraryIpc(library, settings)
+  registerLibraryIpc(library, annotations, settings)
   registerAnnotationsIpc(annotations, library)
   registerAppIpc({ paths, library, settings, runtime })
   registerCacheIpc()
