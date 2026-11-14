@@ -48,7 +48,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const settingsFile = (): string => join(userDataDir, 'settings.json')
+const settingsFile = (): string => join(userDataDir, 'data', 'settings.json')
 
 const openSettings = async (page: ReaderInstance['page']): Promise<Locator> => {
   await page.getByRole('button', { name: '设置' }).click()
@@ -85,7 +85,9 @@ test('copies imported PDFs into the configured library directory', async () => {
   const dialog = await openSettings(reader.page)
 
   // 未配置时显示应用数据目录下的默认位置
-  await expect(dialog.locator('#library-directory')).toHaveValue(join(userDataDir, 'papers'))
+  await expect(dialog.locator('#library-directory')).toHaveValue(
+    join(userDataDir, 'data', 'papers')
+  )
 
   await stubOpenDirectoryDialog(reader.app, customDirectory)
   await dialog.getByRole('button', { name: '选择文件夹' }).click()
@@ -103,7 +105,8 @@ test('copies imported PDFs into the configured library directory', async () => {
   await expect
     .poll(
       async () =>
-        (await readJsonFile<StoredLibrary>(join(userDataDir, 'library.json')))?.papers[0]?.path
+        (await readJsonFile<StoredLibrary>(join(userDataDir, 'data', 'library.json')))?.papers[0]
+          ?.path
     )
     .toBe(storedPath)
   await expect(access(storedPath)).resolves.toBeUndefined()

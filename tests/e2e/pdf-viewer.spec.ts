@@ -31,7 +31,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const annotationsFile = (): string => join(userDataDir, 'annotations.json')
+const annotationsFile = (): string => join(userDataDir, 'data', 'annotations.json')
 const readAnnotations = (): Promise<StoredAnnotations | null> =>
   readJsonFile<StoredAnnotations>(annotationsFile())
 

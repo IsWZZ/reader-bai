@@ -24,8 +24,9 @@
   - `runs:start/finish/cancel`
   - `tools:list/execute`
   - `plugins:list/runtime/setEnabled`，以及主进程推送的 `plugins:runtime-changed`
-- 文件访问只允许书库中已登记的路径；导入只接受系统对话框的结果；`library.directory` 只接受绝对路径或空字符串（默认 `userData/papers`）。
-- 数据文件（`userData` 下）：
+- 文件访问只允许书库中已登记的路径；导入只接受系统对话框的结果；`library.directory` 只接受绝对路径或空字符串（默认 `userData/data/papers`）。
+- 应用数据统一放在 `userData/data`，与 Electron/Chromium 在 `userData` 根目录生成的缓存和配置分开；路径由 [user-data.ts](user-data.ts) 统一生成，迁移逻辑也在那里。
+- 数据文件（`userData/data` 下）：
   - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 兼容旧格式；移除论文/空间不删除 PDF。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。
   - `settings.json`：`{ theme, ai: { profiles, activeId }, library: { directory } }`；旧单配置读取时迁移为 `id: 'default'`，不回写。
@@ -70,8 +71,8 @@
 ## 插件宿主
 
 - `plugins/manifest.ts`：manifest 校验。id 固定 `publisher.name`，版本 semver，`engines.readerBai` 限制宿主版本，`activationEvents` 支持 `onStartup` / `onCommand:<id>`，`contributes.commands`，权限白名单为 `documents:read` / `annotations:write` / `network` / `storage`；未知字段一律拒绝。
-- `plugins/discovery.ts`：扫描 `userData/plugins` 的真实子目录，跳过符号链接；单个插件损坏只记录 issue，不影响其他插件和主程序启动。
-- `plugins/host.ts`：管理启用状态，默认关闭，写入 `userData/plugins.json`；版本不兼容的插件不能启用；`runtimePlugins()` 只返回已启用、兼容且声明了 `main` 的入口。
+- `plugins/discovery.ts`：扫描 `userData/data/plugins` 的真实子目录，跳过符号链接；单个插件损坏只记录 issue，不影响其他插件和主程序启动。
+- `plugins/host.ts`：管理启用状态，默认关闭，写入 `userData/data/plugins.json`；版本不兼容的插件不能启用；`runtimePlugins()` 只返回已启用、兼容且声明了 `main` 的入口。
 - `plugins/runtime.ts`：用 `utilityProcess.fork` 启动 `out/main/plugin-host.js`；插件启停后整体重载宿主；崩溃、启动失败和退出都反映为运行状态；按 manifest 权限放行工具调用，写操作仍走主进程确认。
 - `plugins/host-process.ts`：独立宿主入口，动态 import 插件 `main`；只激活声明了 `onStartup` 的插件（`onCommand` 暂未接入）；激活/停用有 10 秒超时；向插件注入 `pluginId`、`permissions`、`log` 和受限的 `tools` API。
 - `plugins/protocol.ts`：校验宿主消息（`ready` / `status` / `log` / `api-request` / `stopped`），API 方法限定为 `tools.list` / `tools.execute`，字段和参数体积有上限。

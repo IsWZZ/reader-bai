@@ -140,7 +140,7 @@ test('does not write annotations when the user declines the confirmation', async
   })
 
   expect(error).toContain('没有权限执行该工具：annotations.add')
-  expect(await readJsonFile(join(userDataDir, 'annotations.json'))).toBeNull()
+  expect(await readJsonFile(join(userDataDir, 'data', 'annotations.json'))).toBeNull()
 
   await app.close()
 })
@@ -164,7 +164,7 @@ test('writes annotations after the user confirms', async () => {
   expect(created.id).toEqual(expect.any(String))
 
   const stored = await readJsonFile<Record<string, { id: string }[]>>(
-    join(userDataDir, 'annotations.json')
+    join(userDataDir, 'data', 'annotations.json')
   )
   expect(stored?.[paperPath(userDataDir)]).toEqual([expect.objectContaining({ id: created.id })])
 

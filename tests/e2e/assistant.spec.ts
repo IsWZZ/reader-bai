@@ -206,7 +206,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const settingsFile = (): string => join(userDataDir, 'settings.json')
+const settingsFile = (): string => join(userDataDir, 'data', 'settings.json')
 
 const seedAiProfiles = async (profiles: StoredAiProfile[], activeId: string): Promise<void> => {
   await writeFile(

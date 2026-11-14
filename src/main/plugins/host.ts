@@ -44,9 +44,9 @@ export interface PluginHost {
 }
 
 export interface PluginHostOptions {
-  /** 插件目录，通常是 userData/plugins */
+  /** 插件目录，通常是 userData/data/plugins */
   root: string
-  /** 启用状态文件，通常是 userData/plugins.json */
+  /** 启用状态文件，通常是 userData/data/plugins.json */
   stateFile: string
   /** 宿主版本，用于判断 engines.readerBai */
   appVersion: string

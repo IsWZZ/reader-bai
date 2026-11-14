@@ -37,7 +37,7 @@ const writePlugin = async (
   source: string,
   overrides: Record<string, unknown> = {}
 ): Promise<string> => {
-  const directory = join(userDataDir, 'plugins', 'echo')
+  const directory = join(userDataDir, 'data', 'plugins', 'echo')
   await mkdir(directory, { recursive: true })
   await writeFile(join(directory, 'manifest.json'), JSON.stringify(manifest(overrides)))
   await writeFile(join(directory, 'index.js'), source)
@@ -109,7 +109,7 @@ test.afterEach(async () => {
 test('activates enabled plugins and serves platform tools in the host process', async () => {
   const directory = await writePlugin(userDataDir, READ_SOURCE)
   await writeFile(
-    join(userDataDir, 'plugins.json'),
+    join(userDataDir, 'data', 'plugins.json'),
     JSON.stringify({ enabled: { [PLUGIN_ID]: true } })
   )
 
@@ -139,7 +139,7 @@ test('activates enabled plugins and serves platform tools in the host process', 
 test('denies platform tools whose manifest permissions are missing', async () => {
   const directory = await writePlugin(userDataDir, DENIED_SOURCE, { permissions: [] })
   await writeFile(
-    join(userDataDir, 'plugins.json'),
+    join(userDataDir, 'data', 'plugins.json'),
     JSON.stringify({ enabled: { [PLUGIN_ID]: true } })
   )
 
@@ -174,7 +174,7 @@ test('denies platform tools whose manifest permissions are missing', async () =>
 test('reports activation failures in the runtime state', async () => {
   await writePlugin(userDataDir, 'exports.other = true\n')
   await writeFile(
-    join(userDataDir, 'plugins.json'),
+    join(userDataDir, 'data', 'plugins.json'),
     JSON.stringify({ enabled: { [PLUGIN_ID]: true } })
   )
 

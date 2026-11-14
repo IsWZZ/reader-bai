@@ -217,8 +217,8 @@ for (let step = 0; step < 12 && !run.signal.aborted; step++) {
 C 层已从“只发现”推进到“独立进程执行”，但进程隔离不等于安全沙箱：
 
 - `src/main/plugins/manifest.ts`：manifest 校验（id/version、`engines.readerBai`、激活事件、命令贡献、权限白名单、入口路径不越界）；未知字段一律拒绝。
-- `src/main/plugins/discovery.ts`：扫描 `userData/plugins` 的真实子目录，跳过符号链接，单个插件损坏只记录 issue。
-- `src/main/plugins/host.ts` + `src/main/ipc/plugins.ts`：第三方插件默认关闭，启用状态写入 `plugins.json`；不兼容当前版本的插件不能启用。`runtimePlugins()` 只返回已启用、版本兼容且声明了 `main` 的入口。
+- `src/main/plugins/discovery.ts`：扫描 `userData/data/plugins` 的真实子目录，跳过符号链接，单个插件损坏只记录 issue。
+- `src/main/plugins/host.ts` + `src/main/ipc/plugins.ts`：第三方插件默认关闭，启用状态写入 `userData/data/plugins.json`；不兼容当前版本的插件不能启用。`runtimePlugins()` 只返回已启用、版本兼容且声明了 `main` 的入口。
 - `src/main/plugins/protocol.ts`：主进程与扩展宿主的消息协议；只接受 `ready/status/log/api-request/stopped`，API 方法限定为 `tools.list` / `tools.execute`，并限制字段长度和参数体积。
 - `src/main/plugins/runtime.ts`：用 `utilityProcess.fork` 启动 `out/main/plugin-host.js`，插件启停后整体重载宿主；宿主崩溃、启动失败和退出都会反映为运行状态。工具请求在主进程侧按 manifest 权限放行，写操作仍经过确认弹窗。
 - `src/main/plugins/host-process.ts`：扩展宿主入口，动态 import 插件 `main`，只激活声明了 `onStartup` 的插件（`onCommand` 暂保持 inactive），激活/停用都有 10 秒超时；向插件注入 `pluginId`、权限、`log` 和受限的 `tools` API。
@@ -238,6 +238,7 @@ C 层已从“只发现”推进到“独立进程执行”，但进程隔离不
 ## 数据与安全边界
 
 - API Key、账号令牌等敏感信息只在主进程解密和使用；第三方插件拿不到明文，只能通过平台服务发起请求。
+- 应用数据统一放在 `userData/data`：`library.json`、`annotations.json`、`settings.json`、`plugins.json`、`papers/` 和 `plugins/` 都在这层，与 Electron/Chromium 的缓存和配置分开，便于备份和迁移。旧版平铺在 `userData` 根目录的数据由 [user-data.ts](../src/main/user-data.ts) 在启动时迁移。
 - 威胁模型、当前防护、已知风险和加固顺序见 [security.md](security.md)。新增 IPC、文件访问、网络请求和插件能力时按其中的检查清单执行。
 - 任何模块或插件都不得直接写 `library.json` / `annotations.json`；对书库的修改必须走平台 API 并经过校验。
 - 云端能力默认关闭，开启前说明会发送哪些数据；本地知识库索引不自动上传。

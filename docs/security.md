@@ -33,7 +33,7 @@
 - `session.setPermissionRequestHandler` / `setPermissionCheckHandler` 默认拒绝摄像头、麦克风、通知、剪贴板等权限。
 - Preload 只暴露 `window.api`，不暴露 `electronAPI`、Node 或文件系统。
 - `paper:read` 校验路径属于论文库；`dialog:importPaper` 只接受文件对话框的结果，不接受渲染进程指定任意路径。
-- 导入时把文件复制到论文库目录（默认 `userData/papers`），目录只能通过 `dialog:chooseDirectory` 的原生对话框选择；`library.directory` 在主进程校验为绝对路径，非法值拒绝写入。
+- 导入时把文件复制到论文库目录（默认 `userData/data/papers`），目录只能通过 `dialog:chooseDirectory` 的原生对话框选择；`library.directory` 在主进程校验为绝对路径，非法值拒绝写入。
 - 标注的新增和删除同样校验论文库归属。
 - AI 请求只在主进程发起（[ai.ts](../src/main/ai.ts)、[ipc/ai.ts](../src/main/ipc/ai.ts)），Key 不经过 `ai:chat` 参数；消息在进入主进程时校验角色、条数和总长度。
 - AI Base URL 只允许 HTTPS；仅 `localhost` / `127.0.0.1` / `[::1]` 可使用 HTTP，保存和发起请求时都会校验。

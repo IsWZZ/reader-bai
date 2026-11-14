@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import packageJson from '../../package.json'
@@ -10,6 +10,7 @@ import { createPluginHost } from './plugins/host'
 import { createPluginRuntime } from './plugins/runtime'
 import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
+import { createUserDataPaths, migrateLegacyUserData } from './user-data'
 import { createWindow } from './window'
 import { registerAiIpc } from './ipc/ai'
 import { registerAnnotationsIpc } from './ipc/annotations'
@@ -21,7 +22,7 @@ import { confirmToolInvocation, registerToolsIpc } from './ipc/tools'
 
 // 平台外壳：只负责应用生命周期、持久化实例与各领域 IPC 的装配。
 // 业务逻辑放在 src/main/<domain>.ts，IPC 注册放在 src/main/ipc/。
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
@@ -33,13 +34,26 @@ app.whenReady().then(() => {
   })
 
   const userData = app.getPath('userData')
-  const library = createLibraryStore(join(userData, 'library.json'))
-  const annotations = createAnnotationStore(join(userData, 'annotations.json'))
-  const settings = createSettingsStore(join(userData, 'settings.json'), join(userData, 'papers'))
+  const paths = createUserDataPaths(userData)
+  try {
+    await migrateLegacyUserData(userData)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    dialog.showErrorBox(
+      '无法迁移用户数据',
+      `应用无法把旧数据迁移到 ${paths.dataRoot}，将退出以避免读写不完整的数据。\n\n${message}`
+    )
+    app.quit()
+    return
+  }
+
+  const library = createLibraryStore(paths.libraryFile)
+  const annotations = createAnnotationStore(paths.annotationsFile)
+  const settings = createSettingsStore(paths.settingsFile, paths.papersDirectory)
   const runs = createRunManager()
   const plugins = createPluginHost({
-    root: join(userData, 'plugins'),
-    stateFile: join(userData, 'plugins.json'),
+    root: paths.pluginsDirectory,
+    stateFile: paths.pluginsStateFile,
     appVersion: packageJson.version
   })
 

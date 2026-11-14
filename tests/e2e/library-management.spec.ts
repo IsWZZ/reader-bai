@@ -46,7 +46,7 @@ test.afterEach(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-const libraryFile = (): string => join(userDataDir, 'library.json')
+const libraryFile = (): string => join(userDataDir, 'data', 'library.json')
 const readLibrary = (): Promise<StoredLibrary | null> => readJsonFile<StoredLibrary>(libraryFile())
 
 const createPaperPdf = async (name = 'paper.pdf'): Promise<string> => {
