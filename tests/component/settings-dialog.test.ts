@@ -45,6 +45,7 @@ const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
 const chooseDirectory = vi.fn<() => Promise<string | null>>()
 const clearCache = vi.fn<() => Promise<void>>()
+const uninstallApp = vi.fn<() => Promise<{ canceled: boolean }>>()
 
 const installSettings = (settings: AppSettings): void => {
   current = structuredClone(settings)
@@ -107,6 +108,8 @@ describe('SettingsDialog', () => {
     chooseDirectory.mockResolvedValue(null)
     clearCache.mockReset()
     clearCache.mockResolvedValue(undefined)
+    uninstallApp.mockReset()
+    uninstallApp.mockResolvedValue({ canceled: true })
     installSettings(BASE_SETTINGS)
     updateSettings.mockImplementation(async (patch) => {
       // 模拟主进程：没带 apiKey 的配置保留已保存的 Key
@@ -138,7 +141,13 @@ describe('SettingsDialog', () => {
       }
       return structuredClone(current)
     })
-    window.api = { getSettings, updateSettings, chooseDirectory, clearCache } as unknown as Api
+    window.api = {
+      getSettings,
+      updateSettings,
+      chooseDirectory,
+      clearCache,
+      uninstallApp
+    } as unknown as Api
 
     const store = useSettingsStore()
     await store.initialize()
@@ -542,6 +551,64 @@ describe('SettingsDialog', () => {
     await flushPromises()
 
     expect(document.body.textContent).toContain('缓存清理失败')
+    wrapper.unmount()
+  })
+
+  it('warns that uninstalling deletes local papers before it runs', async () => {
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+
+    expect(document.body.textContent).toContain('卸载应用')
+    expect(document.body.textContent).toContain(
+      '本地论文副本、标注、设置、API Key 和插件都会被永久删除；导入前的原始 PDF 不会被删除。'
+    )
+
+    await findButton('卸载并清除数据').trigger('click')
+    await flushPromises()
+
+    // 确认由主进程原生弹窗负责；渲染进程只调用窄接口
+    expect(uninstallApp).toHaveBeenCalledTimes(1)
+    // 用户取消后恢复按钮
+    expect(findButton('卸载并清除数据').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('keeps the uninstall button disabled after the user confirms', async () => {
+    uninstallApp.mockResolvedValueOnce({ canceled: false })
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+
+    await findButton('卸载并清除数据').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('正在清除…')
+    expect(findButton('正在清除…').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('reports an uninstall failure', async () => {
+    uninstallApp.mockRejectedValueOnce(new Error('无法删除论文文件'))
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+
+    await findButton('卸载并清除数据').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('无法删除论文文件')
+    expect(findButton('卸载并清除数据').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('reports when uninstalling is unavailable', async () => {
+    window.api = { getSettings, updateSettings, chooseDirectory, clearCache } as unknown as Api
+    const wrapper = await mountDialog()
+    await openLibrarySection()
+
+    await findButton('卸载并清除数据').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('当前环境无法卸载应用')
+    expect(uninstallApp).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

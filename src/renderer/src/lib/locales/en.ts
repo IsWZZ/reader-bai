@@ -47,6 +47,15 @@ export const en = {
     'After clearing, offline page resources are fetched again on the next load.',
   'settings.storage.error.unavailable': 'Cache clearing is not available in this environment',
   'settings.storage.error.failed': 'Could not clear the cache',
+  'settings.uninstall.title': 'Uninstall',
+  'settings.uninstall.description':
+    'Delete all application data stored on this computer. The app will quit afterwards.',
+  'settings.uninstall.warning':
+    'Local paper copies, annotations, settings, API keys and plugins will be permanently deleted. Original PDFs are not deleted.',
+  'settings.uninstall.action': 'Uninstall and delete data',
+  'settings.uninstall.working': 'Deleting…',
+  'settings.uninstall.error.unavailable': 'Uninstalling is not available in this environment',
+  'settings.uninstall.error.failed': 'Could not uninstall the app. Please try again',
   'settings.ai.title': 'AI Services',
   'settings.ai.description':
     'Save multiple OpenAI-compatible configurations and pick one from the assistant panel.',

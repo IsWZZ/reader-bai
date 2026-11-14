@@ -1,11 +1,12 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { access, writeFile } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
   launchReader,
   readJsonFile,
   removeUserDataDir,
+  seedLibrary,
   stubMessageBox,
   stubOpenDialog,
   stubOpenDirectoryDialog,
@@ -404,6 +405,44 @@ test('rejects an invalid Base URL', async () => {
   ).toBeVisible()
   await expect.poll(async () => readJsonFile<StoredSettings>(settingsFile())).toBeNull()
   await reader.app.close()
+})
+
+test('deletes local papers only after confirming uninstall', async () => {
+  const papersDirectory = join(userDataDir, 'data', 'papers')
+  await mkdir(papersDirectory, { recursive: true })
+  const paperPath = join(papersDirectory, 'paper.pdf')
+  await writeSamplePdf(paperPath)
+  await seedLibrary(userDataDir, { papers: [{ title: 'paper', path: paperPath }] })
+
+  const reader = await launchReader(userDataDir)
+  const dialog = await openSettings(reader.page)
+  await dialog.getByRole('button', { name: '存储' }).click()
+
+  // 默认按钮是取消：论文和书库都保留
+  await stubMessageBox(reader.app, 0)
+  await dialog.getByRole('button', { name: '卸载并清除数据' }).click()
+  await expect(access(paperPath)).resolves.toBeUndefined()
+  await expect(access(join(userDataDir, 'data', 'library.json'))).resolves.toBeUndefined()
+  await expect(dialog.getByRole('button', { name: '卸载并清除数据' })).toBeEnabled()
+
+  // 明确确认后删除论文和全部应用数据，并退出应用
+  await stubMessageBox(reader.app, 1)
+  await dialog.getByRole('button', { name: '卸载并清除数据' }).click()
+
+  const exists = async (path: string): Promise<boolean> => {
+    try {
+      await access(path)
+      return true
+    } catch {
+      return false
+    }
+  }
+  await expect.poll(() => exists(join(userDataDir, 'data'))).toBe(false)
+  try {
+    await reader.app.close()
+  } catch {
+    // 主进程已按预期退出
+  }
 })
 
 test('clears Electron caches from the storage section', async () => {

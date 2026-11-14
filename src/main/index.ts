@@ -14,6 +14,7 @@ import { createUserDataPaths, migrateLegacyUserData } from './user-data'
 import { createWindow } from './window'
 import { registerAiIpc } from './ipc/ai'
 import { registerAnnotationsIpc } from './ipc/annotations'
+import { registerAppIpc } from './ipc/app'
 import { registerCacheIpc } from './ipc/cache'
 import { registerLibraryIpc } from './ipc/library'
 import { registerPluginsIpc } from './ipc/plugins'
@@ -78,6 +79,7 @@ app.whenReady().then(async () => {
 
   registerLibraryIpc(library, settings)
   registerAnnotationsIpc(annotations, library)
+  registerAppIpc({ paths, library, settings, runtime })
   registerCacheIpc()
   registerSettingsIpc(settings)
   registerPluginsIpc(plugins, runtime)

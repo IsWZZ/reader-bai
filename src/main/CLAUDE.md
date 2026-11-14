@@ -21,12 +21,14 @@
   - `annotations:list/add/remove`
   - `settings:get/update`
   - `cache:clear`：清理 Electron 的 HTTP、代码和 DNS 缓存，不碰 Cookie、书库或设置
+  - `app:uninstall`：原生确认后删除本地论文副本、`userData/data` 和会话数据并退出；导入前的原始 PDF 保留
   - `ai:chat`、`ai:abort`、`ai:chunk`
   - `runs:start/finish/cancel`
   - `tools:list/execute`
   - `plugins:list/runtime/setEnabled`，以及主进程推送的 `plugins:runtime-changed`
 - 文件访问只允许书库中已登记的路径；导入只接受系统对话框的结果；`library.directory` 只接受绝对路径或空字符串（默认 `userData/data/papers`）。
 - 应用数据统一放在 `userData/data`，与 Electron/Chromium 在 `userData` 根目录生成的缓存和配置分开；路径由 [user-data.ts](user-data.ts) 统一生成，迁移逻辑也在那里。
+- `app:uninstall` 的清理逻辑在 [app-data.ts](app-data.ts)：只删除当前论文库目录内已登记的普通论文文件，再递归删除 `userData/data`；自定义论文库目录本身、目录里的其他文件和符号链接都不动。确认框默认「取消」，文案必须明确提示本地论文会被删除。
 - 数据文件（`userData/data` 下）：
   - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 兼容旧格式；移除论文/空间不删除 PDF。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。

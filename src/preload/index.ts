@@ -14,6 +14,11 @@ type AppTheme = 'light' | 'dark'
 /** BCP 47 风格的语言标签；支持的语言列表由渲染进程维护 */
 type AppLanguage = string
 
+interface UninstallResult {
+  /** 用户在原生确认框中取消 */
+  canceled: boolean
+}
+
 interface AiProfile {
   id: string
   baseUrl: string
@@ -158,6 +163,7 @@ const api = {
   updateSettings: (patch: SettingsPatch): Promise<AppSettings> =>
     ipcRenderer.invoke('settings:update', patch),
   clearCache: (): Promise<void> => ipcRenderer.invoke('cache:clear'),
+  uninstallApp: (): Promise<UninstallResult> => ipcRenderer.invoke('app:uninstall'),
   chat: async (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> => {
     const result = await ipcRenderer.invoke('ai:chat', requestId, messages, profileId)
     return result.text

@@ -180,6 +180,38 @@
                 {{ t('settings.storage.note') }}
               </p>
             </div>
+
+            <div class="space-y-4 border-t pt-4">
+              <div>
+                <h3 class="text-destructive text-sm font-medium">
+                  {{ t('settings.uninstall.title') }}
+                </h3>
+                <p class="text-muted-foreground mt-1 text-xs">
+                  {{ t('settings.uninstall.description') }}
+                </p>
+              </div>
+
+              <p class="text-destructive text-xs">
+                {{ t('settings.uninstall.warning') }}
+              </p>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  :disabled="uninstalling"
+                  @click="uninstallApp"
+                >
+                  {{
+                    uninstalling ? t('settings.uninstall.working') : t('settings.uninstall.action')
+                  }}
+                </Button>
+                <span v-if="uninstallError" class="text-destructive text-xs">
+                  {{ uninstallError }}
+                </span>
+              </div>
+            </div>
           </section>
 
           <section v-else-if="activeSection === 'plugins'" class="space-y-4">
@@ -413,6 +445,8 @@ const formError = ref('')
 const clearingCache = ref(false)
 const cacheStatus = ref<'idle' | 'cleared'>('idle')
 const cacheError = ref('')
+const uninstalling = ref(false)
+const uninstallError = ref('')
 
 const editing = computed(() => editingId.value !== null)
 const editingProfileHasKey = computed(() =>
@@ -459,6 +493,11 @@ const resetCacheState = (): void => {
   cacheError.value = ''
 }
 
+const resetUninstallState = (): void => {
+  uninstalling.value = false
+  uninstallError.value = ''
+}
+
 watch(
   () => props.open,
   (open) => {
@@ -466,6 +505,7 @@ watch(
     settingsStore.clearError()
     resetForm()
     resetCacheState()
+    resetUninstallState()
   }
 )
 
@@ -473,6 +513,7 @@ watch(activeSection, () => {
   status.value = 'idle'
   formError.value = ''
   resetCacheState()
+  resetUninstallState()
 })
 
 const saveLibraryDirectory = async (directory: string): Promise<void> => {
@@ -521,6 +562,26 @@ const clearCache = async (): Promise<void> => {
     cacheError.value = e instanceof Error ? e.message : t('settings.storage.error.failed')
   } finally {
     clearingCache.value = false
+  }
+}
+
+const uninstallApp = async (): Promise<void> => {
+  if (uninstalling.value) return
+  uninstallError.value = ''
+  const api = window.api
+  if (!api?.uninstallApp) {
+    uninstallError.value = t('settings.uninstall.error.unavailable')
+    return
+  }
+
+  uninstalling.value = true
+  try {
+    const result = await api.uninstallApp()
+    // 用户取消时恢复按钮；确认后主进程会退出应用
+    if (result.canceled) uninstalling.value = false
+  } catch (e) {
+    uninstalling.value = false
+    uninstallError.value = e instanceof Error ? e.message : t('settings.uninstall.error.failed')
   }
 }
 
