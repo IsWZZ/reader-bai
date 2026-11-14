@@ -109,7 +109,7 @@
         v-else-if="error"
         class="absolute inset-0 flex items-center justify-center p-6 text-center"
       >
-        <p class="text-sm text-destructive">{{ error }}</p>
+        <p role="alert" class="text-sm text-destructive">{{ error }}</p>
       </div>
 
       <!-- PDF 页面（懒渲染：只渲染可视区域附近的页） -->

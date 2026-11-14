@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
@@ -129,6 +130,57 @@ test('highlights a selected word, persists it, and removes it', async () => {
   await expect.poll(async () => (await readAnnotations())?.[pdfPath]?.length).toBe(0)
 
   await relaunched.app.close()
+})
+
+test('underlines a selected word with its own color and restores it after relaunch', async () => {
+  const pdfPath = await seedPaper()
+  const reader = await launchReader(userDataDir)
+  await openPaper(reader.page, 'Sample Paper')
+
+  const firstPage = reader.page.locator('[data-page="1"]')
+  const underlineButton = reader.page.getByRole('button', { name: '下划线' })
+  await expect(underlineButton).toBeDisabled()
+
+  await clickWord(reader.page, firstPage, 'Hello')
+  await expect(underlineButton).toBeEnabled()
+  await underlineButton.click()
+
+  // 下划线与高亮使用不同的 type 和颜色，不会互相混淆
+  await expect(firstPage.locator('[data-annotation-type="underline"]')).toHaveCount(1)
+  await expect(firstPage.locator('[data-annotation-type="highlight"]')).toHaveCount(0)
+  await expect.poll(async () => (await readAnnotations())?.[pdfPath]?.length).toBe(1)
+
+  const [stored] = (await readAnnotations())?.[pdfPath] ?? []
+  expect(stored).toMatchObject({ type: 'underline', color: '#ef4444', page: 1, text: 'Hello' })
+
+  await reader.app.close()
+
+  const relaunched = await launchReader(userDataDir)
+  await openPaper(relaunched.page, 'Sample Paper')
+  await expect(
+    relaunched.page.locator('[data-page="1"] [data-annotation-type="underline"]')
+  ).toHaveCount(1)
+  await relaunched.app.close()
+})
+
+test('shows an error instead of a blank page when the PDF cannot be parsed', async () => {
+  const brokenPath = join(userDataDir, 'broken.pdf')
+  await writeFile(brokenPath, 'this is not a PDF file')
+  await seedLibrary(userDataDir, {
+    papers: [{ id: 'paper-1', title: 'Broken Paper', path: brokenPath, titleSource: 'user' }]
+  })
+
+  const reader = await launchReader(userDataDir)
+  await reader.page.getByRole('button', { name: 'Broken Paper', exact: true }).click()
+
+  const alert = reader.page.getByRole('alert')
+  await expect(alert).toBeVisible()
+  await expect(alert).not.toHaveText('')
+  // 出错时不应留下半渲染的页面或加载提示
+  await expect(reader.page.locator('[data-page="1"] canvas')).toHaveCount(0)
+  await expect(reader.page.getByText('正在加载论文…')).toHaveCount(0)
+
+  await reader.app.close()
 })
 
 test('rejects annotations for papers that are not in the library', async () => {

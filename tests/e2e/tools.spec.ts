@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createUserDataDir,
@@ -167,6 +168,46 @@ test('writes annotations after the user confirms', async () => {
     join(userDataDir, 'Userdata', 'annotations.json')
   )
   expect(stored?.[paperPath(userDataDir)]).toEqual([expect.objectContaining({ id: created.id })])
+
+  await app.close()
+})
+
+test('deletes annotations only after the destructive confirmation', async () => {
+  const pdfPath = paperPath(userDataDir)
+  const annotationsFile = join(userDataDir, 'Userdata', 'annotations.json')
+  const annotation = {
+    id: 'a-1',
+    type: 'highlight',
+    color: '#facc15',
+    page: 1,
+    rects: [{ x: 0.1, y: 0.1, width: 0.2, height: 0.02 }],
+    text: 'attention',
+    createdAt: 1
+  }
+  await seedLibrary(userDataDir, {
+    papers: [{ id: 'paper-1', title: 'Attention Is All You Need', path: pdfPath }]
+  })
+  await writeFile(annotationsFile, JSON.stringify({ [pdfPath]: [annotation] }), 'utf8')
+
+  const { app, page } = await launchReader(userDataDir)
+
+  // 取消确认时标注原样保留
+  await stubMessageBox(app, 0)
+  const error = await executeToolError(page, 'annotations.remove', {
+    paperId: 'paper-1',
+    ids: ['a-1']
+  })
+  expect(error).toContain('没有权限执行该工具：annotations.remove')
+  expect(await readJsonFile(annotationsFile)).toEqual({ [pdfPath]: [annotation] })
+
+  // 确认后才真正删除，并返回被删除的 id
+  await stubMessageBox(app, 1)
+  const result = await executeTool(page, 'annotations.remove', {
+    paperId: 'paper-1',
+    ids: ['a-1']
+  })
+  expect(JSON.parse(result.content)).toEqual({ removed: ['a-1'] })
+  expect(await readJsonFile(annotationsFile)).toEqual({ [pdfPath]: [] })
 
   await app.close()
 })

@@ -350,6 +350,34 @@ test('blocks in-app navigation, window.open and permission requests', async () =
   await reader.app.close()
 })
 
+test('opens http(s) links in the system browser and drops other schemes', async () => {
+  const reader = await launchReader(userDataDir)
+  await reader.app.evaluate(({ shell }) => {
+    const opened: string[] = []
+    ;(globalThis as { __openedUrls?: string[] }).__openedUrls = opened
+    shell.openExternal = (async (url: string) => {
+      opened.push(url)
+    }) as unknown as typeof shell.openExternal
+  })
+  const openedUrls = (): Promise<string[]> =>
+    reader.app.evaluate(() => (globalThis as { __openedUrls?: string[] }).__openedUrls ?? [])
+
+  // window.open：只有 http(s) 交给系统浏览器，其他协议直接丢弃
+  expect(await reader.page.evaluate(() => window.open('mailto:someone@example.com'))).toBeNull()
+  expect(await reader.page.evaluate(() => window.open('https://example.com/paper'))).toBeNull()
+  await expect.poll(openedUrls).toEqual(['https://example.com/paper'])
+
+  // 页面内导航同理：应用自身不跳转，链接交给系统浏览器
+  const before = reader.page.url()
+  await reader.page.evaluate(() => {
+    window.location.href = 'http://example.org/landing'
+  })
+  await expect.poll(openedUrls).toEqual(['https://example.com/paper', 'http://example.org/landing'])
+  expect(reader.page.url()).toBe(before)
+
+  await reader.app.close()
+})
+
 test('rejects an invalid Base URL', async () => {
   const reader = await launchReader(userDataDir)
   const dialog = await openSettings(reader.page)
