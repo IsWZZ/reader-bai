@@ -191,4 +191,82 @@ describe('library:analyzePaper', () => {
     registerLibraryIpc(library.store, createAnnotations({}).store, settings)
     await expect(analyzePaperHandler()({}, 'paper-1')).rejects.toThrow('当前环境不支持 AI 解析')
   })
+
+  it('keeps fields the user set manually', async () => {
+    const manualPaper: PaperInfo = {
+      ...paper,
+      metadata: {
+        ...metadata,
+        doi: '10.9999/manual',
+        source: 'manual',
+        manualFields: ['doi']
+      }
+    }
+    const { library } = registerAnalyze([manualPaper])
+
+    const updated = await analyzePaperHandler()({}, 'paper-1')
+
+    expect(updated.metadata?.doi).toBe('10.9999/manual')
+    expect(updated.metadata?.title).toBe(metadata.title)
+    expect(updated.metadata?.source).toBe('mixed')
+    expect(updated.metadata?.manualFields).toEqual(['doi'])
+    expect(library.snapshot().papers[0].metadata?.doi).toBe('10.9999/manual')
+  })
+})
+
+type UpdateMetadataHandler = (event: unknown, id: unknown, input?: unknown) => Promise<PaperInfo>
+
+const updateMetadataHandler = (): UpdateMetadataHandler =>
+  electron.handlers.get('library:updatePaperMetadata') as UpdateMetadataHandler
+
+const registerUpdateMetadata = (papers: PaperInfo[]): FakeLibrary => {
+  const library = createLibrary(papers)
+  registerLibraryIpc(library.store, createAnnotations({}).store, settings)
+  return library
+}
+
+describe('library:updatePaperMetadata', () => {
+  it('stores manual metadata and syncs the displayed title', async () => {
+    const library = registerUpdateMetadata([paper])
+
+    const updated = await updateMetadataHandler()({}, 'paper-1', {
+      title: 'Manually Titled',
+      authors: ['Ada Lovelace'],
+      doi: 'https://doi.org/10.1000/MANUAL',
+      keywords: ['nlp']
+    })
+
+    expect(updated.metadata).toMatchObject({
+      title: 'Manually Titled',
+      authors: ['Ada Lovelace'],
+      doi: '10.1000/MANUAL',
+      keywords: ['nlp'],
+      source: 'manual'
+    })
+    expect(updated.title).toBe('Manually Titled')
+    expect(updated.titleSource).toBe('user')
+    expect(library.snapshot().papers[0].metadata?.title).toBe('Manually Titled')
+  })
+
+  it('leaves the displayed title alone when only other fields are filled', async () => {
+    const library = registerUpdateMetadata([{ ...paper, title: 'a', titleSource: 'file' }])
+
+    const updated = await updateMetadataHandler()({}, 'paper-1', { doi: '10.1000/manual' })
+
+    expect(updated.metadata?.doi).toBe('10.1000/manual')
+    expect(updated.title).toBe('a')
+    expect(updated.titleSource).toBe('file')
+    expect(library.snapshot().papers[0].metadata?.manualFields).toEqual(['doi'])
+  })
+
+  it('rejects invalid ids, missing papers, and invalid values', async () => {
+    registerUpdateMetadata([paper])
+    const handler = updateMetadataHandler()
+
+    await expect(handler({}, 42, { doi: '10.1000/a' })).rejects.toThrow('论文不存在')
+    await expect(handler({}, 'missing', { doi: '10.1000/a' })).rejects.toThrow('论文不存在')
+    await expect(handler({}, 'paper-1', { doi: 'bad-doi' })).rejects.toThrow('DOI 格式不正确')
+    await expect(handler({}, 'paper-1', { year: 1200 })).rejects.toThrow('年份不正确')
+    await expect(handler({}, 'paper-1', {})).rejects.toThrow('请至少填写一项论文信息')
+  })
 })

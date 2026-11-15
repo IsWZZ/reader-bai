@@ -232,7 +232,7 @@
                             <Pencil class="size-4" />
                             {{ t('library.rename') }}
                           </DropdownMenuItem>
-                          <DropdownMenuItem v-if="paper.metadata" @select="openMetadata(paper)">
+                          <DropdownMenuItem @select="openMetadata(paper)">
                             <Info class="size-4" />
                             {{ t('library.metadata.view') }}
                           </DropdownMenuItem>
@@ -280,9 +280,14 @@
     <PaperMetadataDialog
       :paper="metadataPaper"
       :open="metadataOpen"
+      :editing="metadataEditing"
       :analyzing="metadataPaper ? isAnalyzing(metadataPaper.id) : false"
+      :saving="metadataSaving"
+      :save-error="metadataSaveError"
       @update:open="onMetadataOpenChange"
+      @update:editing="metadataEditing = $event"
       @analyze="analyzePaper"
+      @save="saveMetadata"
     />
   </div>
 </template>
@@ -334,7 +339,7 @@ import { t } from '@renderer/lib/i18n'
 import { filterPapers } from '@renderer/lib/library-search'
 import { readPdfTitle } from '@renderer/lib/pdf'
 import { useSettingsStore } from '@renderer/store/settings'
-import type { LibraryData, Paper, Space } from '@renderer/types'
+import type { LibraryData, Paper, PaperMetadataInput, Space } from '@renderer/types'
 
 const emit = defineEmits<{
   selectPaper: [paper: Paper]
@@ -407,9 +412,12 @@ const paperSubtitle = (paper: Paper): string => {
     .join(' · ')
 }
 
-// 元数据详情弹窗
+// 元数据详情弹窗：查看、手动编辑和 AI 解析共用
 const metadataPaper = ref<Paper | null>(null)
 const metadataOpen = ref(false)
+const metadataEditing = ref(false)
+const metadataSaving = ref(false)
+const metadataSaveError = ref<string | null>(null)
 
 const openMetadata = (paper: Paper): void => {
   metadataPaper.value = paper
@@ -418,7 +426,29 @@ const openMetadata = (paper: Paper): void => {
 
 const onMetadataOpenChange = (open: boolean): void => {
   metadataOpen.value = open
-  if (!open) metadataPaper.value = null
+  if (!open) {
+    metadataPaper.value = null
+    metadataEditing.value = false
+    metadataSaveError.value = null
+  }
+}
+
+// 手动保存后由主进程返回更新后的论文；重新解析也会走 applyPaper
+const saveMetadata = async (paper: Paper, input: PaperMetadataInput): Promise<void> => {
+  const api = window.api
+  if (!api?.updatePaperMetadata || metadataSaving.value) return
+  metadataSaving.value = true
+  metadataSaveError.value = null
+  try {
+    applyPaper(await api.updatePaperMetadata(paper.id, input))
+    metadataEditing.value = false
+  } catch (error) {
+    metadataSaveError.value =
+      error instanceof Error ? error.message : t('library.metadata.saveFailed')
+    console.warn(`保存论文信息失败: ${paper.id}`, error)
+  } finally {
+    metadataSaving.value = false
+  }
 }
 
 // 新建/重命名空间的临时输入状态

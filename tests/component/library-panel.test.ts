@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import { readPdfTitle } from '@renderer/lib/pdf'
 import { useSettingsStore } from '@renderer/store/settings'
-import type { LibraryData, Paper, PaperMetadata, Space } from '@renderer/types'
+import type { LibraryData, Paper, PaperMetadata, PaperMetadataInput, Space } from '@renderer/types'
 
 // 避免在 jsdom 里加载 pdf.js 的 worker，只验证标题回填的调用流程
 vi.mock('@renderer/lib/pdf', () => ({ readPdfTitle: vi.fn() }))
@@ -21,6 +21,7 @@ const movePaper = vi.fn<(id: string, spaceId: string | null) => Promise<LibraryD
 const removePaper = vi.fn<(id: string) => Promise<LibraryData>>()
 const importPaper = vi.fn<(spaceId?: string | null) => Promise<Paper | null>>()
 const analyzePaper = vi.fn<(id: string) => Promise<Paper>>()
+const updatePaperMetadata = vi.fn<(id: string, metadata: PaperMetadataInput) => Promise<Paper>>()
 const readPaper = vi.fn<(path: string) => Promise<Uint8Array>>()
 
 const METADATA: PaperMetadata = {
@@ -83,6 +84,7 @@ const installApi = (): void => {
     removePaper,
     importPaper,
     analyzePaper,
+    updatePaperMetadata,
     readPaper
   } as unknown as Api
 }
@@ -117,6 +119,7 @@ describe('LibraryPanel', () => {
     removePaper.mockReset()
     importPaper.mockReset()
     analyzePaper.mockReset()
+    updatePaperMetadata.mockReset()
     readPaper.mockReset()
     readPdfTitleMock.mockReset()
 
@@ -445,6 +448,93 @@ describe('LibraryPanel', () => {
 
     expect(wrapper.emitted('requestAiSettings')).toHaveLength(1)
     expect(analyzePaper).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('saves manually edited metadata from the details dialog', async () => {
+    const original = paper({ id: 'paper-1', title: 'Attention', metadata: METADATA })
+    listPapers.mockResolvedValue({ spaces: [], papers: [original] })
+    updatePaperMetadata.mockResolvedValue({
+      ...original,
+      metadata: {
+        ...METADATA,
+        doi: '10.1000/edited',
+        source: 'manual',
+        manualFields: ['doi']
+      }
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="Attention 操作"]').trigger('click')
+    await flushPromises()
+
+    const viewItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (element) => element.textContent?.includes('查看论文信息')
+    )
+    if (!viewItem) throw new Error('view metadata menu item not found')
+    viewItem.click()
+    await flushPromises()
+
+    const editButton = [...document.body.querySelectorAll('button')].find((button) =>
+      (button.textContent ?? '').includes('编辑')
+    )
+    if (!editButton) throw new Error('edit button not found')
+    editButton.click()
+    await flushPromises()
+
+    const doi = document.body.querySelector<HTMLInputElement>('#metadata-doi')
+    if (!doi) throw new Error('doi input not found')
+    doi.value = '10.1000/edited'
+    doi.dispatchEvent(new Event('input'))
+    await flushPromises()
+
+    const form = document.body.querySelector<HTMLFormElement>('#paper-metadata-form')
+    if (!form) throw new Error('metadata form not found')
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(updatePaperMetadata).toHaveBeenCalledTimes(1)
+    const [id, input] = updatePaperMetadata.mock.calls[0]
+    expect(id).toBe('paper-1')
+    expect(input.doi).toBe('10.1000/edited')
+    expect(input.authors).toEqual(METADATA.authors)
+    // 保存成功后回到查看模式
+    expect(document.body.querySelector('#metadata-doi')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('keeps the editor open and shows the error when saving fails', async () => {
+    const original = paper({ id: 'paper-1', title: 'Attention', metadata: METADATA })
+    listPapers.mockResolvedValue({ spaces: [], papers: [original] })
+    updatePaperMetadata.mockRejectedValue(new Error('DOI 格式不正确'))
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="Attention 操作"]').trigger('click')
+    await flushPromises()
+
+    const viewItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (element) => element.textContent?.includes('查看论文信息')
+    )
+    if (!viewItem) throw new Error('view metadata menu item not found')
+    viewItem.click()
+    await flushPromises()
+
+    const editButton = [...document.body.querySelectorAll('button')].find((button) =>
+      (button.textContent ?? '').includes('编辑')
+    )
+    if (!editButton) throw new Error('edit button not found')
+    editButton.click()
+    await flushPromises()
+
+    const form = document.body.querySelector<HTMLFormElement>('#paper-metadata-form')
+    if (!form) throw new Error('metadata form not found')
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flushPromises()
+
+    expect(document.body.querySelector('#metadata-doi')).not.toBeNull()
+    expect(document.body.textContent).toContain('DOI 格式不正确')
     wrapper.unmount()
   })
 

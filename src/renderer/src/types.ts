@@ -7,9 +7,11 @@ export interface Space {
 }
 
 export type PaperVenueType = 'journal' | 'conference' | 'preprint' | 'book' | 'other'
-export type PaperMetadataSource = 'ai' | 'crossref' | 'mixed'
+export type PaperMetadataSource = 'ai' | 'crossref' | 'mixed' | 'manual'
+export type PaperMetadataField =
+  'title' | 'authors' | 'venue' | 'venueType' | 'year' | 'doi' | 'abstract' | 'keywords' | 'summary'
 
-/** AI / Crossref 解析出的书目信息 */
+/** AI / Crossref 解析或用户手动填写的书目信息 */
 export interface PaperMetadata {
   title?: string
   authors: string[]
@@ -23,6 +25,21 @@ export interface PaperMetadata {
   summary?: string
   source: PaperMetadataSource
   analyzedAt: number
+  /** 用户手动设置过的字段；重新解析时保留用户值 */
+  manualFields?: PaperMetadataField[]
+}
+
+/** 手动编辑论文信息时提交的原始值 */
+export interface PaperMetadataInput {
+  title?: string
+  authors?: string[]
+  venue?: string
+  venueType?: PaperVenueType | null
+  year?: number | string | null
+  doi?: string | null
+  abstract?: string
+  keywords?: string[]
+  summary?: string
 }
 
 export interface Paper {

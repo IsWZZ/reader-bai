@@ -4,7 +4,35 @@
 import type { ChatMessage } from './ai'
 
 export type PaperVenueType = 'journal' | 'conference' | 'preprint' | 'book' | 'other'
-export type PaperMetadataSource = 'ai' | 'crossref' | 'mixed'
+export type PaperMetadataSource = 'ai' | 'crossref' | 'mixed' | 'manual'
+
+/** 用户可以手动填写或修改的书目字段 */
+export const PAPER_METADATA_FIELDS = [
+  'title',
+  'authors',
+  'venue',
+  'venueType',
+  'year',
+  'doi',
+  'abstract',
+  'keywords',
+  'summary'
+] as const
+
+export type PaperMetadataField = (typeof PAPER_METADATA_FIELDS)[number]
+
+/** 手动编辑表单提交的原始值；主进程负责校验和清洗 */
+export interface PaperMetadataInput {
+  title?: string
+  authors?: string[]
+  venue?: string
+  venueType?: PaperVenueType | null
+  year?: number | string | null
+  doi?: string | null
+  abstract?: string
+  keywords?: string[]
+  summary?: string
+}
 
 export interface PaperMetadata {
   title?: string
@@ -19,6 +47,8 @@ export interface PaperMetadata {
   summary?: string
   source: PaperMetadataSource
   analyzedAt: number
+  /** 用户手动设置过的字段；重新解析时这些字段保留用户值 */
+  manualFields?: PaperMetadataField[]
 }
 
 const MAX_TITLE = 300
@@ -34,7 +64,8 @@ const MIN_YEAR = 1800
 const MAX_YEAR_OFFSET = 1
 
 const VENUE_TYPES = new Set<PaperVenueType>(['journal', 'conference', 'preprint', 'book', 'other'])
-const METADATA_SOURCES = new Set<PaperMetadataSource>(['ai', 'crossref', 'mixed'])
+const METADATA_SOURCES = new Set<PaperMetadataSource>(['ai', 'crossref', 'mixed', 'manual'])
+const METADATA_FIELD_SET = new Set<string>(PAPER_METADATA_FIELDS)
 
 // DOI 只允许字面上的 10.xxxx/... 形式；不接受空白，避免把任意字符串拼进 URL
 const DOI_PATTERN = /^10\.\d{4,9}\/[^\s]+$/i
@@ -105,6 +136,18 @@ const normalizeVenueType = (value: unknown): PaperVenueType | undefined =>
     ? (value as PaperVenueType)
     : undefined
 
+const normalizeManualFields = (value: unknown): PaperMetadataField[] => {
+  if (!Array.isArray(value)) return []
+  const result: PaperMetadataField[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== 'string' || !METADATA_FIELD_SET.has(item) || seen.has(item)) continue
+    seen.add(item)
+    result.push(item as PaperMetadataField)
+  }
+  return result
+}
+
 const normalizeSource = (value: unknown, fallback: PaperMetadataSource): PaperMetadataSource =>
   typeof value === 'string' && METADATA_SOURCES.has(value as PaperMetadataSource)
     ? (value as PaperMetadataSource)
@@ -143,6 +186,8 @@ export const normalizePaperMetadata = (
   if (abstract) metadata.abstract = abstract
   const summary = asString(item.summary, MAX_SUMMARY)
   if (summary) metadata.summary = summary
+  const manualFields = normalizeManualFields(item.manualFields)
+  if (manualFields.length > 0) metadata.manualFields = manualFields
 
   const meaningful =
     metadata.title ||
@@ -175,7 +220,12 @@ export const parseMetadataResponse = (
   if (start === -1 || end <= start) return null
 
   try {
-    return normalizePaperMetadata(JSON.parse(unwrapped.slice(start, end + 1)), 'ai', now)
+    const parsed: unknown = JSON.parse(unwrapped.slice(start, end + 1))
+    // manualFields 只能由用户手动保存写入，模型输出不能把自己标成用户值
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      delete (parsed as Record<string, unknown>).manualFields
+    }
+    return normalizePaperMetadata(parsed, 'ai', now)
   } catch {
     return null
   }
@@ -207,6 +257,180 @@ export const mergePaperMetadata = (
     source: 'mixed',
     analyzedAt: now
   }
+}
+
+const readOptionalString = (value: unknown, max: number, label: string): string | undefined => {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string') throw new Error(`${label}格式不正确`)
+  return asString(value, max) || undefined
+}
+
+const readStringList = (
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+  label: string
+): string[] => {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new Error(`${label}格式不正确`)
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== 'string') throw new Error(`${label}格式不正确`)
+    const text = asString(item, maxLength)
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    result.push(text)
+    if (result.length >= maxItems) break
+  }
+  return result
+}
+
+const readManualYear = (value: unknown, now: number): number | undefined => {
+  if (value === undefined || value === null || value === '') return undefined
+  const year =
+    typeof value === 'number'
+      ? Math.trunc(value)
+      : typeof value === 'string' && /^\d{4}$/.test(value.trim())
+        ? Number(value.trim())
+        : NaN
+  const maxYear = new Date(now).getFullYear() + MAX_YEAR_OFFSET
+  if (!Number.isFinite(year) || year < MIN_YEAR || year > maxYear) {
+    throw new Error('年份不正确')
+  }
+  return year
+}
+
+const readManualVenueType = (value: unknown): PaperVenueType | undefined => {
+  if (value === undefined || value === null || value === '') return undefined
+  const venueType = normalizeVenueType(value)
+  if (!venueType) throw new Error('出版类型不正确')
+  return venueType
+}
+
+const readManualDoi = (value: unknown): string | undefined => {
+  if (value === undefined || value === null || value === '') return undefined
+  const doi = normalizeDoi(value)
+  if (!doi) throw new Error('DOI 格式不正确')
+  return doi
+}
+
+const fieldValue = (metadata: PaperMetadata | null, field: PaperMetadataField): unknown => {
+  if (field === 'authors' || field === 'keywords') return metadata?.[field] ?? []
+  return metadata?.[field]
+}
+
+const valuesEqual = (left: unknown, right: unknown): boolean => {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false
+    return left.every((item, index) => item === right[index])
+  }
+  return left === right
+}
+
+/**
+ * 校验并构建用户手动填写的元数据。
+ * 与上一次结果逐字段比较，记录用户真正改过的字段，重新解析时保留这些值。
+ */
+export const buildManualMetadata = (
+  input: unknown,
+  previous: PaperMetadata | null = null,
+  now: number = Date.now()
+): PaperMetadata => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('论文信息格式不正确')
+  }
+  const item = input as Record<string, unknown>
+
+  const metadata: PaperMetadata = {
+    authors: readStringList(item.authors, MAX_AUTHORS, MAX_AUTHOR, '作者'),
+    keywords: readStringList(item.keywords, MAX_KEYWORDS, MAX_KEYWORD, '关键词'),
+    source: 'manual',
+    analyzedAt: now
+  }
+
+  const title = readOptionalString(item.title, MAX_TITLE, '标题')
+  if (title) metadata.title = title
+  const venue = readOptionalString(item.venue, MAX_VENUE, '期刊 / 会议')
+  if (venue) metadata.venue = venue
+  const venueType = readManualVenueType(item.venueType)
+  if (venueType) metadata.venueType = venueType
+  const year = readManualYear(item.year, now)
+  if (year) metadata.year = year
+  const doi = readManualDoi(item.doi)
+  if (doi) metadata.doi = doi
+  const abstract = readOptionalString(item.abstract, MAX_ABSTRACT, '摘要')
+  if (abstract) metadata.abstract = abstract
+  const summary = readOptionalString(item.summary, MAX_SUMMARY, '概括')
+  if (summary) metadata.summary = summary
+
+  const meaningful =
+    metadata.title ||
+    metadata.authors.length > 0 ||
+    metadata.venue ||
+    metadata.venueType ||
+    metadata.year ||
+    metadata.doi ||
+    metadata.abstract ||
+    metadata.keywords.length > 0 ||
+    metadata.summary
+  if (!meaningful) throw new Error('请至少填写一项论文信息')
+
+  const manualFields = new Set<PaperMetadataField>(previous?.manualFields ?? [])
+  for (const field of PAPER_METADATA_FIELDS) {
+    if (!valuesEqual(fieldValue(previous, field), fieldValue(metadata, field))) {
+      manualFields.add(field)
+    }
+  }
+  metadata.manualFields = PAPER_METADATA_FIELDS.filter((field) => manualFields.has(field))
+  return metadata
+}
+
+/**
+ * 把用户手动设置过的字段覆盖到新的解析结果上。
+ * 用户清空的字段同样保留为空，避免重新解析把用户删掉的信息加回来。
+ */
+export const mergeManualMetadata = (
+  analyzed: PaperMetadata,
+  previous: PaperMetadata | null
+): PaperMetadata => {
+  const fields = previous?.manualFields
+  if (!previous || !fields || fields.length === 0) return analyzed
+
+  const merged: PaperMetadata = { ...analyzed, source: 'mixed' }
+  for (const field of fields) {
+    switch (field) {
+      case 'title':
+        merged.title = previous.title
+        break
+      case 'authors':
+        merged.authors = [...previous.authors]
+        break
+      case 'venue':
+        merged.venue = previous.venue
+        break
+      case 'venueType':
+        merged.venueType = previous.venueType
+        break
+      case 'year':
+        merged.year = previous.year
+        break
+      case 'doi':
+        merged.doi = previous.doi
+        break
+      case 'abstract':
+        merged.abstract = previous.abstract
+        break
+      case 'keywords':
+        merged.keywords = [...previous.keywords]
+        break
+      case 'summary':
+        merged.summary = previous.summary
+        break
+    }
+  }
+  merged.manualFields = [...fields]
+  return merged
 }
 
 const METADATA_SYSTEM_PROMPT = `You extract bibliographic metadata from the first pages of an academic paper.

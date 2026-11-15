@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildManualMetadata,
   buildMetadataMessages,
   extractDoiFromText,
+  mergeManualMetadata,
   mergePaperMetadata,
   normalizeDoi,
   normalizePaperMetadata,
@@ -188,5 +190,113 @@ describe('buildMetadataMessages', () => {
     expect(system.content).toContain('only accept a result that clearly matches this paper')
     expect(system.content).toContain('return null or [] for that field instead of guessing')
     expect(system.content).toContain('Never invent a DOI, venue, or author')
+  })
+})
+
+describe('buildManualMetadata', () => {
+  it('stores manual metadata and only marks fields the user changed', () => {
+    const result = buildManualMetadata(
+      {
+        title: 'Attention Is All You Need',
+        authors: ['Ashish Vaswani', 'Noam Shazeer'],
+        venue: 'NeurIPS',
+        venueType: 'conference',
+        year: 2017,
+        doi: 'https://doi.org/10.5555/3295222.3295349',
+        abstract: 'The dominant sequence transduction models...',
+        keywords: ['transformer', 'attention'],
+        summary: 'A new sequence model.'
+      },
+      aiMetadata(),
+      NOW
+    )
+
+    expect(result.source).toBe('manual')
+    expect(result.analyzedAt).toBe(NOW)
+    expect(result.doi).toBe('10.5555/3295222.3295349')
+    // 作者和关键词发生了变化，其余字段与上次结果一致
+    expect(result.manualFields).toEqual(['authors', 'keywords'])
+  })
+
+  it('marks only filled fields when there is no previous metadata', () => {
+    const result = buildManualMetadata({ doi: '10.1000/manual' }, null, NOW)
+
+    expect(result.authors).toEqual([])
+    expect(result.keywords).toEqual([])
+    expect(result.manualFields).toEqual(['doi'])
+  })
+
+  it('rejects invalid input', () => {
+    expect(() => buildManualMetadata(null, null, NOW)).toThrow('论文信息格式不正确')
+    expect(() => buildManualMetadata({}, null, NOW)).toThrow('请至少填写一项论文信息')
+    expect(() => buildManualMetadata({ authors: 'Ada' }, null, NOW)).toThrow('作者格式不正确')
+    expect(() => buildManualMetadata({ doi: 'not-a-doi' }, null, NOW)).toThrow('DOI 格式不正确')
+    expect(() => buildManualMetadata({ year: 1200 }, null, NOW)).toThrow('年份不正确')
+    expect(() => buildManualMetadata({ venueType: 'magazine' }, null, NOW)).toThrow(
+      '出版类型不正确'
+    )
+  })
+
+  it('keeps valid manual fields when reading stored metadata', () => {
+    const result = normalizePaperMetadata(
+      {
+        doi: '10.1000/stored',
+        source: 'manual',
+        manualFields: ['doi', 'unknown', 'doi']
+      },
+      'ai',
+      NOW
+    )
+
+    expect(result?.source).toBe('manual')
+    expect(result?.manualFields).toEqual(['doi'])
+  })
+
+  it('does not let model output claim manual fields', () => {
+    const result = parseMetadataResponse(
+      JSON.stringify({ title: 'Model title', manualFields: ['title'] }),
+      NOW
+    )
+
+    expect(result?.title).toBe('Model title')
+    expect(result?.manualFields).toBeUndefined()
+  })
+})
+
+describe('mergeManualMetadata', () => {
+  it('overlays manual fields, including deliberately cleared ones', () => {
+    const previous = aiMetadata({
+      title: 'My title',
+      venue: undefined,
+      doi: '10.1000/mine',
+      manualFields: ['title', 'venue', 'doi'],
+      source: 'manual',
+      analyzedAt: NOW
+    })
+    const analyzed = aiMetadata({
+      title: 'AI title',
+      venue: 'AI venue',
+      doi: '10.1000/ai',
+      year: 2020,
+      source: 'mixed',
+      analyzedAt: NOW + 1
+    })
+
+    const merged = mergeManualMetadata(analyzed, previous)
+
+    expect(merged.title).toBe('My title')
+    expect(merged.venue).toBeUndefined()
+    expect(merged.doi).toBe('10.1000/mine')
+    expect(merged.year).toBe(2020)
+    expect(merged.source).toBe('mixed')
+    expect(merged.analyzedAt).toBe(NOW + 1)
+    expect(merged.manualFields).toEqual(['title', 'venue', 'doi'])
+  })
+
+  it('returns the analysis unchanged when the user has no manual fields', () => {
+    const analyzed = aiMetadata()
+
+    expect(mergeManualMetadata(analyzed, null)).toBe(analyzed)
+    expect(mergeManualMetadata(analyzed, aiMetadata())).toBe(analyzed)
   })
 })

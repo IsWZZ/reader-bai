@@ -10,6 +10,7 @@ import {
   type PaperTitleSource
 } from '../library'
 import type { PaperAnalyzer } from '../paper-analysis'
+import { buildManualMetadata, mergeManualMetadata } from '../paper-metadata'
 import type { AnnotationStore } from '../annotations'
 import type { SettingsStore } from '../settings-store'
 
@@ -219,13 +220,33 @@ export const registerLibraryIpc = (
     return library.mutate((next) => {
       const target = next.papers.find((item) => item.id === paperId)
       if (!target) throw new Error('论文不存在')
-      target.metadata = metadata
+      // 用户手动设置过的字段优先，AI 只补空缺
+      const merged = mergeManualMetadata(metadata, target.metadata ?? null)
+      target.metadata = merged
       // 用户手动改过的标题优先；文件名/PDF 元数据标题可以被 AI 结果替换
-      if (metadata.title && target.titleSource !== 'user') {
-        target.title = metadata.title.slice(0, 300)
+      if (merged.title && target.titleSource !== 'user') {
+        target.title = merged.title.slice(0, 300)
         target.titleSource = 'metadata'
       }
       return { ...target }
+    })
+  })
+
+  // 手动添加或修改论文信息；AI 没有解析出来的字段由用户补齐
+  ipcMain.handle('library:updatePaperMetadata', async (_event, id: unknown, input: unknown) => {
+    const paperId = readPaperId(id)
+    return library.mutate((state) => {
+      const paper = state.papers.find((item) => item.id === paperId)
+      if (!paper) throw new Error('论文不存在')
+      // input 是完整表单：省略的字段按用户清空处理
+      const metadata = buildManualMetadata(input, paper.metadata ?? null)
+      paper.metadata = metadata
+      // 标题属于书目信息：用户在这里改了标题，列表也同步展示
+      if (metadata.title && metadata.title !== paper.title) {
+        paper.title = metadata.title.slice(0, 300)
+        paper.titleSource = 'user'
+      }
+      return { ...paper }
     })
   })
 }

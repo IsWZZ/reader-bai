@@ -6,9 +6,19 @@ declare global {
   }
 
   type PaperVenueType = 'journal' | 'conference' | 'preprint' | 'book' | 'other'
-  type PaperMetadataSource = 'ai' | 'crossref' | 'mixed'
+  type PaperMetadataSource = 'ai' | 'crossref' | 'mixed' | 'manual'
+  type PaperMetadataField =
+    | 'title'
+    | 'authors'
+    | 'venue'
+    | 'venueType'
+    | 'year'
+    | 'doi'
+    | 'abstract'
+    | 'keywords'
+    | 'summary'
 
-  /** AI / Crossref 解析出的书目信息 */
+  /** AI / Crossref 解析或用户手动填写的书目信息 */
   interface PaperMetadata {
     title?: string
     authors: string[]
@@ -22,6 +32,21 @@ declare global {
     summary?: string
     source: PaperMetadataSource
     analyzedAt: number
+    /** 用户手动设置过的字段；重新解析时保留用户值 */
+    manualFields?: PaperMetadataField[]
+  }
+
+  /** 手动编辑论文信息时提交的原始值；主进程负责校验和清洗 */
+  interface PaperMetadataInput {
+    title?: string
+    authors?: string[]
+    venue?: string
+    venueType?: PaperVenueType | null
+    year?: number | string | null
+    doi?: string | null
+    abstract?: string
+    keywords?: string[]
+    summary?: string
   }
 
   interface PaperInfo {
@@ -280,6 +305,8 @@ declare global {
     removePaper: (id: string) => Promise<LibraryState>
     /** 用 AI 解析论文信息，并用 Crossref 校验补全；返回更新后的论文 */
     analyzePaper: (id: string, options?: { useWeb?: boolean }) => Promise<PaperInfo>
+    /** 手动添加或修改论文信息；返回更新后的论文 */
+    updatePaperMetadata: (id: string, metadata: PaperMetadataInput) => Promise<PaperInfo>
     readPaper: (filePath: string) => Promise<Uint8Array>
     listAnnotations: (filePath: string) => Promise<PaperAnnotation[]>
     addAnnotation: (filePath: string, annotation: PaperAnnotation) => Promise<PaperAnnotation>

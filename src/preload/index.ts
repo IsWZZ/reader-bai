@@ -10,6 +10,19 @@ interface PaperAnnotation {
   createdAt: number
 }
 
+/** 手动编辑论文信息时提交的原始值；校验在主进程 */
+interface PaperMetadataInput {
+  title?: string
+  authors?: string[]
+  venue?: string
+  venueType?: 'journal' | 'conference' | 'preprint' | 'book' | 'other' | null
+  year?: number | string | null
+  doi?: string | null
+  abstract?: string
+  keywords?: string[]
+  summary?: string
+}
+
 type AppTheme = 'light' | 'dark'
 /** BCP 47 风格的语言标签；支持的语言列表由渲染进程维护 */
 type AppLanguage = string
@@ -188,6 +201,8 @@ const api = {
   removePaper: (id: string) => ipcRenderer.invoke('library:removePaper', id),
   analyzePaper: (id: string, options?: { useWeb?: boolean }) =>
     ipcRenderer.invoke('library:analyzePaper', id, options),
+  updatePaperMetadata: (id: string, metadata: PaperMetadataInput) =>
+    ipcRenderer.invoke('library:updatePaperMetadata', id, metadata),
   readPaper: (filePath: string) => ipcRenderer.invoke('paper:read', filePath),
   listAnnotations: (filePath: string) => ipcRenderer.invoke('annotations:list', filePath),
   addAnnotation: (filePath: string, annotation: PaperAnnotation) =>

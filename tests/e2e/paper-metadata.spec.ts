@@ -227,6 +227,66 @@ test('analyzes an imported paper and stores its metadata', async () => {
   await reader.app.close()
 })
 
+test('adds missing metadata manually and rejects invalid values', async () => {
+  const pdfPath = join(userDataDir, 'sample.pdf')
+  await writeSamplePdf(pdfPath)
+  await seedLibrary(userDataDir, {
+    papers: [{ id: 'paper-1', title: 'Sample Paper', path: pdfPath, titleSource: 'user' }]
+  })
+
+  const reader = await launchReader(userDataDir)
+
+  // 没有 AI 配置时也可以从菜单打开详情并手动填写
+  await reader.page.getByRole('button', { name: 'Sample Paper 操作' }).click()
+  await reader.page.getByRole('menuitem', { name: '查看论文信息' }).click()
+  await expect(reader.page.getByText('还没有论文信息')).toBeVisible()
+
+  await reader.page.getByRole('button', { name: '编辑', exact: true }).click()
+  await reader.page.getByLabel('标题').fill('Manual Title')
+  await reader.page.getByLabel('作者').fill('Ada Lovelace\nAlan Turing')
+  await reader.page.getByLabel('DOI').fill('https://doi.org/10.1000/MANUAL')
+  await reader.page.getByRole('button', { name: '保存', exact: true }).click()
+
+  await expect(reader.page.getByText('10.1000/MANUAL')).toBeVisible()
+  await expect(reader.page.getByText('手动填写')).toBeVisible()
+
+  await expect
+    .poll(async () => (await readJsonFile<StoredLibrary>(libraryFile()))?.papers[0]?.metadata)
+    .toMatchObject({
+      title: 'Manual Title',
+      authors: ['Ada Lovelace', 'Alan Turing'],
+      doi: '10.1000/MANUAL',
+      source: 'manual'
+    })
+
+  // 主进程仍然校验直接调用：非法 DOI 和缺失论文都要报错
+  const errors = await reader.page.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        api: {
+          updatePaperMetadata: (id: string, input: unknown) => Promise<unknown>
+        }
+      }
+    ).api
+    const capture = async (run: () => Promise<unknown>): Promise<string> => {
+      try {
+        await run()
+        return ''
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error)
+      }
+    }
+    return [
+      await capture(() => api.updatePaperMetadata('paper-1', { doi: 'bad-doi' })),
+      await capture(() => api.updatePaperMetadata('missing', { doi: '10.1000/a' }))
+    ]
+  })
+  expect(errors[0]).toContain('DOI 格式不正确')
+  expect(errors[1]).toContain('论文不存在')
+
+  await reader.app.close()
+})
+
 test('skips automatic analysis when the setting is off', async () => {
   const pdfPath = join(userDataDir, 'sample.pdf')
   await writeSamplePdf(pdfPath)

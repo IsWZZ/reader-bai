@@ -15,7 +15,7 @@
 - 主进程把渲染进程传来的所有参数当作不可信输入：校验类型、非空、长度、枚举和数值范围；错误信息不要回显 Key、绝对路径或论文正文。
 - 新增 IPC 时同步：main handler → preload 方法（约定见 [src/preload/CLAUDE.md](../preload/CLAUDE.md)）→ `src/preload/index.d.ts` → 应用数据相关的 `src/renderer/src/types.ts`；补成功、非法输入和失败路径测试。
 - 通道命名 `<domain>:<action>`。现有通道：
-  - `library:*`：list / createSpace / renameSpace / deleteSpace / renamePaper / movePaper / removePaper / analyzePaper
+  - `library:*`：list / createSpace / renameSpace / deleteSpace / renamePaper / movePaper / removePaper / analyzePaper / updatePaperMetadata
   - `dialog:importPaper`、`dialog:chooseDirectory`
   - `paper:read`
   - `annotations:list/add/remove`
@@ -37,6 +37,7 @@
 - `language` 使用 BCP 47 风格标签（`zh`、`en`、`zh-Hans`、`pt-BR`），主进程只校验格式、默认回退 `zh`，不维护语言白名单；实际支持哪些语言由渲染进程的 locale 注册表决定。
 - 导入 PDF 时复制到论文库目录，同名自动加 ` (2)` 等后缀；`path` 指向副本，`sourcePath` 记录原文件用于去重；已在目录内的文件不重复复制。
 - `titleSource`（`file` | `metadata` | `user`）防止元数据回填覆盖用户重命名。
+- `paper.metadata.manualFields` 记录用户手动编辑过的字段；`library:updatePaperMetadata` 由主进程校验（DOI、年份、出版类型、非空）后写入 `source: 'manual'`，重新解析时这些字段保留用户值，其余字段仍由 AI/Crossref 补全。
 - 发送数据到渲染进程前剥离 Vue 代理；需要跨进程的结构只保留普通对象、数组和原始值。
 
 ## 安全边界

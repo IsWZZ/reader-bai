@@ -69,6 +69,7 @@ describe('preload bridge', () => {
         'setPluginEnabled',
         'startAgent',
         'uninstallApp',
+        'updatePaperMetadata',
         'updateSettings'
       ].sort()
     )
@@ -117,6 +118,11 @@ describe('preload bridge', () => {
     await api.analyzePaper('p1', { useWeb: false })
     expect(electron.invoke).toHaveBeenLastCalledWith('library:analyzePaper', 'p1', {
       useWeb: false
+    })
+
+    await api.updatePaperMetadata('p1', { doi: '10.1234/manual' })
+    expect(electron.invoke).toHaveBeenLastCalledWith('library:updatePaperMetadata', 'p1', {
+      doi: '10.1234/manual'
     })
 
     await api.removePaper('p1')
