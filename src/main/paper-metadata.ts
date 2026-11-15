@@ -210,8 +210,15 @@ export const mergePaperMetadata = (
 }
 
 const METADATA_SYSTEM_PROMPT = `You extract bibliographic metadata from the first pages of an academic paper.
+The provided text is the primary source; read it first and use it whenever it contains the information.
 Return one JSON object and nothing else. Do not wrap it in Markdown.
 Use null or [] when a field is not clearly present in the text. Never invent a DOI, venue, or author.
+
+If a bibliographic field (venue, venueType, year, doi, authors) is missing or incomplete in the text and your environment supports web search, you may search for the paper's official record.
+When searching, query with the title and author names taken from the paper, and only accept a result that clearly matches this paper; do not attach another paper's metadata.
+If search is unavailable, or no result clearly matches, return null or [] for that field instead of guessing.
+Do not replace the paper's own abstract or keywords with search results; use search only to fill gaps.
+
 Keep the paper's original language for title, abstract, and keywords.
 The "summary" field should be 2-3 sentences in the paper's language and summarize the main contribution.
 

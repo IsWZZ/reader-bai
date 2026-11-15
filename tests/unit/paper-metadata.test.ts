@@ -180,4 +180,13 @@ describe('buildMetadataMessages', () => {
       content: 'Extract the metadata from these paper pages:\n\nPaper text'
     })
   })
+
+  it('only allows web search for missing fields and still forbids guessing', () => {
+    const [system] = buildMetadataMessages('Paper text')
+
+    expect(system.content).toContain('web search')
+    expect(system.content).toContain('only accept a result that clearly matches this paper')
+    expect(system.content).toContain('return null or [] for that field instead of guessing')
+    expect(system.content).toContain('Never invent a DOI, venue, or author')
+  })
 })
