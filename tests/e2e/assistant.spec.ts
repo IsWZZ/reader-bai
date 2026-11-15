@@ -348,10 +348,15 @@ test('switches the model from the panel dropdown and remembers it after relaunch
   let panel = await openAssistant(reader.page)
 
   const select = modelSelect(panel)
-  await expect(select.locator('option')).toHaveCount(2)
-  await expect(select.locator('option')).toHaveText(['model-a', 'model-b'])
-  await select.selectOption('b')
+  await select.click()
+  const options = reader.page.getByRole('option')
+  await expect(options).toHaveCount(2)
+  await expect(options).toHaveText(['model-a', 'model-b'])
+  await reader.page.getByRole('option', { name: 'model-b', exact: true }).click()
 
+  // 等下拉关闭动画结束，避免退场层挡住接下来在阅读区的点击
+  await expect(reader.page.getByRole('option')).toHaveCount(0)
+  await expect(modelSelect(panel)).toHaveText('model-b')
   await expect
     .poll(async () => (await readJsonFile<StoredSettings>(settingsFile()))?.ai.activeId)
     .toBe('b')
@@ -369,7 +374,7 @@ test('switches the model from the panel dropdown and remembers it after relaunch
   reader = await launchReader(userDataDir)
   await openPaper(reader.page, 'Sample Paper')
   panel = await openAssistant(reader.page)
-  await expect(modelSelect(panel)).toHaveValue('b')
+  await expect(modelSelect(panel)).toHaveText('model-b')
   await reader.app.close()
 })
 

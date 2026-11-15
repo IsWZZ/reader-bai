@@ -95,8 +95,29 @@ const mountPanel = (): VueWrapper => {
   return mount(AssistantPanel, { props: { width: 340 } })
 }
 
-const selectModels = (wrapper: VueWrapper): ReturnType<VueWrapper['get']> =>
-  wrapper.get('select[aria-label="选择模型"]')
+const modelSelect = (wrapper: VueWrapper): ReturnType<VueWrapper['get']> =>
+  wrapper.get('[role="combobox"][aria-label="选择模型"]')
+
+const modelOptions = (): string[] =>
+  [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].map(
+    (option) => option.textContent?.trim() ?? ''
+  )
+
+const openModelSelect = async (wrapper: VueWrapper): Promise<void> => {
+  await modelSelect(wrapper).trigger('keydown', { key: 'Enter' })
+  await flushPromises()
+}
+
+const chooseModel = async (wrapper: VueWrapper, label: string): Promise<void> => {
+  await openModelSelect(wrapper)
+  const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (element) => element.textContent?.trim() === label
+  )
+  if (!option) throw new Error(`missing model option: ${label}`)
+  // reka-ui 的 SelectItem 在 pointerup 时提交选择
+  option.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
+  await flushPromises()
+}
 
 describe('AssistantPanel', () => {
   beforeEach(async () => {
@@ -143,7 +164,7 @@ describe('AssistantPanel', () => {
     const wrapper = mountPanel()
 
     expect(wrapper.text()).toContain('请先在设置 → AI 服务中添加并补全配置')
-    expect(wrapper.find('select[aria-label="选择模型"]').exists()).toBe(false)
+    expect(wrapper.find('[role="combobox"][aria-label="选择模型"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -158,9 +179,12 @@ describe('AssistantPanel', () => {
     await useSettingsStore().initialize()
 
     const wrapper = mountPanel()
+    // reka-ui 的 SelectValue 在首次渲染后的下一拍才从已注册选项里取到文案
+    await flushPromises()
 
     expect(wrapper.text()).toContain('所选 AI 服务的 Base URL、API Key 或模型不完整')
-    expect(wrapper.find('select[aria-label="选择模型"]').exists()).toBe(true)
+    expect(wrapper.find('[role="combobox"][aria-label="选择模型"]').exists()).toBe(true)
+    expect(modelSelect(wrapper).text()).toBe('https://api.example.com/v1')
     wrapper.unmount()
   })
 
@@ -188,12 +212,9 @@ describe('AssistantPanel', () => {
     await useSettingsStore().initialize()
 
     const wrapper = mountPanel()
-    const options = selectModels(wrapper).findAll('option')
+    await openModelSelect(wrapper)
 
-    expect(options.map((option) => option.text())).toEqual([
-      'gpt-test',
-      'https://api3.example.com/v1'
-    ])
+    expect(modelOptions()).toEqual(['gpt-test', 'https://api3.example.com/v1'])
     wrapper.unmount()
   })
 
@@ -211,9 +232,9 @@ describe('AssistantPanel', () => {
     await useSettingsStore().initialize()
 
     const wrapper = mountPanel()
-    const options = selectModels(wrapper).findAll('option')
+    await openModelSelect(wrapper)
 
-    expect(options.map((option) => option.text())).toEqual(['gpt-test'])
+    expect(modelOptions()).toEqual(['gpt-test'])
     wrapper.unmount()
   })
 
@@ -232,7 +253,7 @@ describe('AssistantPanel', () => {
 
     const wrapper = mountPanel()
 
-    expect(wrapper.find('select[aria-label="选择模型"]').exists()).toBe(false)
+    expect(wrapper.find('[role="combobox"][aria-label="选择模型"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('所有 AI 配置都已禁用')
     wrapper.unmount()
   })
@@ -241,17 +262,16 @@ describe('AssistantPanel', () => {
     const store = useAssistantStore()
     store.translation = { source: 'Hello', text: '你好', loading: false, error: '' }
     const wrapper = mountPanel()
-    const select = selectModels(wrapper)
-
-    expect((select.element as HTMLSelectElement).value).toBe('a')
-
-    await select.setValue('b')
     await flushPromises()
+
+    expect(modelSelect(wrapper).text()).toBe('gpt-test')
+
+    await chooseModel(wrapper, 'model-b')
 
     expect(updateSettings).toHaveBeenCalledWith({ ai: { activeId: 'b' } })
     expect(useSettingsStore().activeAiProfile?.id).toBe('b')
     expect(store.translation).toBeNull()
-    expect((select.element as HTMLSelectElement).value).toBe('b')
+    expect(modelSelect(wrapper).text()).toBe('model-b')
     wrapper.unmount()
   })
 
@@ -263,12 +283,12 @@ describe('AssistantPanel', () => {
     await wrapper.get('button[aria-label="发送"]').trigger('click')
     await flushPromises()
 
-    expect(selectModels(wrapper).attributes('disabled')).toBeDefined()
+    expect(modelSelect(wrapper).attributes('disabled')).toBeDefined()
 
     await wrapper.get('button[aria-label="停止"]').trigger('click')
     await flushPromises()
 
-    expect(selectModels(wrapper).attributes('disabled')).toBeUndefined()
+    expect(modelSelect(wrapper).attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
@@ -276,10 +296,9 @@ describe('AssistantPanel', () => {
     updateSettings.mockImplementation(() => new Promise<AppSettings>(() => undefined))
     const wrapper = mountPanel()
 
-    await selectModels(wrapper).setValue('b')
-    await flushPromises()
+    await chooseModel(wrapper, 'model-b')
 
-    expect(selectModels(wrapper).attributes('disabled')).toBeDefined()
+    expect(modelSelect(wrapper).attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 

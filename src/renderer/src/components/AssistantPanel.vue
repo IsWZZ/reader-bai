@@ -23,21 +23,24 @@
       v-if="settingsStore.enabledAiProfiles.length > 0"
       class="flex items-center gap-2 border-b px-3 py-2"
     >
-      <select
-        :aria-label="t('assistant.selectModel')"
-        class="border-input focus-visible:ring-ring/50 w-full rounded-md border bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
-        :value="settingsStore.activeAiProfile?.id ?? ''"
+      <Select
+        :model-value="settingsStore.activeAiProfile?.id ?? ''"
         :disabled="store.chatLoading || settingsStore.saving"
-        @change="handleProfileChange"
+        @update:model-value="handleProfileChange"
       >
-        <option
-          v-for="profile in settingsStore.enabledAiProfiles"
-          :key="profile.id"
-          :value="profile.id"
-        >
-          {{ profile.model || profile.baseUrl || t('common.untitledProfile') }}
-        </option>
-      </select>
+        <SelectTrigger :aria-label="t('assistant.selectModel')" size="sm" class="w-full">
+          <SelectValue :placeholder="t('assistant.selectModel')" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem
+            v-for="profile in settingsStore.enabledAiProfiles"
+            :key="profile.id"
+            :value="profile.id"
+          >
+            {{ profile.model || profile.baseUrl || t('common.untitledProfile') }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
       <label
         class="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap"
         :title="t('assistant.toolsTitle')"
@@ -178,6 +181,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { Button } from '@renderer/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@renderer/components/ui/select'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { useAssistantStore, type ChatEntry } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
@@ -195,10 +205,9 @@ const listRef = ref<HTMLDivElement | null>(null)
 
 const translation = computed(() => store.translation)
 
-const handleProfileChange = (event: Event): void => {
-  const id = (event.target as HTMLSelectElement).value
-  if (!id || id === settingsStore.activeAiProfile?.id) return
-  void settingsStore.setActiveAiProfile(id)
+const handleProfileChange = (value: unknown): void => {
+  if (typeof value !== 'string' || !value || value === settingsStore.activeAiProfile?.id) return
+  void settingsStore.setActiveAiProfile(value)
 }
 
 const handleAgentModeChange = (event: Event): void => {
