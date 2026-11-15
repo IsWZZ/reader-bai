@@ -80,6 +80,63 @@ test('zooms in, resets to fit width, and clamps at the minimum', async () => {
   await reader.app.close()
 })
 
+test('navigates the paper by page number and previous/next buttons', async () => {
+  const pdfPath = join(userDataDir, 'multi-page.pdf')
+  await writeSamplePdf(pdfPath, undefined, 3)
+  await seedLibrary(userDataDir, {
+    papers: [{ id: 'paper-1', title: 'Multi Page Paper', path: pdfPath, titleSource: 'user' }]
+  })
+
+  const reader = await launchReader(userDataDir)
+  await openPaper(reader.page, 'Multi Page Paper')
+
+  const pageInput = reader.page.getByRole('textbox', { name: '页码' })
+  const previous = reader.page.getByRole('button', { name: '上一页' })
+  const next = reader.page.getByRole('button', { name: '下一页' })
+
+  await expect(pageInput).toHaveValue('1')
+  await expect(previous).toBeDisabled()
+  await expect(next).toBeEnabled()
+
+  // 输入页码后回车跳页
+  await pageInput.fill('3')
+  await pageInput.press('Enter')
+  await expect(pageInput).toHaveValue('3')
+  await expect(reader.page.locator('[data-page="3"] canvas')).toBeVisible()
+  await expect(next).toBeDisabled()
+
+  // 上一页按钮逐页回退
+  await previous.click()
+  await expect(pageInput).toHaveValue('2')
+  await expect(reader.page.locator('[data-page="2"] canvas')).toBeVisible()
+
+  await next.click()
+  await expect(pageInput).toHaveValue('3')
+
+  // 手动滚回顶部时，当前页码跟随可视区域变化
+  await reader.page.locator('[data-page="1"]').evaluate((element) => {
+    const container = element.parentElement?.parentElement
+    if (container) container.scrollTop = 0
+  })
+  await expect(pageInput).toHaveValue('1')
+
+  // 越界和非法输入夹到有效范围
+  await pageInput.fill('99')
+  await pageInput.press('Enter')
+  await expect(pageInput).toHaveValue('3')
+
+  await pageInput.fill('0')
+  await pageInput.press('Enter')
+  await expect(pageInput).toHaveValue('1')
+  await expect(previous).toBeDisabled()
+
+  await pageInput.fill('abc')
+  await pageInput.press('Enter')
+  await expect(pageInput).toHaveValue('1')
+
+  await reader.app.close()
+})
+
 test('highlights a selected word, persists it, and removes it', async () => {
   const pdfPath = await seedPaper()
   const reader = await launchReader(userDataDir)

@@ -17,6 +17,13 @@
 - 每处 `await` 之后都要检查 `currentGeneration === generation`，避免切换论文/缩放后旧任务覆盖新状态。新增异步步骤时保持这个模式。
 - `renderedWidths` 记录每页最近渲染宽度，宽度没变就跳过重复渲染。
 
+## 页码导航
+
+- 工具栏左侧是「上一页 / 页码输入框 / 下一页」。输入页码后回车或失焦跳页；越界值夹到 `1..pageCount`，非数字输入恢复为当前页。
+- 跳页直接设置滚动容器的 `scrollTop`（保留 `p-4` 的 16px 顶部留白），不调用 `scrollIntoView`，避免影响外层布局。
+- 当前页由独立的 `IntersectionObserver` 判断：`root` 为滚动容器，`rootMargin: '-50% 0px -50% 0px'` 把观察区域收缩到垂直中线，只有覆盖中线的页会成为当前页。**不要改成 scroll 监听**，懒渲染已经依赖 IntersectionObserver。
+- 切换论文或重新加载时重置为第 1 页；按钮在首页/末页和加载中禁用。
+
 ## 缩放与布局
 
 - `zoom = 1` 表示适应容器宽度；范围 0.5–3，步进 1.2。实际页宽 = `availableWidth * zoom`。

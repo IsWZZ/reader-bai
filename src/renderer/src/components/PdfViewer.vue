@@ -8,6 +8,55 @@
             <Button
               variant="ghost"
               size="icon-sm"
+              :aria-label="t('pdf.previousPage')"
+              :disabled="pageCount === 0 || loading || currentPage <= 1"
+              @mousedown.prevent
+              @click="stepPage(-1)"
+            >
+              <ChevronLeft class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ t('pdf.previousPage') }}</TooltipContent>
+        </Tooltip>
+        <Input
+          v-model="pageInput"
+          class="h-7 w-11 px-1 text-center text-xs tabular-nums"
+          inputmode="numeric"
+          :aria-label="t('pdf.pageNumber')"
+          :disabled="pageCount === 0 || loading"
+          @focus="selectPageInput"
+          @keydown.enter.prevent="commitPageInput"
+          @blur="commitPageInput"
+        />
+        <span class="min-w-8 text-xs tabular-nums text-muted-foreground" aria-hidden="true">
+          / {{ pageCount || '–' }}
+        </span>
+        <span class="sr-only" aria-live="polite">
+          {{ t('pdf.pageOf', { total: pageCount }) }}
+        </span>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              :aria-label="t('pdf.nextPage')"
+              :disabled="pageCount === 0 || loading || currentPage >= pageCount"
+              @mousedown.prevent
+              @click="stepPage(1)"
+            >
+              <ChevronRight class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ t('pdf.nextPage') }}</TooltipContent>
+        </Tooltip>
+
+        <Separator orientation="vertical" class="mx-1 h-5" />
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               :aria-label="t('pdf.zoomOut')"
               :disabled="zoom <= MIN_ZOOM"
               @click="stepZoom(-1)"
@@ -153,6 +202,7 @@ import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from 'pdfj
 import { t } from '@renderer/lib/i18n'
 import { pdfjsLib } from '@renderer/lib/pdf'
 import { Button } from '@renderer/components/ui/button'
+import { Input } from '@renderer/components/ui/input'
 import { Separator } from '@renderer/components/ui/separator'
 import {
   Tooltip,
@@ -160,11 +210,22 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from '@renderer/components/ui/tooltip'
-import { Eraser, Highlighter, Scan, Underline, ZoomIn, ZoomOut } from 'lucide-vue-next'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eraser,
+  Highlighter,
+  Scan,
+  Underline,
+  ZoomIn,
+  ZoomOut
+} from 'lucide-vue-next'
 
 const MIN_ZOOM = 0.5
 const MAX_ZOOM = 3
 const ZOOM_STEP = 1.2
+// 页面容器 p-4 的顶部内边距；跳页后保留同样的留白
+const PAGE_GAP = 16
 
 // 与主进程/ preload 中的注释结构保持一致
 interface AnnotationRect {
@@ -198,6 +259,10 @@ const containerRef = ref<HTMLDivElement | null>(null)
 const pageCount = ref(0)
 const loading = ref(false)
 const error = ref<string | null>(null)
+
+// 当前阅读页与页码输入框的草稿值
+const currentPage = ref(1)
+const pageInput = ref('1')
 
 // 缩放倍率，1 表示适应容器宽度
 const zoom = ref(1)
@@ -513,6 +578,10 @@ const loadDocument = async (): Promise<void> => {
   loading.value = true
   error.value = null
   pageCount.value = 0
+  currentPage.value = 1
+  pageInput.value = '1'
+  centeredPages.clear()
+  pagePositionObserver?.disconnect()
   pendingSelection.value = null
   annotations.value = []
   pageSizes.clear()
@@ -578,6 +647,7 @@ const loadDocument = async (): Promise<void> => {
       applyCanvasSize(pageNumber, canvas)
     }
     setupObserver()
+    setupPagePositionObserver()
     renderVisiblePages(doc, currentGeneration)
   } catch (err) {
     // 过期请求的报错（如 Transport destroyed）不应影响当前论文
@@ -585,6 +655,82 @@ const loadDocument = async (): Promise<void> => {
     console.error('加载 PDF 失败:', err)
     error.value = err instanceof Error ? err.message : t('pdf.loadFailed')
     loading.value = false
+  }
+}
+
+// ---------- 页码导航 ----------
+
+watch(currentPage, (page) => {
+  pageInput.value = String(page)
+})
+
+// 跳到指定页：越界值夹到 1..pageCount，滚动容器保留 16px 顶部留白
+const goToPage = (pageNumber: number): void => {
+  const total = pageCount.value
+  if (!total || loading.value) return
+  if (!Number.isFinite(pageNumber)) {
+    pageInput.value = String(currentPage.value)
+    return
+  }
+
+  const target = Math.min(total, Math.max(1, Math.trunc(pageNumber)))
+  currentPage.value = target
+  pageInput.value = String(target)
+
+  const container = containerRef.value
+  const pageElement = container?.querySelector<HTMLElement>(`[data-page="${target}"]`)
+  if (!container || !pageElement) return
+  const offset =
+    pageElement.getBoundingClientRect().top -
+    container.getBoundingClientRect().top +
+    container.scrollTop -
+    PAGE_GAP
+  container.scrollTop = Math.max(0, offset)
+}
+
+const commitPageInput = (): void => {
+  goToPage(Number.parseInt(pageInput.value, 10))
+}
+
+const stepPage = (delta: number): void => {
+  goToPage(currentPage.value + delta)
+}
+
+const selectPageInput = (event: FocusEvent): void => {
+  if (event.target instanceof HTMLInputElement) event.target.select()
+}
+
+let pagePositionObserver: IntersectionObserver | null = null
+const centeredPages = new Set<number>()
+
+// 滚动时用垂直中线判断当前页：只观察页面与中线的交叉，
+// 不新增 scroll 监听，避免和懒渲染抢滚动事件。
+const setupPagePositionObserver = (): void => {
+  pagePositionObserver?.disconnect()
+  centeredPages.clear()
+  const container = containerRef.value
+  if (!container) return
+
+  pagePositionObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const pageNumber = Number((entry.target as HTMLElement).dataset.page)
+        if (!pageNumber) continue
+        if (entry.isIntersecting) {
+          centeredPages.add(pageNumber)
+        } else {
+          centeredPages.delete(pageNumber)
+        }
+      }
+      if (centeredPages.size > 0) {
+        currentPage.value = Math.min(...centeredPages)
+      }
+    },
+    { root: container, rootMargin: '-50% 0px -50% 0px' }
+  )
+  for (const canvas of canvasRefs.values()) {
+    const pageElement = canvas.closest<HTMLElement>('[data-page]')
+    if (pageElement) pagePositionObserver.observe(pageElement)
   }
 }
 
@@ -1285,6 +1431,7 @@ onBeforeUnmount(() => {
   generation += 1
   resizeObserver.disconnect()
   intersectionObserver?.disconnect()
+  pagePositionObserver?.disconnect()
   document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('mouseup', handleMouseUp)
   document.removeEventListener('dblclick', handleDoubleClick)

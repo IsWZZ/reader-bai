@@ -61,18 +61,40 @@ export async function readJsonFile<T>(path: string): Promise<T | null> {
  * 对象偏移量按实际字节计算，确保 pdf.js 能正常解析。
  * 传入 metadataTitle 时会写入 /Info /Title，用于验证元数据标题回填。
  */
-export async function writeSamplePdf(path: string, metadataTitle?: string): Promise<void> {
-  const content = 'BT /F1 18 Tf 40 100 Td (Hello reader-bai) Tj ET'
+export async function writeSamplePdf(
+  path: string,
+  metadataTitle?: string,
+  pageCount = 1
+): Promise<void> {
+  const pages = Math.max(1, Math.trunc(pageCount))
+  // 1：Catalog，2：Pages，3..：每页 Page 对象，其后是各页 Contents 和共享的 Font
+  const pageIds = Array.from({ length: pages }, (_, index) => 3 + index)
+  const contentIds = Array.from({ length: pages }, (_, index) => 3 + pages + index)
+  const fontId = 3 + pages * 2
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
-    `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages} >>`
   ]
+  for (const contentId of contentIds) {
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`
+    )
+  }
+  for (const [index] of contentIds.entries()) {
+    // 第一页保持原有文案，既有选词测试的坐标不会偏移
+    const text = index === 0 ? 'Hello reader-bai' : `Page ${index + 1} Hello reader-bai`
+    const content = `BT /F1 18 Tf 40 100 Td (${text}) Tj ET`
+    objects.push(
+      `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`
+    )
+  }
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+
+  let infoId = 0
   if (metadataTitle) {
     const escaped = metadataTitle.replace(/[\\()]/g, '\\$&')
     objects.push(`<< /Title (${escaped}) /Producer (reader-bai e2e) >>`)
+    infoId = objects.length
   }
 
   let pdf = '%PDF-1.4\n'
@@ -86,7 +108,7 @@ export async function writeSamplePdf(path: string, metadataTitle?: string): Prom
   for (const offset of offsets) {
     pdf += `${offset.toString().padStart(10, '0')} 00000 n \n`
   }
-  const infoReference = metadataTitle ? ' /Info 6 0 R' : ''
+  const infoReference = infoId ? ` /Info ${infoId} 0 R` : ''
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R${infoReference} >>\nstartxref\n${xrefOffset}\n%%EOF\n`
 
   await writeFile(path, Buffer.from(pdf, 'latin1'))
