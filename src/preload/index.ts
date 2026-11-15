@@ -27,11 +27,6 @@ type AppTheme = 'light' | 'dark'
 /** BCP 47 风格的语言标签；支持的语言列表由渲染进程维护 */
 type AppLanguage = string
 
-interface UninstallResult {
-  /** 用户在原生确认框中取消 */
-  canceled: boolean
-}
-
 /** 接口协议：openai 走 /chat/completions，anthropic 走 /v1/messages */
 type AiProvider = 'openai' | 'anthropic'
 
@@ -213,7 +208,7 @@ const api = {
   updateSettings: (patch: SettingsPatch): Promise<AppSettings> =>
     ipcRenderer.invoke('settings:update', patch),
   clearCache: (): Promise<void> => ipcRenderer.invoke('cache:clear'),
-  uninstallApp: (): Promise<UninstallResult> => ipcRenderer.invoke('app:uninstall'),
+  uninstallApp: (): Promise<void> => ipcRenderer.invoke('app:uninstall'),
   chat: (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> =>
     ipcRenderer.invoke('ai:chat', requestId, messages, profileId),
   abortChat: (requestId: string): void => {

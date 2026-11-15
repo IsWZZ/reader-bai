@@ -2,14 +2,7 @@ import { mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  buildUninstallDialogDetail,
-  buildUninstallDialogOptions,
-  clearAppData,
-  managedPaperFiles,
-  UNINSTALL_DIALOG_MESSAGE,
-  UNINSTALL_DIALOG_TITLE
-} from '../../src/main/app-data'
+import { clearAppData, managedPaperFiles } from '../../src/main/app-data'
 
 let root: string
 let dataRoot: string
@@ -99,30 +92,5 @@ describe('clearAppData', () => {
     await rm(dataRoot, { recursive: true, force: true })
 
     await expect(clearAppData({ dataRoot, libraryDirectory, paperPaths: [] })).resolves.toBe(0)
-  })
-})
-
-describe('uninstall confirmation', () => {
-  const summary = { paperCount: 3, libraryDirectory: '/home/user/papers' }
-
-  it('warns that local papers, annotations, settings and keys will be deleted', () => {
-    const detail = buildUninstallDialogDetail(summary)
-
-    expect(detail).toContain('本地保存的论文副本（当前 3 篇）')
-    expect(detail).toContain('标注、设置、API Key 和插件')
-    expect(detail).toContain('/home/user/papers')
-    expect(detail).toContain('导入前的原始 PDF 不会被删除')
-    expect(detail).toContain('不可撤销')
-  })
-
-  it('defaults to canceling the dialog', () => {
-    const options = buildUninstallDialogOptions(summary)
-
-    expect(options.type).toBe('warning')
-    expect(options.buttons).toEqual(['取消', '卸载并清除'])
-    expect(options.defaultId).toBe(0)
-    expect(options.cancelId).toBe(0)
-    expect(options.title).toBe(UNINSTALL_DIALOG_TITLE)
-    expect(options.message).toBe(UNINSTALL_DIALOG_MESSAGE)
   })
 })

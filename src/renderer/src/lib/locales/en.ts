@@ -55,6 +55,10 @@ export const en = {
   'settings.uninstall.working': 'Deleting…',
   'settings.uninstall.error.unavailable': 'Uninstalling is not available in this environment',
   'settings.uninstall.error.failed': 'Could not uninstall the app. Please try again',
+  'settings.uninstall.confirm.title': 'Uninstall and delete data',
+  'settings.uninstall.confirm.description':
+    'This permanently deletes local paper copies, all annotations, settings, API keys and plugins. Original PDFs are kept. The app will quit when finished, and this cannot be undone.',
+  'settings.uninstall.confirm.action': 'Uninstall and delete',
   'settings.ai.title': 'AI Services',
   'settings.ai.description':
     'Save multiple AI service configurations and pick one from the assistant panel. OpenAI-compatible and Anthropic Messages APIs are supported.',

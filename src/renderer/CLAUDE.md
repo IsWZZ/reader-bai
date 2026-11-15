@@ -82,7 +82,7 @@ src/renderer/src/
 - `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：基础设置（外观、语言、导入解析开关）、存储、AI 配置、插件和卸载分区；默认打开「基础设置」，调用方可用 `initialSection` 指定分区。
 - `Home.vue` 持有设置弹窗的打开状态和分区；`ActivityBar.vue` 只发出 `openSettings`。没有可用 AI 配置时，点击活动栏的辅助面板按钮或论文库的「AI 解析」会让 Home 直接打开 AI 分区，不打开无法工作的面板，也不发起解析。
 - 「存储」分区上方管理论文库目录，下方通过 `window.api.clearCache()` 清理 Electron 的 HTTP、代码和 DNS 缓存；只展示成功/失败状态，不要在渲染进程推断文件系统缓存。
-- 「卸载」是独立分区（不放在存储里）：分区内只保留标题和操作按钮，删除范围只在点击后的原生确认框里提示。点击后调用 `window.api.uninstallApp()`，由主进程弹出原生确认框并说明本地论文会被删除；不要在渲染进程自行确认或直接调用文件操作。确认成功后主进程退出，取消则恢复按钮。
+- 「卸载」是独立分区（不放在存储里）：分区内只保留标题和操作按钮，删除范围只在点击后的 AlertDialog 确认框里提示。确认框用 shadcn-vue 的 `AlertDialog`（取消在前、默认焦点在取消），文案必须明确说明本地论文副本、标注、设置、API Key 和插件会被删除，导入前的原始 PDF 保留。只有用户确认后才调用 `window.api.uninstallApp()`；成功后主进程退出，取消则关闭弹窗、按钮恢复可用。
 - AI 配置表单先选接口类型（`openai` / `anthropic`），再填 Base URL、模型和 Key；保存时必须把 `provider` 一起回传，否则主进程沿用该 id 原有的协议。
 - 每份 AI 配置都有 `enabled` 状态，可在设置页禁用/启用；编辑时保留原状态。禁用配置不能设为当前模型，`activeAiProfile`、`enabledAiProfiles`、`isAiConfigured` 和助手面板的模型下拉都只考虑启用配置。主进程仍会在 `ai-request` 边界拒绝禁用配置。
 - Base URL 校验与主进程一致：默认 HTTPS，仅 `localhost` / `127.0.0.1` / `[::1]` 可用 HTTP；新增配置必须有 Key。

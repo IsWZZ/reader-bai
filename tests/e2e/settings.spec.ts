@@ -478,16 +478,20 @@ test('deletes local papers only after confirming uninstall', async () => {
   const dialog = await openSettings(reader.page)
   await dialog.getByRole('button', { name: '卸载' }).click()
 
-  // 默认按钮是取消：论文和书库都保留
-  await stubMessageBox(reader.app, 0)
+  // 取消确认：论文和书库都保留
+  const confirmDialog = reader.page.getByRole('alertdialog')
   await dialog.getByRole('button', { name: '卸载并清除数据' }).click()
+  await expect(confirmDialog).toBeVisible()
+  await confirmDialog.getByRole('button', { name: '取消' }).click()
+  await expect(confirmDialog).toBeHidden()
   await expect(access(paperPath)).resolves.toBeUndefined()
   await expect(access(join(userDataDir, 'Userdata', 'library.json'))).resolves.toBeUndefined()
   await expect(dialog.getByRole('button', { name: '卸载并清除数据' })).toBeEnabled()
 
   // 明确确认后删除论文和全部应用数据，并退出应用
-  await stubMessageBox(reader.app, 1)
   await dialog.getByRole('button', { name: '卸载并清除数据' }).click()
+  await expect(confirmDialog).toBeVisible()
+  await confirmDialog.getByRole('button', { name: '卸载并清除' }).click()
 
   const exists = async (path: string): Promise<boolean> => {
     try {

@@ -63,7 +63,7 @@ const getSettings = vi.fn<() => Promise<AppSettings>>()
 const updateSettings = vi.fn<(patch: SettingsPatch) => Promise<AppSettings>>()
 const chooseDirectory = vi.fn<() => Promise<string | null>>()
 const clearCache = vi.fn<() => Promise<void>>()
-const uninstallApp = vi.fn<() => Promise<{ canceled: boolean }>>()
+const uninstallApp = vi.fn<() => Promise<void>>()
 
 const installSettings = (settings: AppSettings): void => {
   current = structuredClone(settings)
@@ -138,7 +138,7 @@ describe('SettingsDialog', () => {
     clearCache.mockReset()
     clearCache.mockResolvedValue(undefined)
     uninstallApp.mockReset()
-    uninstallApp.mockResolvedValue({ canceled: true })
+    uninstallApp.mockResolvedValue(undefined)
     installSettings(BASE_SETTINGS)
     updateSettings.mockImplementation(async (patch) => {
       // 模拟主进程：没带 apiKey 的配置保留已保存的 Key
@@ -725,31 +725,44 @@ describe('SettingsDialog', () => {
     wrapper.unmount()
   })
 
-  it('runs uninstall only through the main-process confirmation', async () => {
+  it('asks for confirmation before uninstalling', async () => {
     const wrapper = await mountDialog()
     await openUninstallSection()
 
     expect(document.body.textContent).toContain('卸载应用')
-    // 删除范围只在点击后的原生确认框里提示，设置页不再重复说明
+    // 删除范围在确认弹窗里提示，设置分区本身不重复说明
     expect(document.body.textContent).not.toContain('清除本机保存的全部应用数据')
-    expect(document.body.textContent).not.toContain('本地论文副本、标注')
 
     await findButton('卸载并清除数据').trigger('click')
     await flushPromises()
 
-    // 确认由主进程原生弹窗负责；渲染进程只调用窄接口
-    expect(uninstallApp).toHaveBeenCalledTimes(1)
-    // 用户取消后恢复按钮
+    // 未确认前不调用卸载接口，并说明删除范围
+    expect(uninstallApp).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('导入前的原始 PDF 不会被删除')
+    expect(document.body.textContent).toContain('无法撤销')
+
+    // 取消后保留数据，按钮恢复可用
+    await findButton('取消').trigger('click')
+    await flushPromises()
+    expect(uninstallApp).not.toHaveBeenCalled()
     expect(findButton('卸载并清除数据').attributes('disabled')).toBeUndefined()
+
+    // 明确确认后才调用卸载接口
+    await findButton('卸载并清除数据').trigger('click')
+    await flushPromises()
+    await findButton('卸载并清除').trigger('click')
+    await flushPromises()
+    expect(uninstallApp).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
   it('keeps the uninstall button disabled after the user confirms', async () => {
-    uninstallApp.mockResolvedValueOnce({ canceled: false })
     const wrapper = await mountDialog()
     await openUninstallSection()
 
     await findButton('卸载并清除数据').trigger('click')
+    await flushPromises()
+    await findButton('卸载并清除').trigger('click')
     await flushPromises()
 
     expect(document.body.textContent).toContain('正在清除…')
@@ -763,6 +776,8 @@ describe('SettingsDialog', () => {
     await openUninstallSection()
 
     await findButton('卸载并清除数据').trigger('click')
+    await flushPromises()
+    await findButton('卸载并清除').trigger('click')
     await flushPromises()
 
     expect(document.body.textContent).toContain('无法删除论文文件')
@@ -779,6 +794,7 @@ describe('SettingsDialog', () => {
     await flushPromises()
 
     expect(document.body.textContent).toContain('当前环境无法卸载应用')
+    expect(() => findButton('卸载并清除')).toThrow()
     expect(uninstallApp).not.toHaveBeenCalled()
     wrapper.unmount()
   })

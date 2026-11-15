@@ -21,14 +21,14 @@
   - `annotations:list/add/remove`
   - `settings:get/update`
   - `cache:clear`：清理 Electron 的 HTTP、代码和 DNS 缓存，不碰 Cookie、书库或设置
-  - `app:uninstall`：原生确认后删除本地论文副本、`userData/Userdata` 和会话数据并退出；导入前的原始 PDF 保留
+  - `app:uninstall`：删除本地论文副本、`userData/Userdata` 和会话数据并退出；导入前的原始 PDF 保留。确认弹窗在渲染进程的卸载分区，主进程收到调用后直接执行
   - `ai:chat`、`ai:abort`、`ai:chunk`
   - `agent:start/cancel`，以及主进程推送的 `agent:event`
   - `tools:list/execute`
   - `plugins:list/runtime/setEnabled`，以及主进程推送的 `plugins:runtime-changed`
 - 文件访问只允许书库中已登记的路径；导入只接受系统对话框的结果；`library.directory` 只接受绝对路径或空字符串（默认 `userData/Userdata/papers`）。
 - 应用数据统一放在 `userData/Userdata`，与 Electron/Chromium 在 `userData` 根目录生成的缓存和配置分开；路径由 [user-data.ts](user-data.ts) 统一生成，启动时只负责创建目录。
-- `app:uninstall` 的清理逻辑在 [app-data.ts](app-data.ts)：只删除当前论文库目录内已登记的普通论文文件，再递归删除 `userData/Userdata`；自定义论文库目录本身、目录里的其他文件和符号链接都不动。确认框默认「取消」，文案必须明确提示本地论文会被删除。
+- `app:uninstall` 的清理逻辑在 [app-data.ts](app-data.ts)：只删除当前论文库目录内已登记的普通论文文件，再递归删除 `userData/Userdata`；自定义论文库目录本身、目录里的其他文件和符号链接都不动。删除前的确认由渲染进程的卸载分区负责，主进程不再弹原生确认框。
 - 数据文件（`userData/Userdata` 下）：
   - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；论文可带 `metadata`（作者、期刊/会议、年份、DOI、摘要、关键词等），读取时同样逐字段清洗。移除论文/空间不删除 PDF，但移除论文时要同步清空该论文在 `annotations.json` 中的标注。
   - 书库的写入统一走 `library.mutate` 串行读改写；导入、重命名和 AI 解析可能并发，直接 `read` + `write` 会互相覆盖。

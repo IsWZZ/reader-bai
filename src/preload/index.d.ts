@@ -287,11 +287,6 @@ declare global {
     }
   }
 
-  interface UninstallResult {
-    /** 用户在原生确认框中取消 */
-    canceled: boolean
-  }
-
   interface Api {
     importPaper: (spaceId?: string | null) => Promise<PaperInfo | null>
     /** 选择论文库存储目录；取消时返回 null */
@@ -315,8 +310,8 @@ declare global {
     updateSettings: (patch: SettingsPatch) => Promise<AppSettings>
     /** 清理 Electron 的 HTTP、代码和 DNS 缓存；不影响书库、标注或设置 */
     clearCache: () => Promise<void>
-    /** 卸载应用：原生确认后删除本地论文、标注、设置、API Key 和插件并退出 */
-    uninstallApp: () => Promise<UninstallResult>
+    /** 卸载应用：删除本地论文、标注、设置、API Key 和插件并退出；调用方负责先确认 */
+    uninstallApp: () => Promise<void>
     /** 单次流式对话（翻译），返回完整文本；增量通过 onAiChunk 推送 */
     chat: (requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>
     /** 中止指定请求 */

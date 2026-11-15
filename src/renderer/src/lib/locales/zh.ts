@@ -51,6 +51,10 @@ export const zh = {
   'settings.uninstall.working': '正在清除…',
   'settings.uninstall.error.unavailable': '当前环境无法卸载应用',
   'settings.uninstall.error.failed': '卸载失败，请稍后重试',
+  'settings.uninstall.confirm.title': '卸载并清除数据',
+  'settings.uninstall.confirm.description':
+    '这会永久删除本机保存的论文副本、全部标注、设置、API Key 和插件。导入前的原始 PDF 不会被删除；完成后应用将退出，且无法撤销。',
+  'settings.uninstall.confirm.action': '卸载并清除',
   'settings.ai.title': 'AI 服务',
   'settings.ai.description':
     '保存多份 AI 服务配置，在辅助面板的下拉中选择使用哪一个；支持 OpenAI 兼容接口和 Anthropic Messages API。',

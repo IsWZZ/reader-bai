@@ -212,7 +212,7 @@
                 variant="destructive"
                 size="sm"
                 :disabled="uninstalling"
-                @click="uninstallApp"
+                @click="openUninstallConfirm"
               >
                 {{
                   uninstalling ? t('settings.uninstall.working') : t('settings.uninstall.action')
@@ -433,11 +433,41 @@
       </div>
     </DialogContent>
   </Dialog>
+
+  <AlertDialog :open="confirmUninstallOpen" @update:open="confirmUninstallOpen = $event">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>{{ t('settings.uninstall.confirm.title') }}</AlertDialogTitle>
+        <AlertDialogDescription>
+          {{ t('settings.uninstall.confirm.description') }}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>{{ t('common.cancel') }}</AlertDialogCancel>
+        <AlertDialogAction
+          class="bg-destructive text-white hover:bg-destructive/90"
+          @click="uninstallApp"
+        >
+          {{ t('settings.uninstall.confirm.action') }}
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AiProfile, AiProfilePatch, AiProvider, AppTheme } from '@renderer/types'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@renderer/components/ui/alert-dialog'
 import { Button } from '@renderer/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Input } from '@renderer/components/ui/input'
@@ -493,12 +523,14 @@ const baseUrlPlaceholder = computed(() => defaultBaseUrl(provider.value))
 const modelPlaceholder = computed(() => DEFAULT_AI_MODEL)
 
 const activeSection = ref<SectionId>('basic')
+const confirmUninstallOpen = ref(false)
 
 // 打开时跳到指定分区；调用方未指定时仍从基础设置开始
 watch(
   () => [props.open, props.initialSection] as const,
   ([open]) => {
     if (open) activeSection.value = props.initialSection ?? 'basic'
+    else confirmUninstallOpen.value = false
   },
   { immediate: true }
 )
@@ -663,9 +695,19 @@ const clearCache = async (): Promise<void> => {
   }
 }
 
+const openUninstallConfirm = (): void => {
+  uninstallError.value = ''
+  if (!window.api?.uninstallApp) {
+    uninstallError.value = t('settings.uninstall.error.unavailable')
+    return
+  }
+  confirmUninstallOpen.value = true
+}
+
 const uninstallApp = async (): Promise<void> => {
   if (uninstalling.value) return
   uninstallError.value = ''
+  confirmUninstallOpen.value = false
   const api = window.api
   if (!api?.uninstallApp) {
     uninstallError.value = t('settings.uninstall.error.unavailable')
@@ -674,9 +716,8 @@ const uninstallApp = async (): Promise<void> => {
 
   uninstalling.value = true
   try {
-    const result = await api.uninstallApp()
-    // 用户取消时恢复按钮；确认后主进程会退出应用
-    if (result.canceled) uninstalling.value = false
+    await api.uninstallApp()
+    // 清除成功后主进程会退出应用，按钮保持禁用
   } catch (e) {
     uninstalling.value = false
     uninstallError.value = e instanceof Error ? e.message : t('settings.uninstall.error.failed')
