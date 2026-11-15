@@ -200,7 +200,7 @@ describe('SettingsDialog', () => {
     expect(findButton('深色')).toBeDefined()
     expect(findButton('中文')).toBeDefined()
     expect(findButton('English')).toBeDefined()
-    expect(document.body.textContent).toContain('界面语言')
+    expect(document.body.querySelector('[role="group"][aria-label="界面语言"]')).not.toBeNull()
     expect(document.body.textContent).toContain('导入时解析论文信息')
     wrapper.unmount()
   })
@@ -227,7 +227,6 @@ describe('SettingsDialog', () => {
   it('opens the section requested by the caller', async () => {
     const wrapper = await mountDialog('ai')
 
-    expect(document.body.textContent).toContain('还没有配置，点击「新增模型」开始。')
     expect(findButton('新增模型')).toBeDefined()
     wrapper.unmount()
   })
@@ -270,7 +269,7 @@ describe('SettingsDialog', () => {
     // 整个设置界面切换为英文
     expect(findButton('General')).toBeDefined()
     expect(findButton('Storage')).toBeDefined()
-    expect(document.body.textContent).toContain('Choose the interface language')
+    expect(document.body.textContent).toContain('Appearance')
     expect(document.body.textContent).toContain('Settings')
     wrapper.unmount()
   })
@@ -309,7 +308,6 @@ describe('SettingsDialog', () => {
     const wrapper = await mountDialog()
     await openAiSection()
 
-    expect(document.body.textContent).toContain('还没有配置，点击「新增模型」开始。')
     expect(hasInput('#ai-base-url')).toBe(false)
     expect(findButton('新增模型')).toBeDefined()
 
@@ -356,15 +354,16 @@ describe('SettingsDialog', () => {
     await openAiSection()
     await findButton('新增模型').trigger('click')
 
-    // 默认是 OpenAI 兼容接口
+    // 默认是 DeepSeek 的 OpenAI 兼容接口
     expect(findButton('OpenAI 兼容').attributes('aria-pressed')).toBe('true')
-    expect(findInput('#ai-base-url').attributes('placeholder')).toBe('https://api.openai.com/v1')
+    expect(findInput('#ai-base-url').element.value).toBe('https://api.deepseek.com')
+    expect(findInput('#ai-model').element.value).toBe('deepseek-flash')
 
     await findButton('Anthropic').trigger('click')
 
     expect(findButton('Anthropic').attributes('aria-pressed')).toBe('true')
-    expect(findInput('#ai-base-url').attributes('placeholder')).toBe('https://api.anthropic.com')
-    expect(findInput('#ai-model').attributes('placeholder')).toBe('claude-sonnet-5-5')
+    expect(findInput('#ai-base-url').element.value).toBe('https://api.deepseek.com/anthropic')
+    expect(findInput('#ai-model').element.value).toBe('deepseek-flash')
 
     await fillProfile({
       baseUrl: 'https://api.anthropic.com/',
@@ -516,6 +515,18 @@ describe('SettingsDialog', () => {
     wrapper.unmount()
   })
 
+  it('keeps a custom base URL when switching provider in a new profile', async () => {
+    const wrapper = await mountDialog()
+    await openAiSection()
+    await findButton('新增模型').trigger('click')
+
+    await findInput('#ai-base-url').setValue('https://example.com/v1')
+    await findButton('Anthropic').trigger('click')
+
+    expect(findInput('#ai-base-url').element.value).toBe('https://example.com/v1')
+    wrapper.unmount()
+  })
+
   it('requires an API key when creating a new profile', async () => {
     const wrapper = await mountDialog()
     await openAiSection()
@@ -615,7 +626,6 @@ describe('SettingsDialog', () => {
 
     const patch = updateSettings.mock.calls[0][0]
     expect(patch.ai).toEqual({ profiles: [], activeId: '' })
-    expect(document.body.textContent).toContain('还没有配置，点击「新增模型」开始。')
     expect(hasInput('#ai-base-url')).toBe(false)
     expect(findButton('新增模型')).toBeDefined()
     wrapper.unmount()
@@ -715,14 +725,14 @@ describe('SettingsDialog', () => {
     wrapper.unmount()
   })
 
-  it('warns that uninstalling deletes local papers before it runs', async () => {
+  it('runs uninstall only through the main-process confirmation', async () => {
     const wrapper = await mountDialog()
     await openUninstallSection()
 
     expect(document.body.textContent).toContain('卸载应用')
-    expect(document.body.textContent).toContain(
-      '本地论文副本、标注、设置、API Key 和插件都会被永久删除；导入前的原始 PDF 不会被删除。'
-    )
+    // 删除范围只在点击后的原生确认框里提示，设置页不再重复说明
+    expect(document.body.textContent).not.toContain('清除本机保存的全部应用数据')
+    expect(document.body.textContent).not.toContain('本地论文副本、标注')
 
     await findButton('卸载并清除数据').trigger('click')
     await flushPromises()

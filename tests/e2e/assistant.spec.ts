@@ -270,7 +270,7 @@ test('opens AI settings when the assistant is used without a configured profile'
 
   const dialog = reader.page.getByRole('dialog', { name: '设置' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText('还没有配置，点击「新增模型」开始。')
+  await expect(dialog.getByRole('button', { name: '新增模型' })).toBeVisible()
   expect(await reader.page.locator('aside[aria-label="辅助面板"]').count()).toBe(0)
 
   await reader.app.close()

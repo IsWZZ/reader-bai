@@ -1,11 +1,11 @@
 <template>
   <Dialog :open="open" @update:open="(value) => emit('update:open', value)">
     <DialogContent
+      :aria-describedby="undefined"
       class="flex h-[520px] max-h-[85vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
     >
       <DialogHeader class="border-b px-5 py-4 pr-12">
         <DialogTitle>{{ t('settings.title') }}</DialogTitle>
-        <DialogDescription>{{ t('settings.description') }}</DialogDescription>
       </DialogHeader>
 
       <div class="flex min-h-0 flex-1">
@@ -32,9 +32,6 @@
             <div class="space-y-4">
               <div>
                 <h3 class="text-sm font-medium">{{ t('settings.basic.appearance.title') }}</h3>
-                <p class="text-muted-foreground mt-1 text-xs">
-                  {{ t('settings.basic.appearance.description') }}
-                </p>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <button
@@ -59,9 +56,6 @@
             <div class="space-y-4 border-t pt-4">
               <div>
                 <h3 class="text-sm font-medium">{{ t('settings.basic.language.title') }}</h3>
-                <p class="text-muted-foreground mt-1 text-xs">
-                  {{ t('settings.basic.language.description') }}
-                </p>
               </div>
               <div
                 class="grid grid-cols-2 gap-2"
@@ -208,18 +202,9 @@
           </section>
 
           <section v-else-if="activeSection === 'uninstall'" class="space-y-4">
-            <div>
-              <h3 class="text-destructive text-sm font-medium">
-                {{ t('settings.uninstall.title') }}
-              </h3>
-              <p class="text-muted-foreground mt-1 text-xs">
-                {{ t('settings.uninstall.description') }}
-              </p>
-            </div>
-
-            <p class="text-destructive text-xs">
-              {{ t('settings.uninstall.warning') }}
-            </p>
+            <h3 class="text-destructive text-sm font-medium">
+              {{ t('settings.uninstall.title') }}
+            </h3>
 
             <div class="flex flex-wrap items-center gap-2">
               <Button
@@ -258,10 +243,7 @@
               {{ t('settings.ai.plaintextWarning') }}
             </p>
 
-            <p v-if="profiles.length === 0" class="text-muted-foreground text-xs">
-              {{ t('settings.ai.empty') }}
-            </p>
-            <ul v-else class="divide-y rounded-md border">
+            <ul v-if="profiles.length > 0" class="divide-y rounded-md border">
               <li
                 v-for="profile in profiles"
                 :key="profile.id"
@@ -356,7 +338,7 @@
                         ? 'border-primary bg-accent text-accent-foreground'
                         : 'hover:bg-accent/60'
                     ]"
-                    @click="provider = option.value"
+                    @click="selectProvider(option.value)"
                   >
                     {{ option.label }}
                   </button>
@@ -457,13 +439,7 @@
 import { computed, ref, watch } from 'vue'
 import type { AiProfile, AiProfilePatch, AiProvider, AppTheme } from '@renderer/types'
 import { Button } from '@renderer/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from '@renderer/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Input } from '@renderer/components/ui/input'
 import PluginSettings from '@renderer/components/PluginSettings.vue'
 import { useSettingsStore } from '@renderer/store/settings'
@@ -509,13 +485,12 @@ const providerOptions = computed<{ value: AiProvider; label: string }[]>(() => [
   { value: 'anthropic', label: t('settings.ai.provider.anthropic') }
 ])
 
-const baseUrlPlaceholder = computed(() =>
-  provider.value === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'
-)
+const DEFAULT_AI_MODEL = 'deepseek-flash'
+const defaultBaseUrl = (value: AiProvider): string =>
+  value === 'anthropic' ? 'https://api.deepseek.com/anthropic' : 'https://api.deepseek.com'
 
-const modelPlaceholder = computed(() =>
-  provider.value === 'anthropic' ? 'claude-sonnet-5-5' : 'gpt-4o-mini / deepseek-chat'
-)
+const baseUrlPlaceholder = computed(() => defaultBaseUrl(provider.value))
+const modelPlaceholder = computed(() => DEFAULT_AI_MODEL)
 
 const activeSection = ref<SectionId>('basic')
 
@@ -569,6 +544,20 @@ const startCreate = (): void => {
   resetForm()
   editingId.value = createId()
   editingIsNew.value = true
+  baseUrl.value = defaultBaseUrl(provider.value)
+  model.value = DEFAULT_AI_MODEL
+}
+
+const selectProvider = (value: AiProvider): void => {
+  // 新增配置时跟随接口类型切换 DeepSeek 默认地址；用户填过的自定义地址不覆盖
+  if (editingIsNew.value) {
+    const previous = defaultBaseUrl(provider.value)
+    if (!baseUrl.value.trim() || baseUrl.value === previous) {
+      baseUrl.value = defaultBaseUrl(value)
+    }
+    if (!model.value.trim()) model.value = DEFAULT_AI_MODEL
+  }
+  provider.value = value
 }
 
 const startEdit = (profile: AiProfile): void => {

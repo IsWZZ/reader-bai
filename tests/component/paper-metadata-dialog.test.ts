@@ -74,14 +74,14 @@ describe('PaperMetadataDialog', () => {
     const wrapper = await mountDialog({ paper: { ...paper, metadata: undefined } })
 
     expect(bodyText()).toContain('还没有解析结果')
-    expect(bodyButton('AI 解析论文信息')).toBeDefined()
+    expect(bodyButton('AI解析')).toBeDefined()
 
     wrapper.unmount()
   })
 
   it('emits analyze with the current paper', async () => {
     const wrapper = await mountDialog()
-    const button = bodyButton('AI 解析论文信息')
+    const button = bodyButton('AI解析')
     if (!button) throw new Error('analyze button not found')
 
     button.click()

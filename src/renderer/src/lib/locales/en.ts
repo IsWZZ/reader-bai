@@ -15,20 +15,15 @@ export const en = {
   'common.resetDefault': 'Reset to default',
 
   'settings.title': 'Settings',
-  'settings.description':
-    'Manage appearance, language, AI services, library and plugins, or uninstall the app',
   'settings.section.basic': 'General',
   'settings.section.libraryStorage': 'Storage',
   'settings.section.ai': 'AI Services',
   'settings.section.plugins': 'Plugins',
   'settings.section.uninstall': 'Uninstall',
   'settings.basic.appearance.title': 'Appearance',
-  'settings.basic.appearance.description': 'Choose a light or dark interface.',
   'settings.basic.theme.light': 'Light',
   'settings.basic.theme.dark': 'Dark',
   'settings.basic.language.title': 'Language',
-  'settings.basic.language.description':
-    'Choose the interface language. Changes apply immediately.',
   'settings.basic.language.label': 'Interface language',
   'settings.library.title': 'Library storage location',
   'settings.library.description':
@@ -56,10 +51,6 @@ export const en = {
   'settings.storage.error.unavailable': 'Cache clearing is not available in this environment',
   'settings.storage.error.failed': 'Could not clear the cache',
   'settings.uninstall.title': 'Uninstall',
-  'settings.uninstall.description':
-    'Delete all application data stored on this computer. The app will quit afterwards.',
-  'settings.uninstall.warning':
-    'Local paper copies, annotations, settings, API keys and plugins will be permanently deleted. Original PDFs are not deleted.',
   'settings.uninstall.action': 'Uninstall and delete data',
   'settings.uninstall.working': 'Deleting…',
   'settings.uninstall.error.unavailable': 'Uninstalling is not available in this environment',
@@ -69,7 +60,6 @@ export const en = {
     'Save multiple AI service configurations and pick one from the assistant panel. OpenAI-compatible and Anthropic Messages APIs are supported.',
   'settings.ai.plaintextWarning':
     'System secure storage is unavailable. API keys will be saved as plaintext in the local settings file.',
-  'settings.ai.empty': 'No configurations yet. Click "Add model" to start.',
   'settings.ai.noBaseUrl': 'Base URL not set',
   'settings.ai.inUse': 'In use',
   'settings.ai.disabled': 'Disabled',
@@ -113,7 +103,7 @@ export const en = {
   'library.search.empty': 'No papers match “{query}”',
   'library.search.emptyHint': 'Try another title, author, venue, or DOI keyword',
   'library.metadata.view': 'View paper details',
-  'library.metadata.analyze': 'Analyze paper metadata',
+  'library.metadata.analyze': 'AI Analysis',
   'library.metadata.reanalyze': 'Re-analyze paper metadata',
   'library.metadata.analyzing': 'Analyzing paper metadata…',
   'library.metadata.failed': 'Paper metadata analysis failed',

@@ -437,7 +437,7 @@ describe('LibraryPanel', () => {
     await flushPromises()
 
     const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (element) => element.textContent?.includes('AI 解析论文信息')
+      (element) => element.textContent?.includes('AI解析')
     )
     if (!item) throw new Error('analyze menu item not found')
     item.click()

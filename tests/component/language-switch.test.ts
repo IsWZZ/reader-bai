@@ -86,13 +86,13 @@ describe('interface language switching', () => {
     expect(findAriaButton('设置')).not.toBeNull()
     await findAriaButtonOrThrow('设置').trigger('click')
     await flushPromises()
-    expect(document.body.textContent).toContain('界面语言')
+    expect(document.body.textContent).toContain('外观')
 
     await findButton('English').trigger('click')
     await flushPromises()
 
     // 弹窗内：语言说明和分区标题都换成英文
-    expect(document.body.textContent).toContain('Choose the interface language')
+    expect(document.body.textContent).toContain('Appearance')
     expect(findButton('General')).toBeDefined()
     // 弹窗外：活动栏按钮的文案也必须同步更新，而不是等重新挂载
     expect(findAriaButton('Settings')).not.toBeNull()

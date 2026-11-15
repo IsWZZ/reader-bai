@@ -174,11 +174,11 @@ test('opens AI settings when analysis is requested without a configured profile'
 
   const reader = await launchReader(userDataDir)
   await reader.page.getByRole('button', { name: 'Sample Paper 操作' }).click()
-  await reader.page.getByRole('menuitem', { name: 'AI 解析论文信息' }).click()
+  await reader.page.getByRole('menuitem', { name: 'AI解析' }).click()
 
   const dialog = reader.page.getByRole('dialog', { name: '设置' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText('还没有配置，点击「新增模型」开始。')
+  await expect(dialog.getByRole('button', { name: '新增模型' })).toBeVisible()
 
   await reader.app.close()
 })
