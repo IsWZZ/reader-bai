@@ -47,9 +47,9 @@
                   :key="option.value"
                   :value="option.value"
                   variant="outline"
-                  class="h-20 flex-col gap-2 rounded-lg p-4 text-sm data-[state=on]:border-primary"
+                  class="h-14 flex-col gap-1 rounded-lg p-2 text-sm data-[state=on]:border-primary"
                 >
-                  <component :is="option.icon" class="size-5" />
+                  <component :is="option.icon" class="size-4" />
                   {{ option.label }}
                 </ToggleGroupItem>
               </ToggleGroup>
@@ -74,7 +74,7 @@
                   :value="option.code"
                   variant="outline"
                   :lang="option.code"
-                  class="h-20 flex-col gap-2 rounded-lg p-4 text-sm data-[state=on]:border-primary"
+                  class="h-14 flex-col gap-1 rounded-lg p-2 text-sm data-[state=on]:border-primary"
                 >
                   {{ option.label }}
                 </ToggleGroupItem>

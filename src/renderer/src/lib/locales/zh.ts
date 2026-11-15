@@ -94,6 +94,8 @@ export const zh = {
   'activity.settings': '设置',
 
   'home.empty': '选择论文开始阅读',
+  'reading.tabs': '已打开的论文',
+  'reading.closeTab': '关闭 {title}',
 
   'library.title': '论文库',
   'library.search.empty': '没有匹配“{query}”的论文',

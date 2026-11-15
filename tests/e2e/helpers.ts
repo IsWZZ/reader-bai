@@ -159,10 +159,13 @@ export async function seedLibrary(
   )
 }
 
-/** 选中论文并等待第一页渲染完成。 */
+/**
+ * 选中论文并等待第一页渲染完成。
+ * 多标签下非当前论文的阅读器仍然挂载，因此只等当前可见面板里的画布。
+ */
 export async function openPaper(page: Page, title: string): Promise<void> {
   await page.getByRole('button', { name: title, exact: true }).click()
-  await expect(page.locator('[data-page="1"] canvas')).toBeVisible()
+  await expect(page.locator('[data-page="1"] canvas:visible')).toBeVisible()
 }
 
 /** 替换主进程的原生打开文件对话框；传入 null 表示用户取消。 */

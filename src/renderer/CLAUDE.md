@@ -27,6 +27,7 @@ src/renderer/src/
 ```
 
 - `Home.vue` 只做外壳和面板编排；`PdfViewer.vue` 只负责阅读/选词/标注。
+- 阅读区多标签：`PaperTabs.vue` + [store/reading.ts](src/store/reading.ts) 保留最近打开的论文（上限 `MAX_OPEN_PAPERS`）。每个 `PdfViewer` 必须放在 `TabsContent` 的 `force-mount` 面板里，切换标签时保持挂载；不要改成 `v-if` 条件渲染，否则滚动位置和缩放会丢失。
 - 书库检索：输入框在 `Toolbar.vue`，`Home.vue` 持有查询词并传给 `LibraryPanel.vue`，只按已加载的标题/文件名和 `paper.metadata`（作者、期刊、DOI、关键词等）过滤；不要为此新增 IPC 或解析 PDF 全文（全文索引属于 B 层知识库）。
 - 论文元数据：导入后由 `LibraryPanel.vue` 调 `window.api.analyzePaper(paperId)`，主进程负责读 PDF、调 AI 和 Crossref；渲染进程不解析全文、不发外部请求。`settings.library.autoAnalyze` 和 AI 配置共同决定是否自动解析，未配置 AI 时静默跳过。解析结果写入 `paper.metadata`，详情由 `PaperMetadataDialog.vue` 展示。AI 没解析出的字段可以在同一弹窗里手动编辑，保存走 `window.api.updatePaperMetadata(paperId, input)`，校验仍在主进程；用户手动改过的字段在重新解析时不会被覆盖。
 - 新功能做成独立组件 + store，通过 props/事件与外壳通信；不要塞进 `Home.vue` 或 `PdfViewer.vue`。

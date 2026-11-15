@@ -137,6 +137,59 @@ test('navigates the paper by page number and previous/next buttons', async () =>
   await reader.app.close()
 })
 
+test('keeps recently opened papers in tabs and preserves reader state', async () => {
+  const firstPath = join(userDataDir, 'first.pdf')
+  const secondPath = join(userDataDir, 'second.pdf')
+  await writeSamplePdf(firstPath)
+  await writeSamplePdf(secondPath)
+  await seedLibrary(userDataDir, {
+    papers: [
+      { id: 'paper-1', title: 'First Paper', path: firstPath, titleSource: 'user' },
+      { id: 'paper-2', title: 'Second Paper', path: secondPath, titleSource: 'user' }
+    ]
+  })
+
+  const reader = await launchReader(userDataDir)
+  await openPaper(reader.page, 'First Paper')
+  await reader.page.getByRole('button', { name: '放大' }).click()
+  await expect(reader.page.getByText('120%')).toBeVisible()
+
+  // 从书库打开第二篇，第一篇的标签仍保留在阅读区
+  await openPaper(reader.page, 'Second Paper')
+  await expect(reader.page.getByRole('tab')).toHaveCount(2)
+  // 两个阅读器都保持挂载，但只有当前面板可见（隐藏面板不在无障碍树里）
+  await expect(reader.page.locator('[role="tabpanel"]')).toHaveCount(2)
+  await expect(reader.page.locator('[role="tabpanel"]:visible')).toHaveCount(1)
+  await expect(reader.page.getByRole('tab', { name: 'Second Paper' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(reader.page.getByText('100%')).toBeVisible()
+
+  // 切回第一篇时阅读器保持挂载，缩放状态不会重置
+  await reader.page.getByRole('tab', { name: 'First Paper' }).click()
+  await expect(reader.page.getByRole('tab', { name: 'First Paper' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(reader.page.getByText('120%')).toBeVisible()
+
+  // 关闭当前标签后自动切到相邻论文
+  await reader.page.getByRole('button', { name: '关闭 First Paper' }).click()
+  await expect(reader.page.getByRole('tab')).toHaveCount(1)
+  await expect(reader.page.getByRole('tab', { name: 'Second Paper' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  await expect(reader.page.getByText('100%')).toBeVisible()
+
+  await reader.page.getByRole('button', { name: '关闭 Second Paper' }).click()
+  await expect(reader.page.getByRole('tab')).toHaveCount(0)
+  await expect(reader.page.getByText('选择论文开始阅读')).toBeVisible()
+
+  await reader.app.close()
+})
+
 test('highlights a selected word, persists it, and removes it', async () => {
   const pdfPath = await seedPaper()
   const reader = await launchReader(userDataDir)

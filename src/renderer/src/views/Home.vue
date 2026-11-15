@@ -39,23 +39,35 @@
         class="w-0.5 cursor-col-resize hover:bg-primary/50 transition-colors rounded-full"
         @mousedown="startResize"
       />
-      <main class="min-w-0 flex-1 overflow-hidden rounded-lg border bg-card p-4">
-        <PluginViewFrame
-          v-if="activeMainView"
-          :plugin-id="activeMainView.pluginId"
-          :plugin-name="activeMainView.pluginName"
-          :view="activeMainView"
-          @close="closePluginView(activeMainView.key)"
-        />
-        <div v-else-if="currentPaper" class="h-full">
-          <PdfViewer
-            v-if="currentPaper.path"
-            :src="currentPaper.path"
-            class="h-full"
-            @selection-change="handleSelection"
+      <main class="min-w-0 flex-1 overflow-hidden rounded-lg border bg-card">
+        <div v-if="activeMainView" class="h-full p-4">
+          <PluginViewFrame
+            :plugin-id="activeMainView.pluginId"
+            :plugin-name="activeMainView.pluginName"
+            :view="activeMainView"
+            @close="closePluginView(activeMainView.key)"
           />
         </div>
-        <div v-else class="flex items-center justify-center h-full">
+        <PaperTabs
+          v-else-if="readingStore.papers.length > 0"
+          :papers="readingStore.papers"
+          :active-id="readingStore.activeId"
+          @select="readingStore.activatePaper"
+          @close="readingStore.closePaper"
+        >
+          <!-- force-mount 让每篇论文的阅读器保持挂载，切回时保留滚动位置和缩放；
+               force-mount 不会自动隐藏非当前面板，需要用 data-state 显式隐藏 -->
+          <TabsContent
+            v-for="paper in readingStore.papers"
+            :key="paper.id"
+            :value="paper.id"
+            force-mount
+            class="min-h-0 px-4 pt-2 pb-4 data-[state=inactive]:hidden"
+          >
+            <PdfViewer :src="paper.path" class="h-full" @selection-change="handleSelection" />
+          </TabsContent>
+        </PaperTabs>
+        <div v-else class="flex h-full items-center justify-center p-4">
           <p class="text-muted-foreground">{{ t('home.empty') }}</p>
         </div>
       </main>
@@ -80,11 +92,14 @@ import Toolbar from '@renderer/components/Toolbar.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
+import PaperTabs from '@renderer/components/PaperTabs.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
+import { TabsContent } from '@renderer/components/ui/tabs'
 import { useAssistantStore } from '@renderer/store/assistant'
 import { usePluginsStore } from '@renderer/store/plugins'
+import { useReadingStore } from '@renderer/store/reading'
 import { useSettingsStore } from '@renderer/store/settings'
 import { t } from '@renderer/lib/i18n'
 import type { Paper, PluginViewInfo, PluginViewLocation } from '@renderer/types'
@@ -93,7 +108,8 @@ const isLibraryOpen = ref(true)
 const libraryWidth = ref(256)
 const minWidth = 200
 const maxWidth = 500
-const currentPaper = ref<Paper | null>(null)
+const readingStore = useReadingStore()
+const currentPaper = computed(() => readingStore.activePaper)
 // 顶部搜索框控制书库面板的过滤
 const searchQuery = ref('')
 
@@ -213,7 +229,7 @@ const toggleAssistant = (): void => {
 }
 
 const handleSelectPaper = (paper: Paper): void => {
-  currentPaper.value = paper
+  readingStore.openPaper(paper)
 }
 
 const handleSelection = (payload: { text: string; page: number }): void => {

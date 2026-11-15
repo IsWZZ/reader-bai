@@ -12,6 +12,7 @@ import ActivityBar from '@renderer/components/ActivityBar.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
+import PaperTabs from '@renderer/components/PaperTabs.vue'
 import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import Toolbar from '@renderer/components/Toolbar.vue'
@@ -48,7 +49,9 @@ const PAPER: Paper = {
 const chat =
   vi.fn<(requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>>()
 
-const mountHome = (): VueWrapper => mount(Home, { shallow: true })
+// 阅读面板嵌在 TabsContent 里，stub 时也要渲染默认插槽，才能找到 PdfViewer
+const mountHome = (): VueWrapper =>
+  mount(Home, { shallow: true, global: { renderStubDefaultSlot: true } })
 
 const selectPaper = async (wrapper: VueWrapper, paper: Paper = PAPER): Promise<void> => {
   wrapper.findComponent(LibraryPanel).vm.$emit('select-paper', paper)
@@ -255,5 +258,18 @@ describe('Home selection wiring', () => {
     await vi.advanceTimersByTimeAsync(250)
 
     expect(chat).not.toHaveBeenCalled()
+  })
+
+  it('keeps opened papers as tabs and activates the latest one', async () => {
+    const wrapper = mountHome()
+    await selectPaper(wrapper)
+
+    const second = { ...PAPER, id: 'paper-2', path: '/papers/paper-2.pdf', title: 'Paper Two' }
+    await selectPaper(wrapper, second)
+
+    const tabs = wrapper.findComponent(PaperTabs)
+    expect(tabs.props('papers')).toHaveLength(2)
+    expect(tabs.props('activeId')).toBe('paper-2')
+    expect(wrapper.findAllComponents(PdfViewer)).toHaveLength(2)
   })
 })

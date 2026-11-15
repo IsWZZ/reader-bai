@@ -102,6 +102,8 @@ export const en = {
   'activity.settings': 'Settings',
 
   'home.empty': 'Select a paper to start reading',
+  'reading.tabs': 'Open papers',
+  'reading.closeTab': 'Close {title}',
 
   'library.title': 'Library',
   'library.search.empty': 'No papers match “{query}”',
