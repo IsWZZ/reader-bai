@@ -102,6 +102,12 @@ const findInput = (selector: string): DOMWrapper<HTMLInputElement> => {
   return new DOMWrapper(element)
 }
 
+const findCheckbox = (selector: string): DOMWrapper<HTMLElement> => {
+  const element = document.body.querySelector<HTMLElement>(`[role="checkbox"]${selector}`)
+  if (!element) throw new Error(`checkbox "${selector}" not found`)
+  return new DOMWrapper(element)
+}
+
 const hasInput = (selector: string): boolean => document.body.querySelector(selector) !== null
 
 const openAiSection = async (): Promise<DOMWrapper<HTMLButtonElement>> => {
@@ -208,10 +214,10 @@ describe('SettingsDialog', () => {
   it('toggles automatic paper analysis from the basic section', async () => {
     const wrapper = await mountDialog()
 
-    const checkbox = findInput('#auto-analyze-papers')
-    expect(checkbox.element.checked).toBe(true)
+    const checkbox = findCheckbox('#auto-analyze-papers')
+    expect(checkbox.attributes('aria-checked')).toBe('true')
 
-    await checkbox.setValue(false)
+    await checkbox.trigger('click')
     await flushPromises()
 
     expect(updateSettings).toHaveBeenCalledWith({ library: { autoAnalyze: false } })

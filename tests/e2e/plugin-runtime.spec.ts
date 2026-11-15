@@ -199,7 +199,9 @@ test('starts a plugin after enabling it in settings', async () => {
 
   await page.getByRole('button', { name: '设置' }).click()
   await page.getByRole('button', { name: '插件' }).click()
-  await page.getByRole('checkbox', { name: '启用 Echo' }).check()
+  const toggle = page.getByRole('checkbox', { name: '启用 Echo' })
+  await toggle.click()
+  await expect(toggle).toBeChecked()
 
   await expect.poll(() => readJsonFile(join(directory, 'activation.json'))).not.toBeNull()
   await expect(page.getByTestId('plugin-runtime')).toContainText('运行中')

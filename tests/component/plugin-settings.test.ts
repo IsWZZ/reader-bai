@@ -44,8 +44,11 @@ const mountSettings = async (): Promise<VueWrapper> => {
   return wrapper
 }
 
-const checkbox = (wrapper: VueWrapper, name = 'arXiv'): HTMLInputElement =>
-  wrapper.get(`input[aria-label="启用 ${name}"]`).element as HTMLInputElement
+const checkbox = (wrapper: VueWrapper, name = 'arXiv'): HTMLButtonElement =>
+  wrapper.get(`[role="checkbox"][aria-label="启用 ${name}"]`).element as HTMLButtonElement
+
+const isChecked = (wrapper: VueWrapper, name = 'arXiv'): boolean =>
+  checkbox(wrapper, name).getAttribute('aria-checked') === 'true'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -72,28 +75,28 @@ describe('PluginSettings', () => {
     expect(wrapper.text()).toContain('network')
     expect(wrapper.text()).toContain('storage')
     expect(wrapper.text()).toContain('在 arXiv 中查找')
-    expect(checkbox(wrapper).checked).toBe(false)
+    expect(isChecked(wrapper)).toBe(false)
   })
 
   it('enables a plugin and updates the list', async () => {
     const wrapper = await mountSettings()
 
-    await wrapper.get('input[aria-label="启用 arXiv"]').setValue(true)
+    await wrapper.get('[role="checkbox"][aria-label="启用 arXiv"]').trigger('click')
     await flushPromises()
 
     expect(setPluginEnabled).toHaveBeenCalledWith('reader-bai.arxiv-source', true)
-    expect(checkbox(wrapper).checked).toBe(true)
+    expect(isChecked(wrapper)).toBe(true)
   })
 
   it('restores the checkbox and reports the error when the host rejects', async () => {
     setPluginEnabled.mockRejectedValue(new Error('插件与当前版本不兼容'))
     const wrapper = await mountSettings()
 
-    await wrapper.get('input[aria-label="启用 arXiv"]').setValue(true)
+    await wrapper.get('[role="checkbox"][aria-label="启用 arXiv"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('插件与当前版本不兼容')
-    expect(checkbox(wrapper).checked).toBe(false)
+    expect(isChecked(wrapper)).toBe(false)
   })
 
   it('disables incompatible plugins', async () => {

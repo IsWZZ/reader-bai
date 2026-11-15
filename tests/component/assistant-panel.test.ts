@@ -361,7 +361,7 @@ describe('AssistantPanel', () => {
 
   it('asks for agent mode and renders tool notes', async () => {
     const wrapper = mountPanel()
-    await wrapper.get('input[aria-label="使用工具"]').setValue(true)
+    await wrapper.get('[role="checkbox"][aria-label="使用工具"]').trigger('click')
     await wrapper.get('textarea[aria-label="向 AI 提问"]').setValue('库里有几篇论文？')
     await wrapper.get('button[aria-label="发送"]').trigger('click')
     await flushPromises()

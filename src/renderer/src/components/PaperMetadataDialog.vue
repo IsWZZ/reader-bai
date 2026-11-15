@@ -15,15 +15,15 @@
         @submit.prevent="submit"
       >
         <div>
-          <label for="metadata-title" class="text-muted-foreground text-xs">
+          <Label for="metadata-title" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.title') }}
-          </label>
+          </Label>
           <Input id="metadata-title" v-model="form.title" class="mt-1" />
         </div>
         <div>
-          <label for="metadata-authors" class="text-muted-foreground text-xs">
+          <Label for="metadata-authors" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.authors') }}
-          </label>
+          </Label>
           <Textarea
             id="metadata-authors"
             v-model="form.authors"
@@ -33,15 +33,15 @@
           />
         </div>
         <div>
-          <label for="metadata-venue" class="text-muted-foreground text-xs">
+          <Label for="metadata-venue" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.venue') }}
-          </label>
+          </Label>
           <Input id="metadata-venue" v-model="form.venue" class="mt-1" />
         </div>
         <div>
-          <label for="metadata-venue-type" class="text-muted-foreground text-xs">
+          <Label for="metadata-venue-type" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.venueType') }}
-          </label>
+          </Label>
           <Select v-model="form.venueType">
             <SelectTrigger id="metadata-venue-type" class="mt-1">
               <SelectValue />
@@ -55,21 +55,21 @@
           </Select>
         </div>
         <div>
-          <label for="metadata-year" class="text-muted-foreground text-xs">
+          <Label for="metadata-year" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.year') }}
-          </label>
+          </Label>
           <Input id="metadata-year" v-model="form.year" type="number" min="1800" class="mt-1" />
         </div>
         <div>
-          <label for="metadata-doi" class="text-muted-foreground text-xs">
+          <Label for="metadata-doi" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.doi') }}
-          </label>
+          </Label>
           <Input id="metadata-doi" v-model="form.doi" class="mt-1 font-mono" />
         </div>
         <div>
-          <label for="metadata-keywords" class="text-muted-foreground text-xs">
+          <Label for="metadata-keywords" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.keywords') }}
-          </label>
+          </Label>
           <Input
             id="metadata-keywords"
             v-model="form.keywords"
@@ -78,15 +78,15 @@
           />
         </div>
         <div>
-          <label for="metadata-abstract" class="text-muted-foreground text-xs">
+          <Label for="metadata-abstract" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.abstract') }}
-          </label>
+          </Label>
           <Textarea id="metadata-abstract" v-model="form.abstract" class="mt-1" rows="4" />
         </div>
         <div>
-          <label for="metadata-summary" class="text-muted-foreground text-xs">
+          <Label for="metadata-summary" class="text-muted-foreground text-xs font-normal">
             {{ t('library.metadata.summary') }}
-          </label>
+          </Label>
           <Textarea id="metadata-summary" v-model="form.summary" class="mt-1" rows="3" />
         </div>
         <p v-if="saveError" class="text-destructive text-xs">{{ saveError }}</p>
@@ -113,13 +113,9 @@
           <div v-if="metadata.keywords.length">
             <dt class="text-muted-foreground text-xs">{{ t('library.metadata.keywords') }}</dt>
             <dd class="mt-1 flex flex-wrap gap-1">
-              <span
-                v-for="keyword in metadata.keywords"
-                :key="keyword"
-                class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-              >
+              <Badge v-for="keyword in metadata.keywords" :key="keyword" variant="secondary">
                 {{ keyword }}
-              </span>
+              </Badge>
             </dd>
           </div>
           <div v-if="metadata.abstract">
@@ -180,8 +176,10 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
+import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
+import { Label } from '@renderer/components/ui/label'
 import { Textarea } from '@renderer/components/ui/textarea'
 import {
   Select,

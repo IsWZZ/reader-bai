@@ -125,7 +125,9 @@ test('manages plugins from the settings dialog', async () => {
 
   const toggle = page.getByRole('checkbox', { name: '启用 arXiv' })
   await expect(toggle).not.toBeChecked()
-  await toggle.check()
+  // 复选框由主进程返回的启用状态控制，点击后等待持久化完成再变为选中
+  await toggle.click()
+  await expect(toggle).toBeChecked()
 
   await expect
     .poll(async () => readJsonFile(join(userDataDir, 'Userdata', 'plugins.json')))

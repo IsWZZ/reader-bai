@@ -10,21 +10,22 @@
 
       <div class="flex min-h-0 flex-1">
         <nav class="w-40 shrink-0 border-r p-2">
-          <button
+          <Button
             v-for="item in sections"
             :key="item.id"
             type="button"
-            :class="[
-              'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
+            variant="ghost"
+            class="w-full justify-start px-2.5"
+            :class="
               activeSection === item.id
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-            ]"
+            "
             @click="activeSection = item.id"
           >
             <component :is="item.icon" class="size-4" />
             {{ item.label }}
-          </button>
+          </Button>
         </nav>
 
         <div class="min-w-0 flex-1 overflow-y-auto p-5">
@@ -33,53 +34,51 @@
               <div>
                 <h3 class="text-sm font-medium">{{ t('settings.basic.appearance.title') }}</h3>
               </div>
-              <div class="grid grid-cols-2 gap-2">
-                <button
+              <ToggleGroup
+                type="single"
+                :spacing="2"
+                :model-value="settingsStore.theme"
+                :disabled="settingsStore.saving"
+                class="grid w-full grid-cols-2"
+                @update:model-value="onThemeChange"
+              >
+                <ToggleGroupItem
                   v-for="option in themeOptions"
                   :key="option.value"
-                  type="button"
-                  :disabled="settingsStore.saving"
-                  :class="[
-                    'flex h-20 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-sm transition-colors disabled:opacity-50',
-                    settingsStore.theme === option.value
-                      ? 'border-primary bg-accent text-accent-foreground'
-                      : 'hover:bg-accent/60'
-                  ]"
-                  @click="settingsStore.setTheme(option.value)"
+                  :value="option.value"
+                  variant="outline"
+                  class="h-20 flex-col gap-2 rounded-lg p-4 text-sm data-[state=on]:border-primary"
                 >
                   <component :is="option.icon" class="size-5" />
                   {{ option.label }}
-                </button>
-              </div>
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
 
             <div class="space-y-4 border-t pt-4">
               <div>
                 <h3 class="text-sm font-medium">{{ t('settings.basic.language.title') }}</h3>
               </div>
-              <div
-                class="grid grid-cols-2 gap-2"
-                role="group"
+              <ToggleGroup
+                type="single"
+                :spacing="2"
+                :model-value="settingsStore.language"
+                :disabled="settingsStore.saving"
+                class="grid w-full grid-cols-2"
                 :aria-label="t('settings.basic.language.label')"
+                @update:model-value="onLanguageChange"
               >
-                <button
+                <ToggleGroupItem
                   v-for="option in languageOptions"
                   :key="option.code"
-                  type="button"
-                  :disabled="settingsStore.saving"
+                  :value="option.code"
+                  variant="outline"
                   :lang="option.code"
-                  :aria-pressed="settingsStore.language === option.code"
-                  :class="[
-                    'flex h-20 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-sm transition-colors disabled:opacity-50',
-                    settingsStore.language === option.code
-                      ? 'border-primary bg-accent text-accent-foreground'
-                      : 'hover:bg-accent/60'
-                  ]"
-                  @click="settingsStore.setLanguage(option.code)"
+                  class="h-20 flex-col gap-2 rounded-lg p-4 text-sm data-[state=on]:border-primary"
                 >
                   {{ option.label }}
-                </button>
-              </div>
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
 
             <div class="space-y-2 border-t pt-4">
@@ -89,22 +88,24 @@
                   {{ t('settings.basic.analysis.description') }}
                 </p>
               </div>
-              <label class="flex items-start gap-2 text-xs" for="auto-analyze-papers">
-                <input
+              <Label
+                for="auto-analyze-papers"
+                class="flex items-start gap-2 text-xs leading-normal font-normal"
+              >
+                <Checkbox
                   id="auto-analyze-papers"
-                  type="checkbox"
-                  class="accent-primary mt-0.5 size-4"
-                  :checked="settingsStore.autoAnalyze"
+                  class="mt-0.5"
+                  :model-value="settingsStore.autoAnalyze"
                   :disabled="settingsStore.saving"
-                  @change="toggleAutoAnalyze"
+                  @update:model-value="(value) => toggleAutoAnalyze(value === true)"
                 />
-                <span>
+                <span class="flex flex-col gap-0.5">
                   <span class="font-medium">{{ t('settings.basic.analysis.toggle') }}</span>
-                  <span class="text-muted-foreground mt-0.5 block">
+                  <span class="text-muted-foreground">
                     {{ t('settings.basic.analysis.hint') }}
                   </span>
                 </span>
-              </label>
+              </Label>
             </div>
 
             <div class="flex items-center gap-3">
@@ -127,9 +128,9 @@
               </div>
 
               <div class="space-y-1.5">
-                <label class="text-xs font-medium" for="library-directory">
+                <Label for="library-directory" class="text-xs font-normal">
                   {{ t('settings.library.directoryLabel') }}
-                </label>
+                </Label>
                 <Input
                   id="library-directory"
                   :model-value="settingsStore.libraryDirectory"
@@ -256,18 +257,15 @@
                     {{ profile.baseUrl || t('settings.ai.noBaseUrl') }}
                   </p>
                 </div>
-                <span
-                  v-if="!profile.enabled"
-                  class="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px]"
-                >
+                <Badge v-if="!profile.enabled" variant="secondary" class="text-[10px]">
                   {{ t('settings.ai.disabled') }}
-                </span>
-                <span
+                </Badge>
+                <Badge
                   v-else-if="profile.id === settingsStore.activeAiProfile?.id"
-                  class="bg-accent text-accent-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px]"
+                  class="text-[10px]"
                 >
                   {{ t('settings.ai.inUse') }}
-                </span>
+                </Badge>
                 <Button
                   type="button"
                   variant="ghost"
@@ -322,36 +320,33 @@
                 <span id="ai-provider-label" class="text-xs font-medium">
                   {{ t('settings.ai.form.provider') }}
                 </span>
-                <div
-                  class="grid grid-cols-2 gap-2"
-                  role="group"
+                <ToggleGroup
+                  type="single"
+                  :spacing="2"
+                  :model-value="provider"
+                  class="grid w-full grid-cols-2"
                   aria-labelledby="ai-provider-label"
+                  @update:model-value="onProviderChange"
                 >
-                  <button
+                  <ToggleGroupItem
                     v-for="option in providerOptions"
                     :key="option.value"
-                    type="button"
-                    :aria-pressed="provider === option.value"
-                    :class="[
-                      'rounded-md border px-3 py-2 text-sm transition-colors',
-                      provider === option.value
-                        ? 'border-primary bg-accent text-accent-foreground'
-                        : 'hover:bg-accent/60'
-                    ]"
-                    @click="selectProvider(option.value)"
+                    :value="option.value"
+                    variant="outline"
+                    class="py-2 data-[state=on]:border-primary"
                   >
                     {{ option.label }}
-                  </button>
-                </div>
+                  </ToggleGroupItem>
+                </ToggleGroup>
                 <p class="text-muted-foreground text-xs">
                   {{ t('settings.ai.form.providerHint') }}
                 </p>
               </div>
 
               <div class="space-y-1.5">
-                <label class="text-xs font-medium" for="ai-base-url">
+                <Label for="ai-base-url" class="text-xs font-normal">
                   {{ t('settings.ai.form.baseUrl') }}
-                </label>
+                </Label>
                 <Input
                   id="ai-base-url"
                   v-model="baseUrl"
@@ -362,9 +357,9 @@
               </div>
 
               <div class="space-y-1.5">
-                <label class="text-xs font-medium" for="ai-model">
+                <Label for="ai-model" class="text-xs font-normal">
                   {{ t('settings.ai.form.model') }}
-                </label>
+                </Label>
                 <Input
                   id="ai-model"
                   v-model="model"
@@ -378,9 +373,9 @@
               </div>
 
               <div class="space-y-1.5">
-                <label class="text-xs font-medium" for="ai-api-key">
+                <Label for="ai-api-key" class="text-xs font-normal">
                   {{ t('settings.ai.form.apiKey') }}
-                </label>
+                </Label>
                 <div class="relative">
                   <Input
                     id="ai-api-key"
@@ -391,9 +386,11 @@
                     autocomplete="off"
                     spellcheck="false"
                   />
-                  <button
+                  <Button
                     type="button"
-                    class="text-muted-foreground hover:text-foreground absolute inset-y-0 right-0 flex w-9 items-center justify-center"
+                    variant="ghost"
+                    size="icon-xs"
+                    class="text-muted-foreground absolute inset-y-0 right-0 my-auto"
                     :aria-label="
                       showKey ? t('settings.ai.form.hideKey') : t('settings.ai.form.showKey')
                     "
@@ -401,7 +398,7 @@
                   >
                     <EyeOff v-if="showKey" class="size-4" />
                     <Eye v-else class="size-4" />
-                  </button>
+                  </Button>
                 </div>
                 <p class="text-muted-foreground text-xs">
                   <template v-if="editingProfileHasKey">
@@ -468,9 +465,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
+import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
+import { Checkbox } from '@renderer/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { Input } from '@renderer/components/ui/input'
+import { Label } from '@renderer/components/ui/label'
+import { ToggleGroup, ToggleGroupItem } from '@renderer/components/ui/toggle-group'
 import PluginSettings from '@renderer/components/PluginSettings.vue'
 import { useSettingsStore } from '@renderer/store/settings'
 import { aiProfileLabel } from '@renderer/lib/ai'
@@ -580,6 +581,18 @@ const startCreate = (): void => {
   model.value = DEFAULT_AI_MODEL
 }
 
+const onThemeChange = (value: unknown): void => {
+  if (value === 'light' || value === 'dark') void settingsStore.setTheme(value)
+}
+
+const onLanguageChange = (value: unknown): void => {
+  if (typeof value === 'string' && value) void settingsStore.setLanguage(value)
+}
+
+const onProviderChange = (value: unknown): void => {
+  if (value === 'openai' || value === 'anthropic') selectProvider(value)
+}
+
 const selectProvider = (value: AiProvider): void => {
   // 新增配置时跟随接口类型切换 DeepSeek 默认地址；用户填过的自定义地址不覆盖
   if (editingIsNew.value) {
@@ -662,8 +675,7 @@ const chooseLibraryDirectory = async (): Promise<void> => {
 
 const resetLibraryDirectory = (): Promise<void> => saveLibraryDirectory('')
 
-const toggleAutoAnalyze = async (event: Event): Promise<void> => {
-  const enabled = (event.target as HTMLInputElement).checked
+const toggleAutoAnalyze = async (enabled: boolean): Promise<void> => {
   formError.value = ''
   const saved = await settingsStore.setAutoAnalyze(enabled)
   if (!saved) {

@@ -41,20 +41,20 @@
           </SelectItem>
         </SelectContent>
       </Select>
-      <label
-        class="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap"
+      <Label
+        for="assistant-use-tools"
+        class="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs leading-normal font-normal whitespace-nowrap"
         :title="t('assistant.toolsTitle')"
       >
-        <input
-          type="checkbox"
+        <Checkbox
+          id="assistant-use-tools"
           :aria-label="t('assistant.useTools')"
-          class="accent-primary size-3.5"
-          :checked="store.agentMode"
+          :model-value="store.agentMode"
           :disabled="store.chatLoading"
-          @change="handleAgentModeChange"
+          @update:model-value="(value) => handleAgentModeChange(value === true)"
         />
         {{ t('assistant.tools') }}
-      </label>
+      </Label>
     </div>
 
     <p
@@ -148,12 +148,12 @@
 
     <div class="border-t p-2">
       <div class="flex items-end gap-2">
-        <textarea
+        <Textarea
           v-model="draft"
           :aria-label="t('assistant.ask')"
           rows="2"
           :placeholder="t('assistant.placeholder')"
-          class="border-input placeholder:text-muted-foreground focus-visible:ring-ring/50 max-h-32 min-h-9 flex-1 resize-none rounded-md border bg-transparent px-2 py-1.5 text-sm outline-none focus-visible:ring-2"
+          class="max-h-32 min-h-9 flex-1 resize-none px-2 py-1.5 text-sm"
           @keydown="handleKeydown"
         />
         <Button
@@ -181,6 +181,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { Button } from '@renderer/components/ui/button'
+import { Checkbox } from '@renderer/components/ui/checkbox'
+import { Label } from '@renderer/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -189,6 +191,7 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { Skeleton } from '@renderer/components/ui/skeleton'
+import { Textarea } from '@renderer/components/ui/textarea'
 import { useAssistantStore, type ChatEntry } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
 import { t } from '@renderer/lib/i18n'
@@ -210,8 +213,8 @@ const handleProfileChange = (value: unknown): void => {
   void settingsStore.setActiveAiProfile(value)
 }
 
-const handleAgentModeChange = (event: Event): void => {
-  store.agentMode = (event.target as HTMLInputElement).checked
+const handleAgentModeChange = (enabled: boolean): void => {
+  store.agentMode = enabled
 }
 
 // 切换配置（包括从设置里删除当前配置）时清掉旧模型的译文

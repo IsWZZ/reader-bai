@@ -19,15 +19,17 @@
         :aria-label="t('toolbar.searchLabel')"
         @keydown.esc.stop="clear"
       />
-      <button
+      <Button
         v-if="query"
         type="button"
-        class="absolute inset-y-0 right-1 my-auto flex size-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+        variant="ghost"
+        size="icon-xs"
+        class="text-muted-foreground absolute inset-y-0 right-1 my-auto size-5 rounded-sm"
         :aria-label="t('toolbar.clearSearch')"
         @click="clear"
       >
         <X class="size-3.5" />
-      </button>
+      </Button>
     </div>
     <!-- <div class="flex items-center gap-1">
       <Button variant="ghost" size="icon-sm">

@@ -107,9 +107,10 @@
                   />
                 </template>
                 <template v-else>
-                  <button
+                  <Button
                     type="button"
-                    class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                    variant="ghost"
+                    class="h-auto min-w-0 flex-1 justify-start gap-1.5 px-0 py-0 text-left font-normal hover:bg-transparent"
                     @click="toggleGroup(group.key)"
                   >
                     <ChevronDown
@@ -121,31 +122,35 @@
                     <span class="ml-auto shrink-0 pr-1 text-[10px] tabular-nums opacity-60">
                       {{ group.papers.length }}
                     </span>
-                  </button>
+                  </Button>
                   <!-- 导入论文到该空间 -->
                   <Tooltip v-if="group.space">
                     <TooltipTrigger as-child>
-                      <button
+                      <Button
                         type="button"
-                        class="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                        variant="ghost"
+                        size="icon-xs"
+                        class="text-muted-foreground shrink-0"
                         :aria-label="t('library.importTo', { name: group.name })"
                         @click.stop="importPaper(group.space.id)"
                       >
                         <FilePlus class="size-3.5" />
-                      </button>
+                      </Button>
                     </TooltipTrigger>
                     <TooltipContent side="right">{{ t('library.import') }}</TooltipContent>
                   </Tooltip>
                   <DropdownMenu v-if="group.space">
                     <DropdownMenuTrigger as-child>
-                      <button
+                      <Button
                         type="button"
-                        class="flex size-6 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:opacity-100 group-hover/space:opacity-100 data-[state=open]:opacity-100"
+                        variant="ghost"
+                        size="icon-xs"
+                        class="shrink-0 opacity-0 focus-visible:opacity-100 group-hover/space:opacity-100 data-[state=open]:opacity-100"
                         :aria-label="t('library.spaceActions', { name: group.name })"
                         @click.stop
                       >
                         <MoreHorizontal class="size-4" />
-                      </button>
+                      </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="start">
                       <DropdownMenuItem @select="startRenameSpace(group.space)">
