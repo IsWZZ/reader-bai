@@ -17,7 +17,7 @@ src/renderer/src/
   App.vue / main.ts / router/
   views/Home.vue               # 外壳：布局、面板编排
   components/                  # ActivityBar、LibraryPanel、PdfViewer、AssistantPanel、
-                               # SettingsDialog、PluginSettings、Toolbar
+                               # SettingsDialog、PluginSettings、PluginViewFrame、Toolbar
   components/ui/               # shadcn-vue 生成代码
   store/                       # assistant、settings、plugins
   lib/                         # ai、pdf、i18n
@@ -87,6 +87,10 @@ src/renderer/src/
 - 每份 AI 配置都有 `enabled` 状态，可在设置页禁用/启用；编辑时保留原状态。禁用配置不能设为当前模型，`activeAiProfile`、`enabledAiProfiles`、`isAiConfigured` 和助手面板的模型下拉都只考虑启用配置。主进程仍会在 `ai-request` 边界拒绝禁用配置。
 - Base URL 校验与主进程一致：默认 HTTPS，仅 `localhost` / `127.0.0.1` / `[::1]` 可用 HTTP；新增配置必须有 Key。
 - `settings.keyStorage === 'plaintext'` 时明确提示 Key 会以明文落盘。
+- `PluginViewFrame.vue` + [lib/plugin-view.ts](src/lib/plugin-view.ts)：已启用且兼容插件的 `contributes.views` 由 `Home.vue` 放进活动栏，`location=main` 替换主内容区，`location=sidebar` 替换左侧书库面板。
+  - 插件 HTML 只通过 `reader-bai-plugin://` 加载到 `sandbox="allow-scripts"` 的 iframe，不能使用 `allow-same-origin`，不要用 `v-html` 把插件内容渲染进应用 DOM。
+  - iframe 只通过 postMessage 请求 `tools.list` / `tools.execute`；渲染进程校验 `event.source`、消息类型和字段后调用 `window.api.pluginViewRequest`，再把结果回传。不要给插件暴露 `window.api`。
+  - 主窗口 CSP 只额外放行 `frame-src reader-bai-plugin:`；新增协议或资源类型时同步 CSP。
 - `PluginSettings.vue` + [store/plugins.ts](src/store/plugins.ts)：
   - 展示插件名称、版本、权限、命令、兼容性和宿主运行状态。
   - 启用开关失败时恢复原状态，保持界面与主进程一致。

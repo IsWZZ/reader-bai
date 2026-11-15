@@ -5,7 +5,7 @@
 - [src/main/CLAUDE.md](src/main/CLAUDE.md)：主进程、IPC、持久化、AI 网关、平台工具、插件宿主。
 - [src/preload/CLAUDE.md](src/preload/CLAUDE.md)：最小桥接面、类型同步和事件订阅。
 - [src/renderer/CLAUDE.md](src/renderer/CLAUDE.md)：Vue 渲染进程、组件/store、UI、阅读器、AI 面板。
-- 详细设计仍以 `docs/` 为准：[架构](docs/architecture.md)、[安全](docs/security.md)、[PDF 阅读器](docs/pdf-viewer.md)、[测试](docs/testing.md)。
+- 详细设计仍以 `docs/` 为准：[架构](docs/architecture.md)、[安全](docs/security.md)、[PDF 阅读器](docs/pdf-viewer.md)、[插件视图](docs/plugin-views.md)、[测试](docs/testing.md)。
 
 从仓库根启动时会加载本文件；进入 `src/main/`、`src/preload/` 或 `src/renderer/` 处理文件时，对应目录的 CLAUDE.md 会按需加载。改动某个进程前先读该目录的指引，不要把另一进程的约定套过来。
 
@@ -20,7 +20,7 @@
 - **C 第三方插件**（宿主已实现，具体插件还未开发）：检索源、模型提供商、导出格式等，需要 manifest、权限和隔离。
 - **D 云端服务**（还未开发）：账号、同步、推荐、社区后端，可选。
 
-当前实现进度：A 层已有 PDF 导入/阅读、空间管理、单页标注、翻译、多 AI 配置、流式对话、导入时 AI 元数据解析（含 Crossref 补全）、平台工具和 agent run；C 层已有 manifest 校验、插件发现、启停、独立 `utilityProcess` 宿主和按权限放行的工具调用。B 层和 D 层全部还未开发；C 层的命令触发、participant 输出协议、安装/签名校验和具体插件类型也还未开发。插件宿主不是 OS 沙箱，只应安装可信插件。
+当前实现进度：A 层已有 PDF 导入/阅读、空间管理、单页标注、翻译、多 AI 配置、流式对话、导入时 AI 元数据解析（含 Crossref 补全）、平台工具和 agent run；C 层已有 manifest 校验、插件发现、启停、独立 `utilityProcess` 宿主、按权限放行的工具调用，以及 sandbox iframe 插件视图（`contributes.views`，main/sidebar 槽位）。B 层和 D 层全部还未开发；C 层的命令触发、participant 输出协议、安装/签名校验和具体插件类型也还未开发。`utilityProcess` 插件宿主不是 OS 沙箱，只应安装可信插件；插件 UI 依赖 Chromium sandbox iframe 隔离。
 
 本地优先，云能力可选。定层、扩展点和路线见 [docs/architecture.md](docs/architecture.md)。
 

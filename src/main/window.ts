@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { PLUGIN_VIEW_SCHEME } from './plugins/view-assets'
 
 /** 只允许把 http(s) 链接交给系统浏览器 */
 const isSafeExternalUrl = (raw: string): boolean => {
@@ -48,6 +49,12 @@ export const createWindow = (): void => {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     event.preventDefault()
     openExternalSafely(url)
+  })
+
+  // 插件 iframe 只能在自己的协议内跳转，不能把面板导航到外部网页
+  mainWindow.webContents.on('will-frame-navigate', (details) => {
+    if (details.isMainFrame) return
+    if (!details.url.startsWith(`${PLUGIN_VIEW_SCHEME}://`)) details.preventDefault()
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

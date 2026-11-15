@@ -20,6 +20,7 @@ const MAX_VERSION_LENGTH = 40
 const MAX_MAIN_LENGTH = 200
 const MAX_ACTIVATION_EVENTS = 50
 const MAX_COMMANDS = 50
+const MAX_VIEWS = 20
 const MAX_TITLE_LENGTH = 100
 // 插件 id 固定为 publisher.name 两段，命令 id 允许多段
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/
@@ -38,13 +39,27 @@ const TOP_LEVEL_KEYS = new Set([
   'main'
 ])
 const ENGINE_KEYS = new Set(['readerBai'])
-const CONTRIBUTION_KEYS = new Set(['commands'])
+const CONTRIBUTION_KEYS = new Set(['commands', 'views'])
 const COMMAND_KEYS = new Set(['id', 'title', 'description'])
+const VIEW_KEYS = new Set(['id', 'title', 'location', 'entry'])
+const VIEW_LOCATIONS = ['main', 'sidebar'] as const
+
+export const PLUGIN_VIEW_LOCATIONS = VIEW_LOCATIONS
+export type PluginViewLocation = (typeof VIEW_LOCATIONS)[number]
 
 export interface PluginCommandContribution {
   id: string
   title: string
   description?: string
+}
+
+export interface PluginViewContribution {
+  id: string
+  title: string
+  /** main=替换主内容区；sidebar=替换左侧栏 */
+  location: PluginViewLocation
+  /** 相对插件目录的 HTML 入口 */
+  entry: string
 }
 
 export interface PluginManifest {
@@ -58,6 +73,7 @@ export interface PluginManifest {
   activationEvents: string[]
   contributes: {
     commands: PluginCommandContribution[]
+    views: PluginViewContribution[]
   }
   /** 声明需要的权限；未声明的能力一律不可用 */
   permissions: PluginPermission[]
@@ -207,6 +223,47 @@ const parseCommands = (raw: unknown): PluginCommandContribution[] => {
   return commands
 }
 
+const parseViews = (raw: unknown): PluginViewContribution[] => {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) throw new PluginManifestError('contributes.views 必须是数组')
+  if (raw.length > MAX_VIEWS) {
+    throw new PluginManifestError('contributes.views 数量超过允许值')
+  }
+
+  const views = raw.map((item, index) => {
+    const label = `contributes.views[${index}]`
+    const view = asRecord(item, label)
+    assertKnownKeys(view, VIEW_KEYS, label)
+    const id = readRequiredString(view, 'id', `${label}.id`, MAX_ID_LENGTH)
+    assertCommandId(id, `${label}.id`)
+    const location = readRequiredString(
+      view,
+      'location',
+      `${label}.location`,
+      MAX_ID_LENGTH
+    ) as PluginViewLocation
+    if (!VIEW_LOCATIONS.includes(location)) {
+      throw new PluginManifestError(`${label}.location 不受支持`)
+    }
+    const entry = readRequiredString(view, 'entry', `${label}.entry`, MAX_MAIN_LENGTH)
+    if (!isSafeRelativePath(entry)) {
+      throw new PluginManifestError(`${label}.entry 必须是插件目录内的相对路径`)
+    }
+    return {
+      id,
+      title: readRequiredString(view, 'title', `${label}.title`, MAX_TITLE_LENGTH),
+      location,
+      entry
+    }
+  })
+
+  const ids = views.map((view) => view.id)
+  if (new Set(ids).size !== ids.length) {
+    throw new PluginManifestError('contributes.views 的 id 不能重复')
+  }
+  return views
+}
+
 /** 解析并校验 manifest；任何不认识的字段或格式错误都会直接拒绝 */
 export const parsePluginManifest = (value: unknown): PluginManifest => {
   const record = asRecord(value, 'manifest')
@@ -236,6 +293,7 @@ export const parsePluginManifest = (value: unknown): PluginManifest => {
     record.contributes === undefined ? {} : asRecord(record.contributes, 'manifest.contributes')
   assertKnownKeys(contributes, CONTRIBUTION_KEYS, 'manifest.contributes')
   const commands = parseCommands(contributes.commands)
+  const views = parseViews(contributes.views)
 
   const startup = activationEvents.includes(STARTUP_ACTIVATION)
   for (const command of commands) {
@@ -261,7 +319,7 @@ export const parsePluginManifest = (value: unknown): PluginManifest => {
     ),
     engineRange,
     activationEvents,
-    contributes: { commands },
+    contributes: { commands, views },
     permissions: parsePermissions(record.permissions),
     main
   }

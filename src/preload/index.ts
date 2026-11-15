@@ -121,6 +121,15 @@ interface PluginCommand {
   description?: string
 }
 
+type PluginViewLocation = 'main' | 'sidebar'
+
+interface PluginViewInfo {
+  id: string
+  title: string
+  location: PluginViewLocation
+  entry: string
+}
+
 interface PluginInfo {
   id: string
   name: string
@@ -128,6 +137,7 @@ interface PluginInfo {
   description?: string
   permissions: PluginPermission[]
   commands: PluginCommand[]
+  views: PluginViewInfo[]
   enabled: boolean
   compatible: boolean
 }
@@ -212,6 +222,8 @@ const api = {
   setPluginEnabled: (id: string, enabled: boolean): Promise<PluginInfo> =>
     ipcRenderer.invoke('plugins:setEnabled', id, enabled),
   getPluginRuntime: (): Promise<PluginRuntimeState[]> => ipcRenderer.invoke('plugins:runtime'),
+  pluginViewRequest: (pluginId: string, viewId: string, method: string, params?: unknown) =>
+    ipcRenderer.invoke('plugins:view-request', pluginId, viewId, method, params),
   onPluginRuntime: (callback: (states: PluginRuntimeState[]) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, states: PluginRuntimeState[]): void => {
       callback(states)

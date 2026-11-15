@@ -2,17 +2,20 @@
 // 当前只负责发现和启用状态，不加载插件代码；第三方插件默认关闭，
 // 用户显式启用且版本兼容后，后续的扩展宿主才会执行 manifest.main。
 
-import { mkdir, readFile, writeFile } from 'fs/promises'
-import { dirname, join } from 'path'
+import { mkdir, readFile, realpath, stat, writeFile } from 'fs/promises'
+import { dirname, isAbsolute, join, relative, sep } from 'path'
 import { discoverPlugins, type DiscoveredPlugin, type PluginDiscoveryIssue } from './discovery'
 import {
   isEngineCompatible,
+  isSafeRelativePath,
   type PluginCommandContribution,
-  type PluginPermission
+  type PluginPermission,
+  type PluginViewContribution
 } from './manifest'
 import type { PluginHostDescriptor } from './protocol'
 
 const MAX_STATE_BYTES = 1024 * 1024
+const MAX_VIEW_ASSET_BYTES = 20 * 1024 * 1024
 
 export interface PluginStatus {
   id: string
@@ -21,9 +24,20 @@ export interface PluginStatus {
   description?: string
   permissions: PluginPermission[]
   commands: PluginCommandContribution[]
+  views: PluginViewContribution[]
   /** 用户已启用且与当前宿主版本兼容 */
   enabled: boolean
   compatible: boolean
+}
+
+export interface ResolvedPluginView {
+  view: PluginViewContribution
+  permissions: PluginPermission[]
+}
+
+export interface ResolvedPluginAsset {
+  filePath: string
+  permissions: PluginPermission[]
 }
 
 export interface PluginIssue {
@@ -41,6 +55,10 @@ export interface PluginHost {
   setEnabled: (id: string, enabled: boolean) => Promise<PluginStatus>
   /** 当前已启用、版本兼容且声明了入口的插件，供扩展宿主启动 */
   runtimePlugins: () => Promise<PluginHostDescriptor[]>
+  /** 解析已启用插件的视图，供 UI 请求工具时校验权限 */
+  resolveView: (pluginId: string, viewId: string) => Promise<ResolvedPluginView | null>
+  /** 解析插件目录内的静态资源；只对已启用且兼容的插件放行 */
+  resolveAsset: (pluginId: string, assetPath: string) => Promise<ResolvedPluginAsset | null>
 }
 
 export interface PluginHostOptions {
@@ -103,6 +121,7 @@ const toStatus = (
     description: plugin.manifest.description,
     permissions: [...plugin.manifest.permissions],
     commands: plugin.manifest.contributes.commands.map((command) => ({ ...command })),
+    views: plugin.manifest.contributes.views.map((view) => ({ ...view })),
     compatible,
     enabled: compatible && state.enabled[plugin.manifest.id] === true
   }
@@ -171,5 +190,58 @@ export const createPluginHost = (options: PluginHostOptions): PluginHost => {
     })
   }
 
-  return { list, setEnabled, runtimePlugins }
+  const findEnabledPlugin = async (pluginId: string): Promise<DiscoveredPlugin | null> => {
+    const [discovery, state] = await Promise.all([
+      discoverPlugins(options.root),
+      readState(options.stateFile)
+    ])
+    const plugin = discovery.plugins.find((item) => item.manifest.id === pluginId)
+    if (!plugin) return null
+    if (state.enabled[pluginId] !== true) return null
+    if (!isEngineCompatible(plugin.manifest.engineRange, options.appVersion)) return null
+    return plugin
+  }
+
+  const resolveView = async (
+    pluginId: string,
+    viewId: string
+  ): Promise<ResolvedPluginView | null> => {
+    const plugin = await findEnabledPlugin(pluginId)
+    if (!plugin) return null
+    const view = plugin.manifest.contributes.views.find((item) => item.id === viewId)
+    if (!view) return null
+    return { view: { ...view }, permissions: [...plugin.manifest.permissions] }
+  }
+
+  const resolveAsset = async (
+    pluginId: string,
+    assetPath: string
+  ): Promise<ResolvedPluginAsset | null> => {
+    if (!isSafeRelativePath(assetPath)) return null
+    const plugin = await findEnabledPlugin(pluginId)
+    if (!plugin) return null
+
+    let directory: string
+    let filePath: string
+    try {
+      directory = await realpath(plugin.directory)
+      filePath = await realpath(join(plugin.directory, assetPath))
+    } catch {
+      return null
+    }
+
+    const rel = relative(directory, filePath)
+    if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null
+
+    try {
+      const info = await stat(filePath)
+      if (!info.isFile() || info.size > MAX_VIEW_ASSET_BYTES) return null
+    } catch {
+      return null
+    }
+
+    return { filePath, permissions: [...plugin.manifest.permissions] }
+  }
+
+  return { list, setEnabled, runtimePlugins, resolveView, resolveAsset }
 }

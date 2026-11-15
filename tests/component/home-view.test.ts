@@ -4,7 +4,7 @@ vi.mock('@renderer/lib/pdf', () => ({
   readPdfTitle: vi.fn()
 }))
 
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Home from '@renderer/views/Home.vue'
@@ -12,10 +12,11 @@ import ActivityBar from '@renderer/components/ActivityBar.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
+import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import Toolbar from '@renderer/components/Toolbar.vue'
 import { useSettingsStore } from '@renderer/store/settings'
-import type { AiProfile, AppSettings, ChatMessage, Paper } from '@renderer/types'
+import type { AiProfile, AppSettings, ChatMessage, Paper, PluginInfo } from '@renderer/types'
 
 const PROFILE: AiProfile = {
   id: 'a',
@@ -134,6 +135,57 @@ describe('Home search wiring', () => {
     const dialog = wrapper.findComponent(SettingsDialog)
     expect(dialog.props('open')).toBe(true)
     expect(dialog.props('initialSection')).toBe('ai')
+  })
+
+  it('opens and closes an enabled plugin view in the main slot', async () => {
+    const plugin: PluginInfo = {
+      id: 'reader-bai.arxiv',
+      name: 'arXiv',
+      version: '1.0.0',
+      permissions: ['documents:read'],
+      commands: [],
+      views: [
+        {
+          id: 'search.arxiv.panel',
+          title: '搜索结果',
+          location: 'main',
+          entry: 'ui/index.html'
+        }
+      ],
+      enabled: true,
+      compatible: true
+    }
+    window.api = {
+      getSettings: vi.fn(async () => structuredClone(SETTINGS)),
+      updateSettings: vi.fn(),
+      onAiChunk: vi.fn(() => vi.fn()),
+      onAgentEvent: vi.fn(() => vi.fn()),
+      listPlugins: vi.fn(async () => ({ plugins: [plugin], issues: [] }))
+    } as unknown as Api
+
+    const wrapper = mountHome()
+    await flushPromises()
+
+    const bar = wrapper.findComponent(ActivityBar)
+    expect(bar.props('pluginViews')).toEqual([
+      {
+        key: 'reader-bai.arxiv/search.arxiv.panel',
+        label: 'arXiv · 搜索结果',
+        location: 'main'
+      }
+    ])
+
+    bar.vm.$emit('togglePluginView', 'reader-bai.arxiv/search.arxiv.panel')
+    await wrapper.vm.$nextTick()
+
+    const frame = wrapper.findComponent(PluginViewFrame)
+    expect(frame.props('pluginId')).toBe('reader-bai.arxiv')
+    expect(frame.props('pluginName')).toBe('arXiv')
+    expect(frame.props('view')).toMatchObject({ id: 'search.arxiv.panel' })
+
+    frame.vm.$emit('close')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent(PluginViewFrame).exists()).toBe(false)
   })
 })
 

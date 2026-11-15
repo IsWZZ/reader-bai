@@ -12,6 +12,8 @@ import { createPaperAnalyzer } from './paper-analysis'
 import { readPdfIntroText, readPdfPageText } from './pdf-text'
 import { createPluginHost } from './plugins/host'
 import { createPluginRuntime } from './plugins/runtime'
+import { createPluginViewBridge } from './plugins/view-bridge'
+import { registerPluginViewProtocol, registerPluginViewScheme } from './plugins/view-protocol'
 import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
 import { createUserDataPaths } from './user-data'
@@ -25,6 +27,9 @@ import { registerLibraryIpc } from './ipc/library'
 import { registerPluginsIpc } from './ipc/plugins'
 import { registerSettingsIpc } from './ipc/settings'
 import { confirmToolInvocation, registerToolsIpc } from './ipc/tools'
+
+// 自定义协议必须在 app ready 之前声明
+registerPluginViewScheme()
 
 // 平台外壳：只负责应用生命周期、持久化实例与各领域 IPC 的装配。
 // 业务逻辑放在 src/main/<domain>.ts，IPC 注册放在 src/main/ipc/。
@@ -88,6 +93,8 @@ app.whenReady().then(async () => {
     tools,
     onLog: (message) => console.warn(`[agent] ${message}`)
   })
+  const viewBridge = createPluginViewBridge({ host: plugins, tools })
+  registerPluginViewProtocol(plugins)
   const runtime = createPluginRuntime({
     hostScript: join(__dirname, 'plugin-host.js'),
     tools,
@@ -105,7 +112,7 @@ app.whenReady().then(async () => {
   registerAppIpc({ paths, library, settings, runtime })
   registerCacheIpc()
   registerSettingsIpc(settings)
-  registerPluginsIpc(plugins, runtime)
+  registerPluginsIpc(plugins, runtime, viewBridge)
   registerAgentIpc(agentRuntime)
   registerAiIpc(requester)
   registerToolsIpc(tools)

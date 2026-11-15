@@ -35,10 +35,88 @@ describe('parsePluginManifest', () => {
       description: 'arXiv 检索源',
       engineRange: '^1.0.0',
       activationEvents: ['onCommand:search.arxiv'],
-      contributes: { commands: [{ id: 'search.arxiv', title: '在 arXiv 中查找' }] },
+      contributes: {
+        commands: [{ id: 'search.arxiv', title: '在 arXiv 中查找' }],
+        views: []
+      },
       permissions: ['network', 'storage'],
       main: undefined
     })
+  })
+
+  it('parses view contributions with main and sidebar locations', () => {
+    const manifest = base()
+    manifest.contributes = {
+      commands: [],
+      views: [
+        {
+          id: 'search.arxiv.panel',
+          title: 'arXiv 面板',
+          location: 'sidebar',
+          entry: 'ui/index.html'
+        },
+        { id: 'search.arxiv.main', title: 'arXiv 结果', location: 'main', entry: 'ui/main.html' }
+      ]
+    }
+
+    expect(parsePluginManifest(manifest).contributes.views).toEqual([
+      {
+        id: 'search.arxiv.panel',
+        title: 'arXiv 面板',
+        location: 'sidebar',
+        entry: 'ui/index.html'
+      },
+      {
+        id: 'search.arxiv.main',
+        title: 'arXiv 结果',
+        location: 'main',
+        entry: 'ui/main.html'
+      }
+    ])
+  })
+
+  it('rejects invalid view contributions', () => {
+    const withViews = (views: unknown[]): Record<string, unknown> => ({
+      ...base(),
+      contributes: { commands: [], views }
+    })
+
+    expectInvalid(
+      withViews([
+        { id: 'search.arxiv.panel', title: 'Panel', location: 'panel', entry: 'ui/index.html' }
+      ]),
+      'location 不受支持'
+    )
+    expectInvalid(
+      withViews([
+        { id: 'search.arxiv.panel', title: 'Panel', location: 'main', entry: '../ui.html' }
+      ]),
+      'entry 必须是插件目录内的相对路径'
+    )
+    expectInvalid(
+      withViews([
+        { id: 'search.arxiv.panel', title: 'Panel', location: 'main', entry: 'ui.html', icon: 'x' }
+      ]),
+      '未知字段：icon'
+    )
+    expectInvalid(
+      withViews([
+        { id: 'search.arxiv.panel', title: 'A', location: 'main', entry: 'ui/a.html' },
+        { id: 'search.arxiv.panel', title: 'B', location: 'main', entry: 'ui/b.html' }
+      ]),
+      'contributes.views 的 id 不能重复'
+    )
+    expectInvalid(
+      withViews(
+        Array.from({ length: 21 }, (_, index) => ({
+          id: `search.arxiv.v${index}`,
+          title: `View ${index}`,
+          location: 'main',
+          entry: `ui/${index}.html`
+        }))
+      ),
+      'contributes.views 数量超过允许值'
+    )
   })
 
   it('defaults missing contributions and permissions', () => {
@@ -48,7 +126,7 @@ describe('parsePluginManifest', () => {
     delete manifest.permissions
 
     const parsed = parsePluginManifest(manifest)
-    expect(parsed.contributes).toEqual({ commands: [] })
+    expect(parsed.contributes).toEqual({ commands: [], views: [] })
     expect(parsed.permissions).toEqual([])
   })
 

@@ -38,4 +38,25 @@ describe('ActivityBar', () => {
 
     expect(wrapper.emitted('openSettings')).toHaveLength(1)
   })
+
+  it('renders plugin view buttons and emits their keys', async () => {
+    const wrapper = mountBar(false, false, true)
+    await wrapper.setProps({
+      pluginViews: [
+        {
+          key: 'reader-bai.arxiv/search.arxiv.panel',
+          label: 'arXiv · 搜索结果',
+          location: 'main'
+        }
+      ],
+      activePluginViewKey: 'reader-bai.arxiv/search.arxiv.panel'
+    })
+
+    const button = wrapper.get('button[aria-label="arXiv · 搜索结果"]')
+    expect(button.attributes('aria-pressed')).toBe('true')
+
+    await button.trigger('click')
+
+    expect(wrapper.emitted('togglePluginView')).toEqual([['reader-bai.arxiv/search.arxiv.panel']])
+  })
 })

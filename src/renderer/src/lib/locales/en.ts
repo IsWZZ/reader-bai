@@ -198,6 +198,8 @@ export const en = {
   'plugins.permissions': 'Permissions',
   'plugins.noPermissions': 'No permissions declared',
   'plugins.commands': 'Commands: {commands}',
+  'plugins.views': 'Views: {views}',
+  'plugins.view.close': 'Close plugin panel',
   'plugins.issues': 'Plugins that could not be loaded',
   'plugins.issueLine': '{directory}: {message}',
   'plugins.runtime.inactive': 'Not running',

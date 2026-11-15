@@ -72,7 +72,7 @@
 ## 需要预留的扩展点
 
 - **命令（commands）**：所有用户动作注册为稳定的 command id，可被快捷键、菜单、命令面板、内置模块或插件调用。
-- **视图（views）**：活动栏图标 + 侧栏 / 底部 / 主区域槽位；面板开关和宽度由外壳管理，内容由内置模块或插件提供。
+- **视图（views）**：活动栏图标 + 侧栏 / 底部 / 主区域槽位；面板开关和宽度由外壳管理，内容由内置模块或插件提供。当前 C 层已实现 `contributes.views` 的 `main` / `sidebar` 两个槽位，插件 UI 运行在 sandbox iframe 中。
 - **数据提供者（providers）**：论文元数据、本地/云端搜索源、推荐源、AI 模型提供商、写作素材与导出格式。
 - **设置贡献（settings）**：模块或插件向设置页注册 section，设置 schema 由贡献方声明。
 - **事件（events）**：`paper-opened`、`selection-changed`、`annotation-created`、`command-executed` 等，避免功能之间轮询或互相 import。
@@ -106,6 +106,14 @@ C 层插件 manifest 草案（字段名可以调整，但信息必须完整）�
   "activationEvents": ["onCommand:search.arxiv"],
   "contributes": {
     "commands": [{ "id": "search.arxiv", "title": "在 arXiv 中查找" }],
+    "views": [
+      {
+        "id": "search.arxiv.panel",
+        "title": "arXiv 检索",
+        "location": "sidebar",
+        "entry": "ui/index.html"
+      }
+    ],
     "searchSources": [{ "id": "arxiv", "title": "arXiv" }],
     "settings": [{ "id": "arxiv", "title": "arXiv 检索" }]
   },
@@ -115,7 +123,7 @@ C 层插件 manifest 草案（字段名可以调整，但信息必须完整）�
 
 约束：
 
-- 插件 UI 只拿到宿主注入的 API，不直接使用 `window.api`、Node 或文件系统。
+- 插件 UI 只拿到宿主注入的 API，不直接使用 `window.api`、Node 或文件系统。当前实现为 sandbox iframe：`reader-bai-plugin://` 自定义协议只读插件目录，`sandbox="allow-scripts"` 不含 `allow-same-origin`，能力只通过 postMessage RPC 暴露 `tools.list` / `tools.execute`。
 - 插件逻辑优先放在独立进程/Worker 中，崩溃不能拖垮外壳；至少要做到异常隔离和可卸载。
 - 外部插件安装需要来源校验与签名/哈希校验，安装前展示所需权限。
 - 未安装或未启用的模块/插件，相关入口必须优雅降级（例如当前没有 AI 配置时辅助面板给出配置提示）。

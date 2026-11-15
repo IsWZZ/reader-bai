@@ -11,6 +11,14 @@ const PLUGIN: PluginInfo = {
   description: 'arXiv 检索源',
   permissions: ['network', 'storage'],
   commands: [{ id: 'search.arxiv', title: '在 arXiv 中查找' }],
+  views: [
+    {
+      id: 'search.arxiv.panel',
+      title: 'arXiv 面板',
+      location: 'sidebar',
+      entry: 'ui/index.html'
+    }
+  ],
   enabled: false,
   compatible: true
 }

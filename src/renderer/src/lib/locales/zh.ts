@@ -185,6 +185,8 @@ export const zh = {
   'plugins.permissions': '权限',
   'plugins.noPermissions': '未声明权限',
   'plugins.commands': '命令：{commands}',
+  'plugins.views': '视图：{views}',
+  'plugins.view.close': '关闭插件面板',
   'plugins.issues': '无法加载的插件',
   'plugins.issueLine': '{directory}：{message}',
   'plugins.runtime.inactive': '未启动',

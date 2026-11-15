@@ -184,6 +184,16 @@ declare global {
     description?: string
   }
 
+  type PluginViewLocation = 'main' | 'sidebar'
+
+  interface PluginViewInfo {
+    id: string
+    title: string
+    location: PluginViewLocation
+    /** 相对插件目录的 HTML 入口 */
+    entry: string
+  }
+
   interface PluginInfo {
     id: string
     name: string
@@ -192,6 +202,7 @@ declare global {
     /** manifest 中声明的权限，不代表已经授予 */
     permissions: PluginPermission[]
     commands: PluginCommand[]
+    views: PluginViewInfo[]
     /** 用户已启用且与当前宿主版本兼容 */
     enabled: boolean
     compatible: boolean
@@ -301,6 +312,13 @@ declare global {
     setPluginEnabled: (id: string, enabled: boolean) => Promise<PluginInfo>
     /** 已启用插件的扩展宿主状态 */
     getPluginRuntime: () => Promise<PluginRuntimeState[]>
+    /** 插件 iframe 的受限能力请求；只支持 tools.list / tools.execute */
+    pluginViewRequest: (
+      pluginId: string,
+      viewId: string,
+      method: string,
+      params?: unknown
+    ) => Promise<unknown>
     /** 订阅宿主状态变化，返回取消订阅函数 */
     onPluginRuntime: (callback: (states: PluginRuntimeState[]) => void) => () => void
   }

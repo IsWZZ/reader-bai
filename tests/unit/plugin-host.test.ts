@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -61,6 +61,7 @@ describe('plugin host', () => {
         description: 'arXiv 检索源',
         permissions: ['network', 'storage'],
         commands: [{ id: 'search.arxiv', title: '在 arXiv 中查找' }],
+        views: [],
         compatible: true,
         enabled: false
       }
@@ -69,6 +70,86 @@ describe('plugin host', () => {
       expect.objectContaining({ directoryName: 'broken', message: 'manifest.id 格式不正确' })
     ])
     expect(JSON.stringify(result)).not.toContain(root)
+  })
+
+  it('reports view contributions', async () => {
+    await writePlugin(
+      root,
+      'arxiv',
+      manifest({
+        contributes: {
+          commands: [],
+          views: [
+            {
+              id: 'search.arxiv.panel',
+              title: 'arXiv 面板',
+              location: 'sidebar',
+              entry: 'ui/index.html'
+            }
+          ]
+        }
+      })
+    )
+
+    expect((await host.list()).plugins[0].views).toEqual([
+      {
+        id: 'search.arxiv.panel',
+        title: 'arXiv 面板',
+        location: 'sidebar',
+        entry: 'ui/index.html'
+      }
+    ])
+  })
+
+  it('resolves views and assets only while the plugin is enabled', async () => {
+    await writePlugin(
+      root,
+      'arxiv',
+      manifest({
+        contributes: {
+          commands: [],
+          views: [
+            {
+              id: 'search.arxiv.panel',
+              title: 'arXiv 面板',
+              location: 'sidebar',
+              entry: 'ui/index.html'
+            }
+          ]
+        }
+      })
+    )
+    const directory = join(root, 'arxiv')
+    await mkdir(join(directory, 'ui'), { recursive: true })
+    await writeFile(join(directory, 'ui', 'index.html'), '<html>ok</html>')
+    await writeFile(join(root, 'outside.html'), 'outside')
+
+    expect(await host.resolveView('reader-bai.arxiv-source', 'search.arxiv.panel')).toBeNull()
+    expect(await host.resolveAsset('reader-bai.arxiv-source', 'ui/index.html')).toBeNull()
+
+    await host.setEnabled('reader-bai.arxiv-source', true)
+
+    expect(await host.resolveView('reader-bai.arxiv-source', 'search.arxiv.panel')).toEqual({
+      view: {
+        id: 'search.arxiv.panel',
+        title: 'arXiv 面板',
+        location: 'sidebar',
+        entry: 'ui/index.html'
+      },
+      permissions: ['network', 'storage']
+    })
+    const asset = await host.resolveAsset('reader-bai.arxiv-source', 'ui/index.html')
+    expect(asset?.permissions).toEqual(['network', 'storage'])
+    expect(asset?.filePath).toMatch(/arxiv\/ui\/index\.html$/)
+
+    expect(await host.resolveAsset('reader-bai.arxiv-source', '../outside.html')).toBeNull()
+    expect(await host.resolveAsset('reader-bai.arxiv-source', 'ui/missing.html')).toBeNull()
+
+    await symlink(join(root, 'outside.html'), join(directory, 'ui', 'link.html'))
+    expect(await host.resolveAsset('reader-bai.arxiv-source', 'ui/link.html')).toBeNull()
+
+    await host.setEnabled('reader-bai.arxiv-source', false)
+    expect(await host.resolveAsset('reader-bai.arxiv-source', 'ui/index.html')).toBeNull()
   })
 
   it('restores the enabled state from disk', async () => {

@@ -84,13 +84,15 @@
 
 ## 插件宿主
 
-- `plugins/manifest.ts`：manifest 校验。id 固定 `publisher.name`，版本 semver，`engines.readerBai` 限制宿主版本，`activationEvents` 支持 `onStartup` / `onCommand:<id>`，`contributes.commands`，权限白名单为 `documents:read` / `annotations:write` / `network` / `storage`；未知字段一律拒绝。
+- `plugins/manifest.ts`：manifest 校验。id 固定 `publisher.name`，版本 semver，`engines.readerBai` 限制宿主版本，`activationEvents` 支持 `onStartup` / `onCommand:<id>`，`contributes.commands`，`contributes.views`（id / title / location=`main`|`sidebar` / 插件目录内相对 HTML entry），权限白名单为 `documents:read` / `annotations:write` / `network` / `storage`；未知字段一律拒绝。
 - `plugins/discovery.ts`：扫描 `userData/Userdata/plugins` 的真实子目录，跳过符号链接；单个插件损坏只记录 issue，不影响其他插件和主程序启动。
-- `plugins/host.ts`：管理启用状态，默认关闭，写入 `userData/Userdata/plugins.json`；版本不兼容的插件不能启用；`runtimePlugins()` 只返回已启用、兼容且声明了 `main` 的入口。
+- `plugins/host.ts`：管理启用状态，默认关闭，写入 `userData/Userdata/plugins.json`；版本不兼容的插件不能启用；`runtimePlugins()` 只返回已启用、兼容且声明了 `main` 的入口。`resolveView()` / `resolveAsset()` 只对已启用且兼容的插件放行；静态资源经 `realpath` 校验必须留在插件目录内，符号链接和目录外文件一律拒绝。
+- `plugins/view-assets.ts`：插件 UI 的纯逻辑（`reader-bai-plugin://` URL、MIME、CSP）。`plugins/view-protocol.ts`：在 app ready 前注册 scheme，ready 后用 `protocol.handle` 提供插件目录内的静态文件；响应带 CSP、`nosniff`、`no-store`。CSP 默认禁止外部网络，只有 manifest 声明 `network` 才放行 HTTPS 和本机回环。
+- `plugins/view-bridge.ts`：插件 iframe 的唯一能力入口，只接受 `tools.list` / `tools.execute`；权限按 manifest 校验，工具执行仍走平台确认。IPC 为 `plugins:view-request`。作者协议见 [docs/plugin-views.md](../../docs/plugin-views.md)。
 - `plugins/runtime.ts`：用 `utilityProcess.fork` 启动 `out/main/plugin-host.js`；插件启停后整体重载宿主；崩溃、启动失败和退出都反映为运行状态；按 manifest 权限放行工具调用，写操作仍走主进程确认。
 - `plugins/host-process.ts`：独立宿主入口，动态 import 插件 `main`；只激活声明了 `onStartup` 的插件（`onCommand` 暂未接入）；激活/停用有 10 秒超时；向插件注入 `pluginId`、`permissions`、`log` 和受限的 `tools` API。
 - `plugins/protocol.ts`：校验宿主消息（`ready` / `status` / `log` / `api-request` / `stopped`），API 方法限定为 `tools.list` / `tools.execute`，字段和参数体积有上限。
-- `plugins/api.ts`：插件作者契约；插件拿不到 `window.api`、设置文件、`BrowserWindow` 或 API Key。
+- `plugins/api.ts`：插件作者契约；插件拿不到 `window.api`、设置文件、`BrowserWindow` 或 API Key。插件 UI 运行在渲染进程的 sandbox iframe（`allow-scripts`，不含 `allow-same-origin`），通过 postMessage RPC 调用 `plugins:view-request`，不能直接访问主窗口 DOM 或 preload。
 - 构建入口在 `electron.vite.config.ts` 的 main rollup input 中，必须保留 `plugin-host` 和 `agent-host` 独立产物。
 
 ## 测试

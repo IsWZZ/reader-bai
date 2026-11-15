@@ -41,6 +41,25 @@
         <TooltipContent side="right">{{ t('assistant.title') }}</TooltipContent>
       </Tooltip>
 
+      <Tooltip v-for="view in pluginViews" :key="view.key">
+        <TooltipTrigger as-child>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            :aria-label="view.label"
+            :aria-pressed="view.key === activePluginViewKey"
+            :class="[
+              'rounded-lg transition-colors',
+              view.key === activePluginViewKey ? 'bg-accent text-accent-foreground' : ''
+            ]"
+            @click="emit('togglePluginView', view.key)"
+          >
+            <Puzzle class="size-5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{{ view.label }}</TooltipContent>
+      </Tooltip>
+
       <div class="flex-1" />
 
       <Tooltip>
@@ -74,21 +93,31 @@ import {
   TooltipProvider
 } from '@renderer/components/ui/tooltip'
 import { t } from '@renderer/lib/i18n'
-import { LibraryBig, Settings, Sparkles } from 'lucide-vue-next'
+import { LibraryBig, Puzzle, Settings, Sparkles } from 'lucide-vue-next'
+import type { PluginViewLocation } from '@renderer/types'
+
+interface ActivityPluginView {
+  key: string
+  label: string
+  location: PluginViewLocation
+}
 
 withDefaults(
   defineProps<{
     isLibraryOpen: boolean
     isAssistantOpen: boolean
     settingsOpen?: boolean
+    pluginViews?: ActivityPluginView[]
+    activePluginViewKey?: string | null
   }>(),
-  { settingsOpen: false }
+  { settingsOpen: false, pluginViews: () => [], activePluginViewKey: null }
 )
 
 const emit = defineEmits<{
   toggleLibrary: []
   toggleAssistant: []
   openSettings: []
+  togglePluginView: [key: string]
 }>()
 
 const toggleLibrary = (): void => {

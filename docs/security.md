@@ -44,6 +44,7 @@
 - 设置、书库和 AI 消息都有规范化逻辑，异常文件按空数据降级，不会导致启动失败。
 - 未发现 `v-html`、`innerHTML`、`eval` 等直接注入点。
 - 插件代码只在 `utilityProcess` 扩展宿主中执行，不进入渲染进程或主进程；宿主消息经过协议校验，API 方法限定为 `tools.list` / `tools.execute`，字段和参数有长度上限。插件调用工具时按 manifest 的 `requiredPermissions` 校验，写操作仍由主进程弹出确认。
+- 插件视图运行在渲染进程的 sandbox iframe（`allow-scripts`，无 `allow-same-origin`），HTML/JS 只从 `reader-bai-plugin://` 自定义协议加载；协议只服务已启用且兼容插件目录内的普通文件，经 `realpath` 校验路径归属，拒绝目录外文件和符号链接。响应带 CSP、`nosniff`、`no-store`，默认禁止网络，只有 manifest 声明 `network` 才允许 HTTPS 和本机回环。子 frame 导航只允许留在 `reader-bai-plugin://` 内。iframe 的能力仅限 postMessage → `plugins:view-request` 的 `tools.list` / `tools.execute`，不能访问 `window.api` 或主窗口 DOM。
 - E2E 使用临时 `--user-data-dir`，测试不会读写真实用户数据；密钥使用假值。
 
 ## 已知风险与加固顺序

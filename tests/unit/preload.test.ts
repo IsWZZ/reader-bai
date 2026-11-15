@@ -60,6 +60,7 @@ describe('preload bridge', () => {
         'onAgentEvent',
         'onAiChunk',
         'onPluginRuntime',
+        'pluginViewRequest',
         'readPaper',
         'removeAnnotations',
         'removePaper',
@@ -189,6 +190,15 @@ describe('preload bridge', () => {
 
     await api.getPluginRuntime()
     expect(electron.invoke).toHaveBeenLastCalledWith('plugins:runtime')
+
+    await api.pluginViewRequest('publisher.plugin', 'panel.main', 'tools.list')
+    expect(electron.invoke).toHaveBeenLastCalledWith(
+      'plugins:view-request',
+      'publisher.plugin',
+      'panel.main',
+      'tools.list',
+      undefined
+    )
   })
 
   it('subscribes and removes only its own listener', () => {

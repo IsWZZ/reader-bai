@@ -76,6 +76,9 @@
             })
           }}
         </p>
+        <p v-if="plugin.views.length > 0" class="text-muted-foreground text-xs">
+          {{ t('plugins.views', { views: plugin.views.map((view) => view.title).join(', ') }) }}
+        </p>
       </li>
     </ul>
 

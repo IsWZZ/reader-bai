@@ -160,6 +160,16 @@ export interface PluginCommand {
   description?: string
 }
 
+export type PluginViewLocation = 'main' | 'sidebar'
+
+export interface PluginViewInfo {
+  id: string
+  title: string
+  location: PluginViewLocation
+  /** 相对插件目录的 HTML 入口 */
+  entry: string
+}
+
 export interface PluginInfo {
   id: string
   name: string
@@ -168,6 +178,7 @@ export interface PluginInfo {
   /** manifest 中声明的权限，不代表已经授予 */
   permissions: PluginPermission[]
   commands: PluginCommand[]
+  views: PluginViewInfo[]
   /** 用户已启用且与当前宿主版本兼容 */
   enabled: boolean
   compatible: boolean

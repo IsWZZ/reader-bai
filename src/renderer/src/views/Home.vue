@@ -6,12 +6,27 @@
         :is-library-open="isLibraryOpen"
         :is-assistant-open="isAssistantOpen"
         :settings-open="settingsOpen"
+        :plugin-views="activityPluginViews"
+        :active-plugin-view-key="activePluginViewKey"
         @toggle-library="toggleLibrary"
         @toggle-assistant="toggleAssistant"
         @open-settings="openSettingsAt('basic')"
+        @toggle-plugin-view="togglePluginView"
       />
+      <div
+        v-if="isLibraryOpen && activeSidebarView"
+        class="h-full shrink-0"
+        :style="{ width: libraryWidth + 'px' }"
+      >
+        <PluginViewFrame
+          :plugin-id="activeSidebarView.pluginId"
+          :plugin-name="activeSidebarView.pluginName"
+          :view="activeSidebarView"
+          @close="closePluginView(activeSidebarView.key)"
+        />
+      </div>
       <LibraryPanel
-        v-if="isLibraryOpen"
+        v-else-if="isLibraryOpen"
         v-model:width="libraryWidth"
         :current-paper-id="currentPaper?.id"
         :search-query="searchQuery"
@@ -25,7 +40,14 @@
         @mousedown="startResize"
       />
       <main class="min-w-0 flex-1 overflow-hidden rounded-lg border bg-card p-4">
-        <div v-if="currentPaper" class="h-full">
+        <PluginViewFrame
+          v-if="activeMainView"
+          :plugin-id="activeMainView.pluginId"
+          :plugin-name="activeMainView.pluginName"
+          :view="activeMainView"
+          @close="closePluginView(activeMainView.key)"
+        />
+        <div v-else-if="currentPaper" class="h-full">
           <PdfViewer
             v-if="currentPaper.path"
             :src="currentPaper.path"
@@ -53,17 +75,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import Toolbar from '@renderer/components/Toolbar.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
+import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import { useAssistantStore } from '@renderer/store/assistant'
+import { usePluginsStore } from '@renderer/store/plugins'
 import { useSettingsStore } from '@renderer/store/settings'
 import { t } from '@renderer/lib/i18n'
-import type { Paper } from '@renderer/types'
+import type { Paper, PluginViewInfo, PluginViewLocation } from '@renderer/types'
 
 const isLibraryOpen = ref(true)
 const libraryWidth = ref(256)
@@ -75,6 +99,7 @@ const searchQuery = ref('')
 
 const assistantStore = useAssistantStore()
 const settingsStore = useSettingsStore()
+const pluginsStore = usePluginsStore()
 const isAssistantOpen = ref(false)
 type SettingsSection = 'basic' | 'ai' | 'library' | 'plugins' | 'uninstall'
 const settingsOpen = ref(false)
@@ -83,8 +108,68 @@ const assistantWidth = ref(340)
 const minAssistantWidth = 280
 const maxAssistantWidth = 560
 
+interface ActivePluginView extends PluginViewInfo {
+  key: string
+  pluginId: string
+  pluginName: string
+}
+
+interface ActivityPluginView {
+  key: string
+  label: string
+  location: PluginViewLocation
+}
+
+const pluginViews = computed<ActivePluginView[]>(() =>
+  pluginsStore.plugins
+    .filter((plugin) => plugin.enabled && plugin.compatible)
+    .flatMap((plugin) =>
+      plugin.views.map((view) => ({
+        ...view,
+        key: `${plugin.id}/${view.id}`,
+        pluginId: plugin.id,
+        pluginName: plugin.name
+      }))
+    )
+)
+
+const activityPluginViews = computed<ActivityPluginView[]>(() =>
+  pluginViews.value.map((view) => ({
+    key: view.key,
+    label: `${view.pluginName} · ${view.title}`,
+    location: view.location
+  }))
+)
+
+const activePluginViewKey = ref<string | null>(null)
+const activePluginView = computed(
+  () => pluginViews.value.find((view) => view.key === activePluginViewKey.value) ?? null
+)
+const activeSidebarView = computed(() =>
+  activePluginView.value?.location === 'sidebar' ? activePluginView.value : null
+)
+const activeMainView = computed(() =>
+  activePluginView.value?.location === 'main' ? activePluginView.value : null
+)
+
+const closePluginView = (key: string): void => {
+  if (activePluginViewKey.value === key) activePluginViewKey.value = null
+}
+
+const togglePluginView = (key: string): void => {
+  const view = pluginViews.value.find((item) => item.key === key)
+  if (!view) return
+  if (activePluginViewKey.value === key) {
+    activePluginViewKey.value = null
+    return
+  }
+  activePluginViewKey.value = key
+  if (view.location === 'sidebar') isLibraryOpen.value = true
+}
+
 onMounted(() => {
   assistantStore.initialize()
+  void pluginsStore.load()
 })
 
 // 面板关闭时只记录选区；打开后再翻译最近一次选区
@@ -102,6 +187,12 @@ watch(
 )
 
 const toggleLibrary = (): void => {
+  // 侧栏插件视图占用同一个位置；点击论文库时先退回书库
+  if (activePluginView.value?.location === 'sidebar') {
+    activePluginViewKey.value = null
+    isLibraryOpen.value = true
+    return
+  }
   isLibraryOpen.value = !isLibraryOpen.value
 }
 
