@@ -1,4 +1,4 @@
-import { readonly, ref } from 'vue'
+import { readonly, ref, type Ref } from 'vue'
 import { en } from './locales/en'
 import { zh } from './locales/zh'
 import type { LocaleDefinition, MessageKey } from './locales/types'
@@ -18,7 +18,22 @@ const definitions = new Map(
 
 export const DEFAULT_LOCALE = 'zh'
 
-const localeRef = ref(DEFAULT_LOCALE)
+interface LocaleState {
+  current: Ref<string>
+}
+
+/**
+ * 语言状态必须跨模块实例共享：开发模式下改动语言包或 i18n 后，
+ * Vite HMR 会用新的模块实例替换部分组件，而 Pinia store 仍持有旧闭包。
+ * 如果把 ref 放在模块作用域，两份实例各自更新自己的 ref，就会出现
+ * 活动栏已切换、设置弹窗仍是旧语言的状态。挂在 globalThis 上可以保证
+ * 同一渲染进程内所有副本读写同一个 ref。
+ */
+const LOCALE_STATE_KEY = Symbol.for('reader-bai.i18n.locale-state')
+const sharedGlobals = globalThis as unknown as Record<symbol, LocaleState | undefined>
+const localeState = (sharedGlobals[LOCALE_STATE_KEY] ??= { current: ref(DEFAULT_LOCALE) })
+const localeRef = localeState.current
+
 /** 当前界面语言；t() 读取它会自动建立响应式依赖 */
 export const locale = readonly(localeRef)
 

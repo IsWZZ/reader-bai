@@ -103,6 +103,7 @@ src/renderer/src/
 - 消息键的唯一来源是 [locales/zh.ts](src/lib/locales/zh.ts)，`MessageKey` 由它推导；每个语言包用 `satisfies LocaleMessages` 保证键齐全。
 - 当前支持 `zh`、`en`，注册表在 `i18n.ts` 的 `LOCALES`。默认语言是 `zh`；`normalizeLocale` 先精确匹配，再退到基础语言（`en-US` → `en`），最后回退默认语言。
 - 切换语言通过 `settingsStore.setLanguage(code)`：`setLocale` 立即生效并同步 `<html lang>`，持久化失败时回滚；不要只调 `setLocale` 而不写设置。
+- 当前语言状态的 ref 挂在 `globalThis` 的 symbol 键下，而不是模块作用域：Vite HMR 重新实例化模块时，设置 store 的旧闭包和热更新后的组件必须读写同一个 ref，否则会出现「活动栏已切换、设置弹窗仍是旧语言」的不一致。新增语言相关状态时沿用这一共享方式。
 - 增加新语言：新增 `locales/<code>.ts`（实现全部 `MessageKey`）→ 在 `LOCALES` 追加 `{ code, label, messages }`。主进程不需要改，`language` 只做 BCP 47 格式校验。
 - 插值使用 `{name}` 占位符，参数放第二个对象；缺失参数会保留占位符，便于发现漏传。
 - 系统提示词、日志和主进程返回的错误信息不属于界面文案，保持现状；AI 系统提示不要跟随界面语言，避免改变翻译/工具行为。
