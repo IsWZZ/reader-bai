@@ -470,7 +470,7 @@ describe('LibraryPanel', () => {
     await flushPromises()
 
     const viewItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (element) => element.textContent?.includes('查看论文信息')
+      (element) => element.textContent?.includes('论文信息')
     )
     if (!viewItem) throw new Error('view metadata menu item not found')
     viewItem.click()
@@ -515,7 +515,7 @@ describe('LibraryPanel', () => {
     await flushPromises()
 
     const viewItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (element) => element.textContent?.includes('查看论文信息')
+      (element) => element.textContent?.includes('论文信息')
     )
     if (!viewItem) throw new Error('view metadata menu item not found')
     viewItem.click()

@@ -94,7 +94,7 @@ export const zh = {
   'library.title': '论文库',
   'library.search.empty': '没有匹配“{query}”的论文',
   'library.search.emptyHint': '试试标题、作者、期刊或 DOI 中的其他关键词',
-  'library.metadata.view': '查看论文信息',
+  'library.metadata.view': '论文信息',
   'library.metadata.edit': '编辑论文信息',
   'library.metadata.saveFailed': '保存论文信息失败',
   'library.metadata.analyze': 'AI解析',
@@ -141,7 +141,7 @@ export const zh = {
   'library.paperActions': '{title} 操作',
   'library.rename': '重命名',
   'library.moveToSpace': '移动到空间',
-  'library.remove': '从论文库移除',
+  'library.remove': '删除',
 
   'pdf.zoomOut': '缩小',
   'pdf.zoomIn': '放大',

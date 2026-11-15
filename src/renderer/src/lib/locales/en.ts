@@ -102,7 +102,7 @@ export const en = {
   'library.title': 'Library',
   'library.search.empty': 'No papers match “{query}”',
   'library.search.emptyHint': 'Try another title, author, venue, or DOI keyword',
-  'library.metadata.view': 'View paper details',
+  'library.metadata.view': 'Paper details',
   'library.metadata.edit': 'Edit paper details',
   'library.metadata.saveFailed': 'Failed to save paper details',
   'library.metadata.analyze': 'AI Analysis',
@@ -149,7 +149,7 @@ export const en = {
   'library.paperActions': 'Actions for {title}',
   'library.rename': 'Rename',
   'library.moveToSpace': 'Move to space',
-  'library.remove': 'Remove from library',
+  'library.remove': 'Delete',
 
   'pdf.zoomOut': 'Zoom out',
   'pdf.zoomIn': 'Zoom in',

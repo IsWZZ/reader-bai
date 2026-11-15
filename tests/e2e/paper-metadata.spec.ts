@@ -219,7 +219,7 @@ test('analyzes an imported paper and stores its metadata', async () => {
 
   // 详情弹窗展示解析出的书目信息
   await reader.page.getByRole('button', { name: 'Attention Is All You Need 操作' }).click()
-  await reader.page.getByRole('menuitem', { name: '查看论文信息' }).click()
+  await reader.page.getByRole('menuitem', { name: '论文信息' }).click()
   await expect(reader.page.getByText('10.1234/e2e.2024')).toBeVisible()
   await expect(reader.page.getByText('An abstract parsed from the paper.')).toBeVisible()
   await expect(reader.page.getByText('A short AI summary.')).toBeVisible()
@@ -238,7 +238,7 @@ test('adds missing metadata manually and rejects invalid values', async () => {
 
   // 没有 AI 配置时也可以从菜单打开详情并手动填写
   await reader.page.getByRole('button', { name: 'Sample Paper 操作' }).click()
-  await reader.page.getByRole('menuitem', { name: '查看论文信息' }).click()
+  await reader.page.getByRole('menuitem', { name: '论文信息' }).click()
   await expect(reader.page.getByText('还没有论文信息')).toBeVisible()
 
   await reader.page.getByRole('button', { name: '编辑', exact: true }).click()

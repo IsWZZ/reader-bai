@@ -219,7 +219,7 @@ test('removing a paper clears its annotations and keeps the PDF', async () => {
   const reader = await launchReader(userDataDir)
   await reader.page.getByRole('button', { name: 'Paper A', exact: true }).hover()
   await reader.page.getByRole('button', { name: 'Paper A 操作' }).click()
-  await reader.page.getByRole('menuitem', { name: '从论文库移除' }).click()
+  await reader.page.getByRole('menuitem', { name: '删除' }).click()
 
   await expect(reader.page.getByText('暂无论文')).toBeVisible()
   await expect.poll(async () => (await readLibrary())?.papers.length).toBe(0)
