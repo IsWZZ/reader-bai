@@ -28,7 +28,7 @@ const EMPTY_SETTINGS = {
   theme: 'light',
   language: 'zh',
   ai: { profiles: [], activeId: '' },
-  library: { directory: '', autoAnalyze: false }
+  library: { directory: '', autoAnalyze: true }
 }
 
 let dir: string

@@ -96,7 +96,7 @@ export const zh = {
   'library.search.emptyHint': '试试标题、作者、期刊或 DOI 中的其他关键词',
   'library.metadata.view': '查看论文信息',
   'library.metadata.analyze': 'AI解析',
-  'library.metadata.reanalyze': '重新解析论文信息',
+  'library.metadata.reanalyze': '重新解析',
   'library.metadata.analyzing': '正在解析论文信息…',
   'library.metadata.failed': '论文信息解析失败',
   'library.metadata.authorsMore': '{names} 等',

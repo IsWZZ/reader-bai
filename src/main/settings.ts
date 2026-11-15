@@ -234,8 +234,8 @@ export const normalizeStoredSettings = (raw: unknown): StoredSettings => {
     ai: { profiles, activeId: normalizeActiveId(ai.activeId, profiles) },
     library: {
       directory: normalizeDirectory(library.directory),
-      // 缺失或非 true 一律视为关闭
-      autoAnalyze: library.autoAnalyze === true
+      // 默认开启；只有显式写入 false 才关闭（例如旧设置文件没有这个字段）
+      autoAnalyze: library.autoAnalyze !== false
     }
   }
 }

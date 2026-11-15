@@ -104,7 +104,7 @@ export const en = {
   'library.search.emptyHint': 'Try another title, author, venue, or DOI keyword',
   'library.metadata.view': 'View paper details',
   'library.metadata.analyze': 'AI Analysis',
-  'library.metadata.reanalyze': 'Re-analyze paper metadata',
+  'library.metadata.reanalyze': 'Re-analyze',
   'library.metadata.analyzing': 'Analyzing paper metadata…',
   'library.metadata.failed': 'Paper metadata analysis failed',
   'library.metadata.authorsMore': '{names} et al.',

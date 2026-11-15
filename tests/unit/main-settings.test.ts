@@ -81,7 +81,7 @@ describe('normalizeStoredSettings', () => {
         ],
         activeId: 'a'
       },
-      library: { directory: '', autoAnalyze: false }
+      library: { directory: '', autoAnalyze: true }
     })
   })
 
@@ -125,28 +125,29 @@ describe('normalizeStoredSettings', () => {
   it('keeps an absolute library directory and drops invalid ones', () => {
     expect(
       normalizeStoredSettings({ library: { directory: ` ${LIBRARY_DIRECTORY} ` } }).library
-    ).toEqual({ directory: LIBRARY_DIRECTORY, autoAnalyze: false })
+    ).toEqual({ directory: LIBRARY_DIRECTORY, autoAnalyze: true })
     expect(normalizeStoredSettings({ library: { directory: 'relative/papers' } }).library).toEqual({
       directory: '',
-      autoAnalyze: false
+      autoAnalyze: true
     })
     expect(normalizeStoredSettings({ library: { directory: 42 } }).library).toEqual({
       directory: '',
-      autoAnalyze: false
+      autoAnalyze: true
     })
-    expect(normalizeStoredSettings({}).library).toEqual({ directory: '', autoAnalyze: false })
+    expect(normalizeStoredSettings({}).library).toEqual({ directory: '', autoAnalyze: true })
   })
 
-  it('keeps an explicit auto-analyze switch and treats other values as off', () => {
-    expect(normalizeStoredSettings({}).library.autoAnalyze).toBe(false)
+  it('defaults auto-analyze to on and keeps an explicit off switch', () => {
+    expect(normalizeStoredSettings({}).library.autoAnalyze).toBe(true)
     expect(normalizeStoredSettings({ library: { autoAnalyze: true } }).library.autoAnalyze).toBe(
       true
     )
     expect(normalizeStoredSettings({ library: { autoAnalyze: false } }).library.autoAnalyze).toBe(
       false
     )
+    // 缺失或非法值按默认值开启处理
     expect(normalizeStoredSettings({ library: { autoAnalyze: 'no' } }).library.autoAnalyze).toBe(
-      false
+      true
     )
   })
 

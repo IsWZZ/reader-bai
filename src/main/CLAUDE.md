@@ -33,7 +33,7 @@
   - `library.json`：`{ spaces, papers }`；读取时走 `normalizeLibrary` 校验结构并补齐字段；论文可带 `metadata`（作者、期刊/会议、年份、DOI、摘要、关键词等），读取时同样逐字段清洗。移除论文/空间不删除 PDF，但移除论文时要同步清空该论文在 `annotations.json` 中的标注。
   - 书库的写入统一走 `library.mutate` 串行读改写；导入、重命名和 AI 解析可能并发，直接 `read` + `write` 会互相覆盖。
   - `annotations.json`：以论文路径为键；`add` / `remove` / `list` 都先校验论文库归属；读盘时逐字段清洗，坏条目跳过。
-  - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory, autoAnalyze } }`；只接受 `ai.profiles` 数组格式。profile 必须显式带 `enabled`，`autoAnalyze` 只有 `true` 才开启；缺失或非布尔值按关闭处理。
+  - `settings.json`：`{ theme, language, ai: { profiles, activeId }, library: { directory, autoAnalyze } }`；只接受 `ai.profiles` 数组格式。profile 必须显式带 `enabled`；`autoAnalyze` 默认开启，只有显式 `false` 才关闭（缺失或非布尔值按开启处理）。
 - `language` 使用 BCP 47 风格标签（`zh`、`en`、`zh-Hans`、`pt-BR`），主进程只校验格式、默认回退 `zh`，不维护语言白名单；实际支持哪些语言由渲染进程的 locale 注册表决定。
 - 导入 PDF 时复制到论文库目录，同名自动加 ` (2)` 等后缀；`path` 指向副本，`sourcePath` 记录原文件用于去重；已在目录内的文件不重复复制。
 - `titleSource`（`file` | `metadata` | `user`）防止元数据回填覆盖用户重命名。
