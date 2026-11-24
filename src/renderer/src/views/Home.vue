@@ -156,7 +156,8 @@ const settingsOpen = ref(false)
 const settingsSection = ref<SettingsSection>('basic')
 const translationWidth = ref(340)
 const minTranslationWidth = 280
-const maxTranslationWidth = 560
+const maxTranslationWidth = 900
+const MIN_READING_WIDTH = 320
 
 interface ActivePluginView extends PluginViewInfo {
   key: string
@@ -220,15 +221,13 @@ const rightViewIcon = computed(() =>
   rightView.value === translationView.id ? translationView.icon : FileText
 )
 
-// 阅读区优先：右侧栏最多占剩余空间的一半再少一点，避免窗口较窄时
-// 信息面板比 PDF 正文还宽。宽度由 CSS max-width 响应式限制。
+// 右侧栏可以拉得比较宽，但至少给 PDF 阅读区留出 320px；
+// 窗口足够宽时由拖拽上限 maxTranslationWidth 控制最终宽度。
 const rightSidebarMaxWidth = computed(() => {
   const activityBar = 48
   const gaps = 8
-  const readingPriority = 48
-  const reserved =
-    activityBar + (isLibraryOpen.value ? libraryWidth.value : 0) + gaps + readingPriority
-  return `calc((100% - ${reserved}px) / 2)`
+  const reserved = activityBar + (isLibraryOpen.value ? libraryWidth.value : 0) + gaps
+  return `max(${minTranslationWidth}px, calc(100% - ${reserved}px - ${MIN_READING_WIDTH}px))`
 })
 
 const closePluginView = (key: string): void => {

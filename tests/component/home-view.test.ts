@@ -209,7 +209,9 @@ describe('Home search wiring', () => {
     expect(panel.exists()).toBe(true)
     expect(panel.props('paper')).toMatchObject({ id: PAPER.id })
     // 右侧栏宽度受限，窗口较窄时也要给阅读区留出更大空间
-    expect(wrapper.findComponent(RightSidebar).props('maxWidth')).toBe('calc((100% - 360px) / 2)')
+    expect(wrapper.findComponent(RightSidebar).props('maxWidth')).toBe(
+      'max(280px, calc(100% - 312px - 320px))'
+    )
     // 没有 AI 配置也不会被带去设置页
     expect(wrapper.findComponent(SettingsDialog).props('open')).toBe(false)
   })
