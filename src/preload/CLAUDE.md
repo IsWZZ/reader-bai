@@ -14,7 +14,8 @@ Preload 指引。仓库级规则见 [根 CLAUDE.md](../../CLAUDE.md)；这里只
 - 不在 preload 里做参数校验、业务判断、文件访问、网络请求或密钥处理；这些都在主进程。
 - 不记录参数、返回值或密钥；错误让 `invoke` 原样 reject，由渲染进程决定如何提示。
 - 跨桥数据必须是可结构化克隆的普通对象；不要传函数、类实例、Vue 代理或循环引用。
-- 事件订阅（如 `onAiChunk`、`onPluginRuntime`）必须返回取消函数，并且只移除自己注册的监听，避免重复订阅和泄漏。
+- 事件订阅（如 `onTranslationChunk`、`onPluginRuntime`）必须返回取消函数，并且只移除自己注册的监听，避免重复订阅和泄漏。
+- B 层模块的桥接方法可以放在 `src/modules/<module>/preload/` 下，由 `index.ts` 展开组合；`index.ts` 仍是唯一的 `contextBridge` 入口。
 - 新方法必须和主进程 handler 同名对应；不要为了省事把多个通道包成一个通用方法。
 
 ## 类型同步

@@ -11,8 +11,6 @@ const MAX_TOOL_NAME_LENGTH = 100
 const MAX_INPUT_CHARS = 100_000
 const MAX_ERROR_LENGTH = 1000
 
-export type PluginViewMethod = 'tools.list' | 'tools.execute'
-
 export interface PluginViewBridge {
   request: (pluginId: string, viewId: string, method: string, params: unknown) => Promise<unknown>
 }
@@ -68,7 +66,6 @@ export const createPluginViewBridge = (options: PluginViewBridgeOptions): Plugin
     if (missing.length > 0) throw new Error(`插件缺少权限：${missing.join(', ')}`)
 
     return options.tools.execute(name.trim(), record.input, {
-      source: 'plugin',
       pluginId,
       signal: new AbortController().signal
     })

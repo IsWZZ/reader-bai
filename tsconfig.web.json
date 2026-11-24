@@ -4,6 +4,9 @@
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.vue",
+    "src/modules/translation/renderer/**/*",
+    "src/modules/translation/renderer/**/*.vue",
+    "src/modules/translation/manifest.ts",
     "src/preload/*.d.ts"
   ],
   "compilerOptions": {
@@ -12,6 +15,9 @@
     "paths": {
       "@renderer/*": [
         "src/renderer/src/*"
+      ],
+      "@modules/*": [
+        "src/modules/*"
       ],
       "@/*": [
         "src/renderer/src/*"

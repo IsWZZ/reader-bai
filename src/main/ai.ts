@@ -1,48 +1,17 @@
-// OpenAI 兼容的流式对话与工具调用实现。
+// OpenAI 兼容的流式文本实现。
 // 这里刻意不依赖 electron，方便在 Vitest 中直接对解析逻辑做单元测试。
 
-export type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
-
-export interface ChatToolCall {
-  id: string
-  type: 'function'
-  function: {
-    name: string
-    arguments: string
-  }
-}
+export type ChatRole = 'system' | 'user' | 'assistant'
 
 export interface ChatMessage {
   role: ChatRole
-  content: string | null
-  /** assistant 发起的工具调用 */
-  tool_calls?: ChatToolCall[]
-  /** tool 消息对应的调用 id */
-  tool_call_id?: string
+  content: string
 }
 
-/** 发给模型的工具定义，保持 OpenAI 兼容格式 */
-export interface ChatToolDefinition {
-  type: 'function'
-  function: {
-    name: string
-    description?: string
-    parameters: Record<string, unknown>
-  }
-}
-
-export type ChatFinishReason = 'stop' | 'tool_calls' | 'length' | 'aborted' | 'error'
-
-/** 归一化后的工具调用：arguments 是模型返回的原始 JSON 字符串 */
-export interface ChatToolCallResult {
-  id: string
-  name: string
-  arguments: string
-}
+export type ChatFinishReason = 'stop' | 'length' | 'aborted' | 'error'
 
 export interface StreamChatResult {
   text: string
-  toolCalls: ChatToolCallResult[]
   finishReason: ChatFinishReason
 }
 
@@ -54,7 +23,6 @@ export interface StreamChatOptions {
   signal: AbortSignal
   /** 每收到一段增量就回调一次 */
   onDelta: (delta: string) => void
-  tools?: ChatToolDefinition[]
   temperature?: number
   maxOutputTokens?: number
 }
@@ -64,21 +32,10 @@ const MAX_TOTAL_CHARS = 40000
 const MAX_ERROR_BODY = 500
 const REQUEST_TIMEOUT_MS = 60_000
 
-const ROLES = new Set<ChatRole>(['system', 'user', 'assistant', 'tool'])
-
-interface WireToolCallDelta {
-  index?: number
-  id?: string
-  type?: string
-  function?: {
-    name?: string
-    arguments?: string
-  }
-}
+const ROLES = new Set<ChatRole>(['system', 'user', 'assistant'])
 
 interface WireMessagePart {
   content?: string | null
-  tool_calls?: WireToolCallDelta[]
 }
 
 interface ChatCompletionChunk {
@@ -96,32 +53,6 @@ export const chatCompletionsUrl = (baseUrl: string): string => {
   return /\/chat\/completions$/i.test(trimmed) ? trimmed : `${trimmed}/chat/completions`
 }
 
-const normalizeToolCalls = (raw: unknown): ChatToolCall[] | undefined => {
-  if (raw === undefined) return undefined
-  if (!Array.isArray(raw)) throw new Error('消息格式不正确')
-
-  return raw.map((item) => {
-    if (!item || typeof item !== 'object') throw new Error('消息格式不正确')
-    const call = item as Partial<ChatToolCall>
-    if (
-      typeof call.id !== 'string' ||
-      !call.id ||
-      call.type !== 'function' ||
-      !call.function ||
-      typeof call.function.name !== 'string' ||
-      !call.function.name ||
-      typeof call.function.arguments !== 'string'
-    ) {
-      throw new Error('消息格式不正确')
-    }
-    return {
-      id: call.id,
-      type: 'function' as const,
-      function: { name: call.function.name, arguments: call.function.arguments }
-    }
-  })
-}
-
 /** 校验来自渲染进程/插件的消息，并把它们转成普通对象（结构化克隆前的防线） */
 export const normalizeChatMessages = (input: unknown): ChatMessage[] => {
   if (!Array.isArray(input)) throw new Error('消息格式不正确')
@@ -133,32 +64,10 @@ export const normalizeChatMessages = (input: unknown): ChatMessage[] => {
     if (!raw || typeof raw !== 'object') throw new Error('消息格式不正确')
     const item = raw as Partial<ChatMessage>
     if (!item.role || !ROLES.has(item.role)) throw new Error('消息格式不正确')
+    if (typeof item.content !== 'string') throw new Error('消息格式不正确')
 
-    const content = item.content
-    if (content !== null && typeof content !== 'string') throw new Error('消息格式不正确')
-    if (item.role !== 'assistant' && content === null) throw new Error('消息格式不正确')
-
-    const toolCalls = normalizeToolCalls(item.tool_calls)
-    if (toolCalls && item.role !== 'assistant') throw new Error('消息格式不正确')
-
-    const toolCallId = typeof item.tool_call_id === 'string' ? item.tool_call_id : undefined
-    if (item.role !== 'tool' && item.tool_call_id !== undefined) {
-      throw new Error('消息格式不正确')
-    }
-    if (item.role === 'tool' && !toolCallId) throw new Error('消息格式不正确')
-    if (item.role === 'assistant' && content === null && !toolCalls?.length) {
-      throw new Error('消息格式不正确')
-    }
-
-    total += (content ?? '').length
-    for (const call of toolCalls ?? []) {
-      total += call.function.name.length + call.function.arguments.length
-    }
-
-    const message: ChatMessage = { role: item.role, content }
-    if (toolCalls?.length) message.tool_calls = toolCalls
-    if (toolCallId) message.tool_call_id = toolCallId
-    return message
+    total += item.content.length
+    return { role: item.role, content: item.content }
   })
 
   if (total > MAX_TOTAL_CHARS) throw new Error('消息过长')
@@ -184,55 +93,14 @@ const parseSseLine = (line: string): ChatCompletionChunk | typeof DONE | null =>
 }
 
 const normalizeFinishReason = (reason: string): ChatFinishReason => {
-  if (reason === 'tool_calls' || reason === 'function_call') return 'tool_calls'
   if (reason === 'length') return 'length'
   return 'stop'
-}
-
-interface ToolCallAccumulator {
-  id: string
-  name: string
-  arguments: string
 }
 
 interface MutableStreamResult {
   text: string
   finishReason: ChatFinishReason
-  toolCalls: Map<number, ToolCallAccumulator>
 }
-
-const collectToolCalls = (
-  calls: Map<number, ToolCallAccumulator>,
-  deltas: WireToolCallDelta[] | undefined
-): void => {
-  if (!Array.isArray(deltas)) return
-
-  for (const delta of deltas) {
-    if (!delta || typeof delta !== 'object') continue
-    const index = typeof delta.index === 'number' ? delta.index : calls.size
-    const current = calls.get(index) ?? { id: '', name: '', arguments: '' }
-
-    if (typeof delta.id === 'string' && delta.id) current.id = delta.id
-    if (typeof delta.function?.name === 'string' && delta.function.name) {
-      current.name = delta.function.name
-    }
-    if (typeof delta.function?.arguments === 'string') {
-      current.arguments += delta.function.arguments
-    }
-
-    calls.set(index, current)
-  }
-}
-
-const finalizeToolCalls = (calls: Map<number, ToolCallAccumulator>): ChatToolCallResult[] =>
-  [...calls.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([index, call]) => ({
-      id: call.id || `call_${index}`,
-      name: call.name,
-      arguments: call.arguments || '{}'
-    }))
-    .filter((call) => call.name)
 
 const applyChunk = (
   chunk: ChatCompletionChunk,
@@ -243,12 +111,9 @@ const applyChunk = (
   if (!choice) return
 
   const payload = choice.delta ?? choice.message
-  if (payload) {
-    if (typeof payload.content === 'string' && payload.content) {
-      result.text += payload.content
-      onDelta(payload.content)
-    }
-    collectToolCalls(result.toolCalls, payload.tool_calls)
+  if (payload && typeof payload.content === 'string' && payload.content) {
+    result.text += payload.content
+    onDelta(payload.content)
   }
 
   if (choice.finish_reason) {
@@ -259,20 +124,14 @@ const applyChunk = (
 const buildResult = (
   result: MutableStreamResult,
   forcedReason?: ChatFinishReason
-): StreamChatResult => {
-  const toolCalls = finalizeToolCalls(result.toolCalls)
-  let finishReason = forcedReason ?? result.finishReason
-  if (!forcedReason) {
-    if (toolCalls.length > 0) finishReason = 'tool_calls'
-    else if (finishReason === 'tool_calls') finishReason = 'stop'
-  }
-  return { text: result.text, toolCalls, finishReason }
-}
+): StreamChatResult => ({
+  text: result.text,
+  finishReason: forcedReason ?? result.finishReason
+})
 
 /**
- * 发起一次流式对话，返回文本和完整的工具调用。
+ * 发起一次流式文本请求。
  * - 文本增量通过 onDelta 回调
- * - 工具调用参数可能在多个 chunk 中分片，这里会拼装完整后再返回
  * - 用户中止时返回已收到的部分结果，finishReason 为 aborted
  */
 export const streamChat = async (options: StreamChatOptions): Promise<StreamChatResult> => {
@@ -281,11 +140,7 @@ export const streamChat = async (options: StreamChatOptions): Promise<StreamChat
 
   const controller = new AbortController()
   let timedOut = false
-  const result: MutableStreamResult = {
-    text: '',
-    finishReason: 'stop',
-    toolCalls: new Map()
-  }
+  const result: MutableStreamResult = { text: '', finishReason: 'stop' }
 
   const abort = (): void => controller.abort()
   if (options.signal.aborted) {
@@ -304,7 +159,6 @@ export const streamChat = async (options: StreamChatOptions): Promise<StreamChat
       messages: options.messages,
       stream: true
     }
-    if (options.tools && options.tools.length > 0) body.tools = options.tools
     if (typeof options.temperature === 'number') body.temperature = options.temperature
     if (typeof options.maxOutputTokens === 'number') body.max_tokens = options.maxOutputTokens
 
@@ -380,10 +234,4 @@ export const streamChat = async (options: StreamChatOptions): Promise<StreamChat
     clearTimeout(timer)
     options.signal.removeEventListener('abort', abort)
   }
-}
-
-/** 兼容旧调用方：只关心文本时使用这个包装 */
-export const streamChatCompletion = async (options: StreamChatOptions): Promise<string> => {
-  const result = await streamChat(options)
-  return result.text
 }

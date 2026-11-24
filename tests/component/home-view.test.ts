@@ -9,7 +9,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Home from '@renderer/views/Home.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
-import AssistantPanel from '@renderer/components/AssistantPanel.vue'
+import TranslationPanel from '@modules/translation/renderer/components/TranslationPanel.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
 import PaperInfoPanel from '@renderer/components/PaperInfoPanel.vue'
@@ -19,7 +19,7 @@ import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import Toolbar from '@renderer/components/Toolbar.vue'
 import { useSettingsStore } from '@renderer/store/settings'
-import type { AiProfile, AppSettings, ChatMessage, Paper, PluginInfo } from '@renderer/types'
+import type { AiProfile, AppSettings, Paper, PluginInfo, TranslationRequest } from '@renderer/types'
 
 const PROFILE: AiProfile = {
   id: 'a',
@@ -48,8 +48,7 @@ const PAPER: Paper = {
   createdAt: 1
 }
 
-const chat =
-  vi.fn<(requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>>()
+const translate = vi.fn<(request: TranslationRequest) => Promise<string>>()
 
 // 阅读面板嵌在 TabsContent 里，stub 时也要渲染默认插槽，才能找到 PdfViewer
 const mountHome = (): VueWrapper =>
@@ -65,8 +64,8 @@ const selectText = async (wrapper: VueWrapper, text: string): Promise<void> => {
   await wrapper.vm.$nextTick()
 }
 
-const openAssistant = async (wrapper: VueWrapper): Promise<void> => {
-  wrapper.findComponent(ActivityBar).vm.$emit('toggle-assistant')
+const openTranslation = async (wrapper: VueWrapper): Promise<void> => {
+  wrapper.findComponent(ActivityBar).vm.$emit('toggle-translation')
   await wrapper.vm.$nextTick()
 }
 
@@ -82,8 +81,8 @@ describe('Home search wiring', () => {
       getSettings: vi.fn(async () => structuredClone(SETTINGS)),
       updateSettings: vi.fn(),
       listPapers: vi.fn(async () => ({ spaces: [], papers: [] })),
-      onAiChunk: vi.fn(() => vi.fn()),
-      onAgentEvent: vi.fn(() => vi.fn())
+      activateTranslation: vi.fn(async () => undefined),
+      onTranslationChunk: vi.fn(() => vi.fn())
     } as unknown as Api
     await useSettingsStore().initialize()
   })
@@ -108,14 +107,14 @@ describe('Home search wiring', () => {
     expect(wrapper.findComponent(LibraryPanel).props('searchQuery')).toBe('attention')
   })
 
-  it('opens AI settings instead of the assistant when no AI is configured', async () => {
+  it('opens AI settings instead of the translation panel when no AI is configured', async () => {
     useSettingsStore().$patch({ settings: { ...SETTINGS, ai: { profiles: [], activeId: '' } } })
     const wrapper = mountHome()
 
-    wrapper.findComponent(ActivityBar).vm.$emit('toggle-assistant')
+    wrapper.findComponent(ActivityBar).vm.$emit('toggle-translation')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.findComponent(AssistantPanel).exists()).toBe(false)
+    expect(wrapper.findComponent(TranslationPanel).exists()).toBe(false)
     const dialog = wrapper.findComponent(SettingsDialog)
     expect(dialog.props('open')).toBe(true)
     expect(dialog.props('initialSection')).toBe('ai')
@@ -165,8 +164,8 @@ describe('Home search wiring', () => {
       getSettings: vi.fn(async () => structuredClone(SETTINGS)),
       updateSettings: vi.fn(),
       listPapers: vi.fn(async () => ({ spaces: [], papers: [] })),
-      onAiChunk: vi.fn(() => vi.fn()),
-      onAgentEvent: vi.fn(() => vi.fn()),
+      activateTranslation: vi.fn(async () => undefined),
+      onTranslationChunk: vi.fn(() => vi.fn()),
       listPlugins: vi.fn(async () => ({ plugins: [plugin], issues: [] }))
     } as unknown as Api
 
@@ -231,15 +230,15 @@ describe('Home search wiring', () => {
     expect(wrapper.findComponent(PaperTabs).props('activeId')).toBe('paper-2')
   })
 
-  it('keeps the assistant open instead of opening paper info automatically', async () => {
+  it('keeps the translation panel open instead of opening paper info automatically', async () => {
     const wrapper = mountHome()
     await selectPaper(wrapper)
-    await openAssistant(wrapper)
+    await openTranslation(wrapper)
     expect(wrapper.findComponent(PaperInfoPanel).exists()).toBe(false)
 
     await selectPaper(wrapper, { ...PAPER, id: 'paper-2', path: '/papers/paper-2.pdf' })
 
-    expect(wrapper.findComponent(AssistantPanel).exists()).toBe(true)
+    expect(wrapper.findComponent(TranslationPanel).exists()).toBe(true)
     expect(wrapper.findComponent(PaperInfoPanel).exists()).toBe(false)
   })
 
@@ -271,8 +270,8 @@ describe('Home reading area', () => {
       getSettings: vi.fn(async () => structuredClone(SETTINGS)),
       updateSettings: vi.fn(),
       listPapers: vi.fn(async () => ({ spaces: [], papers: [] })),
-      onAiChunk: vi.fn(() => vi.fn()),
-      onAgentEvent: vi.fn(() => vi.fn())
+      activateTranslation: vi.fn(async () => undefined),
+      onTranslationChunk: vi.fn(() => vi.fn())
     } as unknown as Api
     await useSettingsStore().initialize()
   })
@@ -309,15 +308,15 @@ describe('Home selection wiring', () => {
   beforeEach(async () => {
     vi.useFakeTimers()
     setActivePinia(createPinia())
-    chat.mockReset()
-    chat.mockResolvedValue('译文')
+    translate.mockReset()
+    translate.mockResolvedValue('译文')
     window.api = {
       getSettings: vi.fn(async () => structuredClone(SETTINGS)),
       updateSettings: vi.fn(),
-      chat,
-      abortChat: vi.fn(),
-      onAiChunk: vi.fn(() => vi.fn()),
-      onAgentEvent: vi.fn(() => vi.fn())
+      activateTranslation: vi.fn(async () => undefined),
+      translate,
+      abortTranslation: vi.fn(),
+      onTranslationChunk: vi.fn(() => vi.fn())
     } as unknown as Api
     await useSettingsStore().initialize()
   })
@@ -326,39 +325,39 @@ describe('Home selection wiring', () => {
     vi.useRealTimers()
   })
 
-  it('does not request a translation while the assistant panel is closed', async () => {
+  it('does not request a translation while the translation panel is closed', async () => {
     const wrapper = mountHome()
     await selectPaper(wrapper)
 
     await selectText(wrapper, 'hello')
     await vi.advanceTimersByTimeAsync(250)
 
-    expect(chat).not.toHaveBeenCalled()
+    expect(translate).not.toHaveBeenCalled()
   })
 
-  it('translates the latest selection when the assistant panel opens', async () => {
+  it('translates the latest selection when the translation panel opens', async () => {
     const wrapper = mountHome()
     await selectPaper(wrapper)
 
     await selectText(wrapper, 'first')
     await selectText(wrapper, 'hello')
 
-    await openAssistant(wrapper)
+    await openTranslation(wrapper)
     await vi.advanceTimersByTimeAsync(250)
 
-    expect(chat).toHaveBeenCalledTimes(1)
-    expect(chat.mock.calls[0][1][1]).toEqual({ role: 'user', content: 'hello' })
+    expect(translate).toHaveBeenCalledTimes(1)
+    expect(translate.mock.calls[0][0].source).toBe('hello')
   })
 
   it('translates a selection right away while the panel is open', async () => {
     const wrapper = mountHome()
     await selectPaper(wrapper)
-    await openAssistant(wrapper)
+    await openTranslation(wrapper)
 
     await selectText(wrapper, 'hello')
     await vi.advanceTimersByTimeAsync(250)
 
-    expect(chat).toHaveBeenCalledTimes(1)
+    expect(translate).toHaveBeenCalledTimes(1)
   })
 
   it('forgets the pending selection when the paper changes', async () => {
@@ -367,10 +366,10 @@ describe('Home selection wiring', () => {
     await selectText(wrapper, 'hello')
 
     await selectPaper(wrapper, { ...PAPER, id: 'paper-2', path: '/papers/paper-2.pdf' })
-    await openAssistant(wrapper)
+    await openTranslation(wrapper)
     await vi.advanceTimersByTimeAsync(250)
 
-    expect(chat).not.toHaveBeenCalled()
+    expect(translate).not.toHaveBeenCalled()
   })
 
   it('keeps opened papers as tabs and activates the latest one', async () => {

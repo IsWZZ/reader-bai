@@ -35,7 +35,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const error = ref('')
 
   const aiProfiles = computed<AiProfile[]>(() => settings.value.ai.profiles)
-  /** 只有启用的配置能被选择或用于翻译、对话和元数据解析 */
+  /** 只有启用的配置能被选择或用于翻译和元数据解析 */
   const enabledAiProfiles = computed<AiProfile[]>(() =>
     settings.value.ai.profiles.filter((profile) => profile.enabled)
   )

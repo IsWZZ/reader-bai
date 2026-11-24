@@ -1,15 +1,8 @@
-// Anthropic Messages API 的流式对话与工具调用实现。
+// Anthropic Messages API 的流式文本实现。
 // 与 ai.ts 一样刻意不依赖 electron，方便在 Vitest 中直接测试协议转换和 SSE 解析。
-// 对外仍然使用 OpenAI 风格的 ChatMessage / ChatToolDefinition，转换只发生在这一层。
+// 对外仍然使用 OpenAI 风格的 ChatMessage，转换只发生在这一层。
 
-import type {
-  ChatFinishReason,
-  ChatMessage,
-  ChatToolCallResult,
-  ChatToolDefinition,
-  StreamChatOptions,
-  StreamChatResult
-} from './ai'
+import type { ChatFinishReason, ChatMessage, StreamChatOptions, StreamChatResult } from './ai'
 
 export const ANTHROPIC_VERSION = '2023-06-01'
 export const DEFAULT_ANTHROPIC_MAX_TOKENS = 4096
@@ -17,20 +10,9 @@ export const DEFAULT_ANTHROPIC_MAX_TOKENS = 4096
 const MAX_ERROR_BODY = 500
 const REQUEST_TIMEOUT_MS = 60_000
 
-export type AnthropicContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'tool_result'; tool_use_id: string; content: string }
-
 export interface AnthropicMessage {
   role: 'user' | 'assistant'
-  content: AnthropicContentBlock[]
-}
-
-export interface AnthropicTool {
-  name: string
-  description?: string
-  input_schema: Record<string, unknown>
+  content: string
 }
 
 /**
@@ -45,24 +27,10 @@ export const anthropicMessagesUrl = (baseUrl: string): string => {
   return `${trimmed}/v1/messages`
 }
 
-const parseToolInput = (raw: string): Record<string, unknown> => {
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-  } catch {
-    // 参数不是合法 JSON 时交给平台工具层校验；这里先按空对象发送
-  }
-  return {}
-}
-
 /**
  * 把内部的 OpenAI 风格消息转成 Anthropic Messages：
  * - system 消息提升为顶层 system 字段
- * - assistant 的 tool_calls 转成 tool_use 内容块
- * - tool 消息转成 user 里的 tool_result 内容块
- * Anthropic 要求角色交替，因此相邻同角色消息会合并成一个内容块数组。
+ * - Anthropic 要求角色交替，因此相邻同角色消息会合并
  */
 export const toAnthropicMessages = (
   messages: ChatMessage[]
@@ -70,52 +38,23 @@ export const toAnthropicMessages = (
   const system: string[] = []
   const converted: AnthropicMessage[] = []
 
-  const push = (role: 'user' | 'assistant', blocks: AnthropicContentBlock[]): void => {
-    if (blocks.length === 0) return
+  const push = (role: 'user' | 'assistant', text: string): void => {
+    if (!text) return
     const last = converted[converted.length - 1]
     if (last && last.role === role) {
-      last.content.push(...blocks)
+      last.content = `${last.content}\n\n${text}`
       return
     }
-    converted.push({ role, content: blocks })
+    converted.push({ role, content: text })
   }
 
   for (const message of messages) {
     if (message.role === 'system') {
-      const text = message.content?.trim()
+      const text = message.content.trim()
       if (text) system.push(text)
       continue
     }
-
-    if (message.role === 'user') {
-      if (message.content) push('user', [{ type: 'text', text: message.content }])
-      continue
-    }
-
-    if (message.role === 'assistant') {
-      const blocks: AnthropicContentBlock[] = []
-      if (message.content) blocks.push({ type: 'text', text: message.content })
-      for (const call of message.tool_calls ?? []) {
-        blocks.push({
-          type: 'tool_use',
-          id: call.id,
-          name: call.function.name,
-          input: parseToolInput(call.function.arguments)
-        })
-      }
-      push('assistant', blocks)
-      continue
-    }
-
-    if (message.tool_call_id) {
-      push('user', [
-        {
-          type: 'tool_result',
-          tool_use_id: message.tool_call_id,
-          content: message.content ?? ''
-        }
-      ])
-    }
+    push(message.role, message.content)
   }
 
   return system.length > 0
@@ -123,32 +62,17 @@ export const toAnthropicMessages = (
     : { messages: converted }
 }
 
-export const toAnthropicTools = (tools: ChatToolDefinition[]): AnthropicTool[] =>
-  tools.map((tool) => {
-    const definition: AnthropicTool = {
-      name: tool.function.name,
-      input_schema: tool.function.parameters
-    }
-    if (tool.function.description) definition.description = tool.function.description
-    return definition
-  })
-
 interface WireContentBlock {
   type?: string
   text?: string
-  id?: string
-  name?: string
-  input?: unknown
 }
 
 interface WireAnthropicEvent {
   type?: string
-  index?: number
   content_block?: WireContentBlock
   delta?: {
     type?: string
     text?: string
-    partial_json?: string
     stop_reason?: string | null
   }
   message?: { stop_reason?: string | null }
@@ -157,22 +81,12 @@ interface WireAnthropicEvent {
   error?: { type?: string; message?: string }
 }
 
-interface ToolCallAccumulator {
-  id: string
-  name: string
-  arguments: string
-  /** content_block_start 里可能直接给出完整 input（非流式响应） */
-  initialInput?: unknown
-}
-
 interface MutableStreamResult {
   text: string
   finishReason: ChatFinishReason
-  toolCalls: Map<number, ToolCallAccumulator>
 }
 
 const normalizeStopReason = (reason: string | null | undefined): ChatFinishReason => {
-  if (reason === 'tool_use') return 'tool_calls'
   if (reason === 'max_tokens') return 'length'
   return 'stop'
 }
@@ -182,19 +96,12 @@ const applyContentBlocks = (
   result: MutableStreamResult,
   onDelta: (delta: string) => void
 ): void => {
-  blocks.forEach((block, index) => {
+  for (const block of blocks) {
     if (block.type === 'text' && typeof block.text === 'string' && block.text) {
       result.text += block.text
       onDelta(block.text)
-    } else if (block.type === 'tool_use') {
-      result.toolCalls.set(index, {
-        id: typeof block.id === 'string' ? block.id : '',
-        name: typeof block.name === 'string' ? block.name : '',
-        arguments: '',
-        initialInput: block.input
-      })
     }
-  })
+  }
 }
 
 const applyEvent = (
@@ -218,36 +125,18 @@ const applyEvent = (
 
   if (event.type === 'content_block_start') {
     const block = event.content_block
-    if (!block) return
-    const index = typeof event.index === 'number' ? event.index : result.toolCalls.size
-
-    if (block.type === 'text' && typeof block.text === 'string' && block.text) {
+    if (block?.type === 'text' && typeof block.text === 'string' && block.text) {
       result.text += block.text
       onDelta(block.text)
-    } else if (block.type === 'tool_use') {
-      result.toolCalls.set(index, {
-        id: typeof block.id === 'string' ? block.id : '',
-        name: typeof block.name === 'string' ? block.name : '',
-        arguments: '',
-        initialInput: block.input
-      })
     }
     return
   }
 
   if (event.type === 'content_block_delta') {
     const delta = event.delta
-    if (!delta) return
-    if (delta.type === 'text_delta' && typeof delta.text === 'string' && delta.text) {
+    if (delta?.type === 'text_delta' && typeof delta.text === 'string' && delta.text) {
       result.text += delta.text
       onDelta(delta.text)
-      return
-    }
-    if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
-      const index = typeof event.index === 'number' ? event.index : result.toolCalls.size - 1
-      const current = result.toolCalls.get(index) ?? { id: '', name: '', arguments: '' }
-      current.arguments += delta.partial_json
-      result.toolCalls.set(index, current)
     }
     return
   }
@@ -267,30 +156,13 @@ const applyEvent = (
   // ping / content_block_stop / message_stop 不需要额外处理
 }
 
-const finalizeToolCalls = (calls: Map<number, ToolCallAccumulator>): ChatToolCallResult[] =>
-  [...calls.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([index, call]) => ({
-      id: call.id || `toolu_${index}`,
-      name: call.name,
-      arguments:
-        call.arguments ||
-        (call.initialInput === undefined ? '{}' : JSON.stringify(call.initialInput))
-    }))
-    .filter((call) => call.name)
-
 const buildResult = (
   result: MutableStreamResult,
   forcedReason?: ChatFinishReason
-): StreamChatResult => {
-  const toolCalls = finalizeToolCalls(result.toolCalls)
-  let finishReason = forcedReason ?? result.finishReason
-  if (!forcedReason) {
-    if (toolCalls.length > 0) finishReason = 'tool_calls'
-    else if (finishReason === 'tool_calls') finishReason = 'stop'
-  }
-  return { text: result.text, toolCalls, finishReason }
-}
+): StreamChatResult => ({
+  text: result.text,
+  finishReason: forcedReason ?? result.finishReason
+})
 
 /** 解析一条 SSE data 行；event 行、注释和空行直接忽略 */
 const parseSseLine = (line: string): WireAnthropicEvent | null => {
@@ -308,9 +180,9 @@ const parseSseLine = (line: string): WireAnthropicEvent | null => {
 }
 
 /**
- * 发起一次 Anthropic Messages 流式请求，返回文本和完整的工具调用。
+ * 发起一次 Anthropic Messages 流式请求，返回文本。
  * 对外语义与 ai.ts 的 streamChat 保持一致：增量通过 onDelta 回调，
- * 工具参数分片会拼装完整，用户中止时返回已收到的部分结果。
+ * 用户中止时返回已收到的部分结果。
  */
 export const streamAnthropic = async (options: StreamChatOptions): Promise<StreamChatResult> => {
   const url = anthropicMessagesUrl(options.baseUrl)
@@ -318,11 +190,7 @@ export const streamAnthropic = async (options: StreamChatOptions): Promise<Strea
 
   const controller = new AbortController()
   let timedOut = false
-  const result: MutableStreamResult = {
-    text: '',
-    finishReason: 'stop',
-    toolCalls: new Map()
-  }
+  const result: MutableStreamResult = { text: '', finishReason: 'stop' }
 
   const abort = (): void => controller.abort()
   if (options.signal.aborted) {
@@ -347,7 +215,6 @@ export const streamAnthropic = async (options: StreamChatOptions): Promise<Strea
       stream: true
     }
     if (system) body.system = system
-    if (options.tools && options.tools.length > 0) body.tools = toAnthropicTools(options.tools)
     if (typeof options.temperature === 'number') body.temperature = options.temperature
 
     const response = await fetch(url, {

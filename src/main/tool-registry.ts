@@ -1,17 +1,12 @@
 // 平台工具注册表。
-// 平台命令、内置模块和插件贡献的工具都从这里暴露给 agent；
-// agent loop 不在平台里，但每一次工具调用都要经过这里的 schema 校验和权限钩子。
-
-import type { ChatToolDefinition } from './ai'
+// 平台命令、内置模块和插件贡献的工具都从这里暴露；
+// 每一次工具调用都要经过这里的 schema 校验和权限钩子。
 
 export type ToolRisk = 'read' | 'write' | 'destructive'
-export type ToolSource = 'ai' | 'plugin' | 'ui'
 
 export interface ToolContext {
-  source: ToolSource
   signal: AbortSignal
   pluginId?: string
-  runId?: string
 }
 
 export interface ToolResult {
@@ -28,9 +23,9 @@ export interface ToolDefinition<I = unknown> {
   /** JSON Schema，既用于模型工具定义，也用于展示 */
   inputSchema: Record<string, unknown>
   risk: ToolRisk
-  /** 默认 false；显式打开后才会进入模型的工具列表 */
+  /** 默认 false；显式打开后才会对调用方（当前为插件）开放 */
   exposeToAi?: boolean
-  /** 非 AI 调用方（如插件）执行前必须具备的权限 */
+  /** 调用方执行前必须具备的权限 */
   requiredPermissions?: string[]
   /** 返回校验后的输入；缺失时按原样传入 */
   validate?: (input: unknown) => I
@@ -83,16 +78,6 @@ const toInfo = (definition: ToolDefinition<unknown>): ToolInfo => ({
   requiredPermissions: [...(definition.requiredPermissions ?? [])]
 })
 
-/** 把注册表里的工具转成 OpenAI 兼容的 tools 数组 */
-export const toChatToolDefinition = (info: ToolInfo): ChatToolDefinition => ({
-  type: 'function',
-  function: {
-    name: info.name,
-    description: info.description,
-    parameters: info.inputSchema
-  }
-})
-
 export const createToolRegistry = (options: ToolRegistryOptions = {}): ToolRegistry => {
   const tools = new Map<string, RegisteredTool>()
 
@@ -120,10 +105,7 @@ export const createToolRegistry = (options: ToolRegistryOptions = {}): ToolRegis
   ): Promise<ToolResult> => {
     const tool = tools.get(name)
     if (!tool) throw new Error(`工具不存在：${name}`)
-    if (context.source === 'ai' && !tool.info.exposeToAi) {
-      throw new Error(`工具未对 AI 开放：${name}`)
-    }
-    if (context.source === 'plugin' && !tool.info.exposeToAi) {
+    if (!tool.info.exposeToAi) {
       throw new Error(`工具未对插件开放：${name}`)
     }
 

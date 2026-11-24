@@ -74,7 +74,7 @@ describe('i18n', () => {
     setLocale('en')
 
     expect(t('library.importTo', { name: 'Papers' })).toContain('Papers')
-    expect(t('assistant.error.tooLong', { max: 4000 })).toContain('4000')
+    expect(t('translation.error.tooLong', { max: 4000 })).toContain('4000')
     // 参数缺失时保留占位符，避免显示 undefined
     expect(t('library.importTo')).toContain('{name}')
   })

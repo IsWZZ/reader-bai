@@ -4,10 +4,12 @@
     class="bg-card flex h-full shrink-0 flex-col overflow-hidden rounded-lg border"
     :style="{ width: width + 'px', maxWidth }"
   >
-    <header class="flex items-center justify-between gap-2 border-b px-3 py-2">
+    <header class="flex items-center justify-between gap-2 border-b px-3 py-1">
       <div class="flex min-w-0 items-center gap-2">
         <component :is="icon" v-if="icon" class="text-muted-foreground size-4 shrink-0" />
-        <h2 class="truncate text-sm font-medium">{{ title }}</h2>
+        <h2 class="truncate text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {{ title }}
+        </h2>
       </div>
       <div class="flex shrink-0 items-center gap-1">
         <slot name="actions" />
@@ -22,7 +24,7 @@
       </div>
     </header>
 
-    <!-- 右侧栏是开放的容器：AI 辅助、论文信息以及后续插件视图都挂在同一个窗口里 -->
+    <!-- 右侧栏是开放的容器：翻译、论文信息以及后续插件视图都挂在同一个窗口里 -->
     <div class="flex min-h-0 flex-1 flex-col">
       <slot />
     </div>

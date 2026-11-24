@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { createTranslationApi } from '../modules/translation/preload/api'
 
 interface PaperAnnotation {
   id: string
@@ -54,56 +55,6 @@ interface AiProfilePatch {
 interface AiSettings {
   profiles: AiProfile[]
   activeId: string
-}
-
-type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
-
-interface ChatToolCall {
-  id: string
-  type: 'function'
-  function: {
-    name: string
-    arguments: string
-  }
-}
-
-interface ChatMessage {
-  role: ChatRole
-  content: string | null
-  tool_calls?: ChatToolCall[]
-  tool_call_id?: string
-}
-
-interface AiChunk {
-  requestId: string
-  delta: string
-}
-
-type AgentMode = 'chat' | 'agent'
-
-interface AgentStartRequest {
-  messages: ChatMessage[]
-  profileId: string
-  mode: AgentMode
-}
-
-interface AgentSessionInfo {
-  id: string
-}
-
-type AgentFinishReason = 'stop' | 'max-steps' | 'aborted'
-
-type AgentEvent =
-  | { type: 'chunk'; delta: string }
-  | { type: 'tool-call'; callId: string; name: string }
-  | { type: 'tool-result'; callId: string; name: string; content: string }
-  | { type: 'tool-error'; callId: string; name: string; error: string }
-  | { type: 'done'; text: string; steps: number; finishReason: AgentFinishReason }
-  | { type: 'error'; message: string }
-
-interface AgentEventPayload {
-  sessionId: string
-  event: AgentEvent
 }
 
 interface LibrarySettings {
@@ -211,25 +162,7 @@ const api = {
     ipcRenderer.invoke('settings:update', patch),
   clearCache: (): Promise<void> => ipcRenderer.invoke('cache:clear'),
   uninstallApp: (): Promise<void> => ipcRenderer.invoke('app:uninstall'),
-  chat: (requestId: string, messages: ChatMessage[], profileId: string): Promise<string> =>
-    ipcRenderer.invoke('ai:chat', requestId, messages, profileId),
-  abortChat: (requestId: string): void => {
-    ipcRenderer.send('ai:abort', requestId)
-  },
-  startAgent: (request: AgentStartRequest): Promise<AgentSessionInfo> =>
-    ipcRenderer.invoke('agent:start', request),
-  cancelAgent: (sessionId: string): Promise<void> => ipcRenderer.invoke('agent:cancel', sessionId),
-  onAgentEvent: (callback: (payload: AgentEventPayload) => void): (() => void) => {
-    const listener = (_event: IpcRendererEvent, payload: AgentEventPayload): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('agent:event', listener)
-    return () => {
-      ipcRenderer.removeListener('agent:event', listener)
-    }
-  },
-  listTools: () => ipcRenderer.invoke('tools:list'),
-  executeTool: (name: string, input: unknown) => ipcRenderer.invoke('tools:execute', name, input),
+  ...createTranslationApi(ipcRenderer),
   listPlugins: (): Promise<PluginListResult> => ipcRenderer.invoke('plugins:list'),
   setPluginEnabled: (id: string, enabled: boolean): Promise<PluginInfo> =>
     ipcRenderer.invoke('plugins:setEnabled', id, enabled),
@@ -243,15 +176,6 @@ const api = {
     ipcRenderer.on('plugins:runtime-changed', listener)
     return () => {
       ipcRenderer.removeListener('plugins:runtime-changed', listener)
-    }
-  },
-  onAiChunk: (callback: (payload: AiChunk) => void): (() => void) => {
-    const listener = (_event: IpcRendererEvent, payload: AiChunk): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('ai:chunk', listener)
-    return () => {
-      ipcRenderer.removeListener('ai:chunk', listener)
     }
   }
 }

@@ -29,7 +29,7 @@ const mountHome = (): VueWrapper =>
         Toolbar: true,
         LibraryPanel: true,
         PdfViewer: true,
-        AssistantPanel: true
+        TranslationPanel: true
       }
     }
   })
@@ -67,8 +67,8 @@ describe('interface language switching', () => {
         }
         return structuredClone(current)
       }),
-      onAiChunk: vi.fn(() => vi.fn()),
-      onAgentEvent: vi.fn(() => vi.fn())
+      activateTranslation: vi.fn(async () => undefined),
+      onTranslationChunk: vi.fn(() => vi.fn())
     } as unknown as Api
 
     await useSettingsStore().initialize()

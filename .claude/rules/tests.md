@@ -1,11 +1,12 @@
 ---
 paths:
   - "tests/**"
+  - "src/modules/**/tests/**"
 ---
 
 # 测试代码要求
 
-测试分三层：`tests/unit`（纯逻辑、store、主进程模块）、`tests/component`（Vue 组件）、`tests/e2e`（Playwright + Electron 真实流程）。单元/组件用 `.test.ts`，E2E 用 `.spec.ts`。详细背景见 [docs/testing.md](../../docs/testing.md)。
+测试分三层：`tests/unit`（纯逻辑、store、主进程模块）、`tests/component`（Vue 组件）、`tests/e2e`（Playwright + Electron 真实流程）。单元/组件用 `.test.ts`，E2E 用 `.spec.ts`。B 层模块的测试放在 `src/modules/<module>/tests/`，目录层级与仓库测试一致。详细背景见 [docs/testing.md](../../docs/testing.md)。
 
 ## 覆盖要求
 

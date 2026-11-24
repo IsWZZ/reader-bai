@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createAiRequester, resolveChatTools, type AiChatRequest } from '../../src/main/ai-request'
+import { createAiRequester, type AiChatRequest } from '../../src/main/ai-request'
 import { streamChat, type StreamChatResult } from '../../src/main/ai'
 import { streamAnthropic } from '../../src/main/ai-anthropic'
-import { startRun } from '../../src/main/ai-run'
-import { createToolRegistry, type ToolRegistry } from '../../src/main/tool-registry'
 import type { StoredAiProfile, StoredSettings } from '../../src/main/settings'
 import type { SettingsStore } from '../../src/main/settings-store'
 
@@ -19,7 +17,6 @@ const streamAnthropicMock = vi.mocked(streamAnthropic)
 
 const okResult = (text = '你好'): StreamChatResult => ({
   text,
-  toolCalls: [],
   finishReason: 'stop'
 })
 
@@ -46,29 +43,6 @@ const makeSettings = (profiles = [PROFILE], decodedKey = 'sk-secret'): SettingsS
   return { read, decodeApiKey } as unknown as SettingsStore
 }
 
-const makeTools = (): ToolRegistry => {
-  const registry = createToolRegistry()
-  registry.register({
-    name: 'library.list',
-    title: '列出论文',
-    description: '列出论文库中的论文',
-    inputSchema: { type: 'object', properties: {} },
-    risk: 'read',
-    exposeToAi: true,
-    execute: async () => ({ content: '{"total":0}' })
-  })
-  registry.register({
-    name: 'annotations.add',
-    title: '添加标注',
-    description: '写入标注',
-    inputSchema: { type: 'object', properties: {} },
-    risk: 'write',
-    exposeToAi: false,
-    execute: async () => ({ content: 'ok' })
-  })
-  return registry
-}
-
 const baseRequest = (): AiChatRequest => ({
   requestId: 'req-1',
   messages: [{ role: 'user', content: 'hi' }],
@@ -81,52 +55,6 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 5; i += 1) await Promise.resolve()
 }
 
-describe('resolveChatTools', () => {
-  it('returns no tools when nothing is requested', () => {
-    expect(resolveChatTools(undefined, makeTools())).toEqual([])
-    expect(resolveChatTools(null, makeTools())).toEqual([])
-  })
-
-  it('rejects malformed tool lists', () => {
-    const tools = makeTools()
-    expect(() => resolveChatTools('library.list', tools)).toThrow('工具列表不正确')
-    expect(() =>
-      resolveChatTools(
-        Array.from({ length: 51 }, () => 'library.list'),
-        tools
-      )
-    ).toThrow('工具数量不能超过 50 个')
-    expect(() => resolveChatTools([''], tools)).toThrow('工具名称不正确')
-    expect(() => resolveChatTools([42], tools)).toThrow('工具名称不正确')
-    expect(() => resolveChatTools(['x'.repeat(101)], tools)).toThrow('工具名称不正确')
-  })
-
-  it('only exposes registered tools that are open to AI', () => {
-    const tools = makeTools()
-    expect(() => resolveChatTools(['missing.tool'], tools)).toThrow(
-      '工具不存在或未对 AI 开放：missing.tool'
-    )
-    expect(() => resolveChatTools(['annotations.add'], tools)).toThrow(
-      '工具不存在或未对 AI 开放：annotations.add'
-    )
-  })
-
-  it('dedupes names and keeps registry-provided schemas', () => {
-    const definitions = resolveChatTools([' library.list ', 'library.list'], makeTools())
-
-    expect(definitions).toEqual([
-      {
-        type: 'function',
-        function: {
-          name: 'library.list',
-          description: '列出论文库中的论文',
-          parameters: { type: 'object', properties: {} }
-        }
-      }
-    ])
-  })
-})
-
 describe('createAiRequester', () => {
   beforeEach(() => {
     streamChatMock.mockReset()
@@ -138,9 +66,9 @@ describe('createAiRequester', () => {
   it('resolves the profile, decrypts the key and streams the reply', async () => {
     const settings = makeSettings()
     const request = baseRequest()
-    const requester = createAiRequester(settings, makeTools())
+    const requester = createAiRequester(settings)
 
-    const result = await requester.chat({ ...request, toolNames: ['library.list'] })
+    const result = await requester.chat(request)
 
     expect(result).toEqual(okResult())
     expect(settings.read).toHaveBeenCalledTimes(1)
@@ -152,7 +80,6 @@ describe('createAiRequester', () => {
       model: PROFILE.model,
       messages: [{ role: 'user', content: 'hi' }]
     })
-    expect(options.tools?.[0]?.function.name).toBe('library.list')
     expect(options.signal.aborted).toBe(false)
 
     options.onDelta('你')
@@ -161,7 +88,7 @@ describe('createAiRequester', () => {
 
   it('rejects a disabled profile before decrypting the key or calling the model', async () => {
     const settings = makeSettings([{ ...PROFILE, enabled: false }])
-    const requester = createAiRequester(settings, makeTools())
+    const requester = createAiRequester(settings)
 
     await expect(requester.chat(baseRequest())).rejects.toThrow(
       '所选 AI 配置已禁用，请启用或选择其他配置'
@@ -171,21 +98,16 @@ describe('createAiRequester', () => {
   })
 
   it('routes anthropic profiles to the Messages API gateway', async () => {
-    const anthropic = createAiRequester(
-      makeSettings([{ ...PROFILE, provider: 'anthropic' }]),
-      makeTools()
-    )
+    const anthropic = createAiRequester(makeSettings([{ ...PROFILE, provider: 'anthropic' }]))
 
-    await anthropic.chat({ ...baseRequest(), toolNames: ['library.list'] })
+    await anthropic.chat(baseRequest())
 
     expect(streamAnthropicMock).toHaveBeenCalledTimes(1)
     expect(streamChatMock).not.toHaveBeenCalled()
-    // 工具 schema 仍由平台解析，两个网关拿到的是同一份定义
-    expect(streamAnthropicMock.mock.calls[0][0].tools?.[0]?.function.name).toBe('library.list')
   })
 
   it('normalizes messages before calling the model', async () => {
-    const requester = createAiRequester(makeSettings(), makeTools())
+    const requester = createAiRequester(makeSettings())
 
     await requester.chat({
       ...baseRequest(),
@@ -196,7 +118,7 @@ describe('createAiRequester', () => {
   })
 
   it('rejects invalid request and profile identifiers', async () => {
-    const requester = createAiRequester(makeSettings(), makeTools())
+    const requester = createAiRequester(makeSettings())
 
     await expect(requester.chat({ ...baseRequest(), requestId: '' })).rejects.toThrow(
       '请求标识不正确'
@@ -214,31 +136,29 @@ describe('createAiRequester', () => {
   })
 
   it('rejects unknown or incomplete profiles and insecure base URLs', async () => {
-    const missingProfile = createAiRequester(makeSettings([]), makeTools())
+    const missingProfile = createAiRequester(makeSettings([]))
     await expect(missingProfile.chat(baseRequest())).rejects.toThrow(
       '所选 AI 配置不存在，请重新选择'
     )
 
-    const incomplete = createAiRequester(makeSettings([{ ...PROFILE, model: '' }]), makeTools())
+    const incomplete = createAiRequester(makeSettings([{ ...PROFILE, model: '' }]))
     await expect(incomplete.chat(baseRequest())).rejects.toThrow(
       '请先补全所选 AI 服务的 Base URL、API Key 和模型'
     )
 
     const insecure = createAiRequester(
-      makeSettings([{ ...PROFILE, baseUrl: 'http://api.example.com/v1' }]),
-      makeTools()
+      makeSettings([{ ...PROFILE, baseUrl: 'http://api.example.com/v1' }])
     )
     await expect(insecure.chat(baseRequest())).rejects.toThrow('Base URL')
     expect(streamChatMock).not.toHaveBeenCalled()
   })
 
   it('distinguishes a failed key decryption from a missing key', async () => {
-    const encrypted = createAiRequester(makeSettings([PROFILE], ''), makeTools())
+    const encrypted = createAiRequester(makeSettings([PROFILE], ''))
     await expect(encrypted.chat(baseRequest())).rejects.toThrow('API Key 解密失败')
 
     const plain = createAiRequester(
-      makeSettings([{ ...PROFILE, apiKey: '', apiKeyEncrypted: false }], ''),
-      makeTools()
+      makeSettings([{ ...PROFILE, apiKey: '', apiKeyEncrypted: false }], '')
     )
     await expect(plain.chat(baseRequest())).rejects.toThrow(
       '请先补全所选 AI 服务的 Base URL、API Key 和模型'
@@ -254,7 +174,7 @@ describe('createAiRequester', () => {
           finish = resolve
         })
     )
-    const requester = createAiRequester(makeSettings(), makeTools())
+    const requester = createAiRequester(makeSettings())
 
     const first = requester.chat(baseRequest())
     await expect(requester.chat(baseRequest())).rejects.toThrow('请求标识重复')
@@ -267,29 +187,6 @@ describe('createAiRequester', () => {
     await expect(requester.chat(baseRequest())).resolves.toEqual(okResult('再次'))
   })
 
-  it('does not call the model when the run is already aborted', async () => {
-    const run = startRun()
-    run.cancel('user')
-    const requester = createAiRequester(makeSettings(), makeTools())
-
-    await expect(requester.chat({ ...baseRequest(), run })).rejects.toThrow('运行已取消')
-    expect(streamChatMock).not.toHaveBeenCalled()
-  })
-
-  it('records a step per model call and stops after the run budget', async () => {
-    const run = startRun({ maxSteps: 1 })
-    const requester = createAiRequester(makeSettings(), makeTools())
-
-    await requester.chat({ ...baseRequest(), run })
-    expect(run.usage.steps).toBe(1)
-
-    await expect(requester.chat({ ...baseRequest(), requestId: 'req-2', run })).rejects.toThrow(
-      '已达到最大步数（1）'
-    )
-    expect(run.abortReason).toBe('limit')
-    expect(streamChatMock).toHaveBeenCalledTimes(1)
-  })
-
   it('aborts an in-flight request by id', async () => {
     let finish: (result: StreamChatResult) => void = () => undefined
     streamChatMock.mockImplementation(
@@ -298,7 +195,7 @@ describe('createAiRequester', () => {
           finish = resolve
         })
     )
-    const requester = createAiRequester(makeSettings(), makeTools())
+    const requester = createAiRequester(makeSettings())
 
     const pending = requester.chat(baseRequest())
     await flush()
@@ -316,44 +213,31 @@ describe('createAiRequester', () => {
   })
 
   it('makes no-op abort calls for unknown request ids', () => {
-    const requester = createAiRequester(makeSettings(), makeTools())
+    const requester = createAiRequester(makeSettings())
     expect(() => requester.abort('missing')).not.toThrow()
   })
 
-  it('bridges the run signal and the caller signal into the request', async () => {
+  it('bridges the caller signal into the request', async () => {
     const signals: AbortSignal[] = []
     streamChatMock.mockImplementation((options) => {
       signals.push(options.signal)
       return new Promise<StreamChatResult>(() => undefined)
     })
-    const run = startRun()
     const controller = new AbortController()
-    const requester = createAiRequester(makeSettings(), makeTools())
+    const requester = createAiRequester(makeSettings())
 
-    void requester.chat({ ...baseRequest(), run, signal: controller.signal })
+    void requester.chat({ ...baseRequest(), signal: controller.signal })
     await flush()
     expect(signals[0].aborted).toBe(false)
 
-    run.cancel('user')
+    controller.abort()
     expect(signals[0].aborted).toBe(true)
-
-    const callerController = new AbortController()
-    void requester.chat({
-      ...baseRequest(),
-      requestId: 'req-2',
-      signal: callerController.signal
-    })
-    await flush()
-    expect(signals[1].aborted).toBe(false)
-
-    callerController.abort()
-    expect(signals[1].aborted).toBe(true)
   })
 
   it('aborts immediately when the caller signal is already aborted', async () => {
     const controller = new AbortController()
     controller.abort()
-    const requester = createAiRequester(makeSettings(), makeTools())
+    const requester = createAiRequester(makeSettings())
 
     void requester.chat({ ...baseRequest(), signal: controller.signal })
     await flush()

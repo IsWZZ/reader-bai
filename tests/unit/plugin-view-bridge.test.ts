@@ -70,7 +70,6 @@ describe('createPluginViewBridge', () => {
     expect(execute).toHaveBeenCalledWith(
       {},
       expect.objectContaining({
-        source: 'plugin',
         pluginId: 'reader-bai.arxiv-source'
       })
     )

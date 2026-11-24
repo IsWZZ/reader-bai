@@ -39,27 +39,23 @@ describe('preload bridge', () => {
   it('exposes only the documented API surface', () => {
     expect(Object.keys(api).sort()).toEqual(
       [
-        'abortChat',
+        'abortTranslation',
+        'activateTranslation',
         'addAnnotation',
         'analyzePaper',
-        'cancelAgent',
-        'chat',
         'chooseDirectory',
         'clearCache',
         'createSpace',
         'deleteSpace',
-        'executeTool',
         'getPluginRuntime',
         'getSettings',
         'importPaper',
         'listAnnotations',
         'listPapers',
         'listPlugins',
-        'listTools',
         'movePaper',
-        'onAgentEvent',
-        'onAiChunk',
         'onPluginRuntime',
+        'onTranslationChunk',
         'pluginViewRequest',
         'readPaper',
         'removeAnnotations',
@@ -68,7 +64,7 @@ describe('preload bridge', () => {
         'renameSpace',
         'setPaperFavorite',
         'setPluginEnabled',
-        'startAgent',
+        'translate',
         'uninstallApp',
         'updatePaperMetadata',
         'updateSettings'
@@ -145,29 +141,15 @@ describe('preload bridge', () => {
     expect(electron.invoke).toHaveBeenLastCalledWith('annotations:remove', '/papers/a.pdf', ['a1'])
   })
 
-  it('forwards settings, AI, agent, tool and plugin calls', async () => {
-    electron.invoke.mockResolvedValue('reply')
+  it('forwards settings, translation, tool and plugin calls', async () => {
+    electron.invoke.mockResolvedValue('译文')
 
-    await expect(api.chat('r1', [{ role: 'user', content: 'hi' }], 'profile-1')).resolves.toBe(
-      'reply'
-    )
-    expect(electron.invoke).toHaveBeenLastCalledWith(
-      'ai:chat',
-      'r1',
-      [{ role: 'user', content: 'hi' }],
-      'profile-1'
-    )
+    const request = { requestId: 'r1', source: 'hi', profileId: 'profile-1' }
+    await expect(api.translate(request)).resolves.toBe('译文')
+    expect(electron.invoke).toHaveBeenLastCalledWith('translation:translate', request)
 
-    const startRequest = {
-      messages: [{ role: 'user' as const, content: 'hi' }],
-      profileId: 'profile-1',
-      mode: 'agent' as const
-    }
-    await api.startAgent(startRequest)
-    expect(electron.invoke).toHaveBeenLastCalledWith('agent:start', startRequest)
-
-    await api.cancelAgent('session-1')
-    expect(electron.invoke).toHaveBeenLastCalledWith('agent:cancel', 'session-1')
+    await api.activateTranslation()
+    expect(electron.invoke).toHaveBeenLastCalledWith('translation:activate')
 
     await api.getSettings()
     expect(electron.invoke).toHaveBeenLastCalledWith('settings:get')
@@ -181,16 +163,8 @@ describe('preload bridge', () => {
     await api.uninstallApp()
     expect(electron.invoke).toHaveBeenLastCalledWith('app:uninstall')
 
-    api.abortChat('r3')
-    expect(electron.send).toHaveBeenCalledWith('ai:abort', 'r3')
-
-    await api.listTools()
-    expect(electron.invoke).toHaveBeenLastCalledWith('tools:list')
-
-    await api.executeTool('library.list', { query: 'attention' })
-    expect(electron.invoke).toHaveBeenLastCalledWith('tools:execute', 'library.list', {
-      query: 'attention'
-    })
+    api.abortTranslation('r3')
+    expect(electron.send).toHaveBeenCalledWith('translation:abort', 'r3')
 
     await api.listPlugins()
     expect(electron.invoke).toHaveBeenLastCalledWith('plugins:list')
@@ -211,11 +185,11 @@ describe('preload bridge', () => {
     )
   })
 
-  it('subscribes and removes only its own listener', () => {
+  it('subscribes and removes only its own translation listener', () => {
     const onChunk = vi.fn()
-    const offChunk = api.onAiChunk(onChunk)
+    const offChunk = api.onTranslationChunk(onChunk)
 
-    expect(electron.on).toHaveBeenCalledWith('ai:chunk', expect.any(Function))
+    expect(electron.on).toHaveBeenCalledWith('translation:chunk', expect.any(Function))
     const [, chunkListener] = electron.on.mock.calls[0] as unknown as [
       string,
       (event: unknown, payload: unknown) => void
@@ -224,27 +198,7 @@ describe('preload bridge', () => {
     expect(onChunk).toHaveBeenCalledWith({ requestId: 'r1', delta: '你' })
 
     offChunk()
-    expect(electron.removeListener).toHaveBeenCalledWith('ai:chunk', chunkListener)
-  })
-
-  it('subscribes and removes the agent event listener', () => {
-    const onEvent = vi.fn()
-    const offEvent = api.onAgentEvent(onEvent)
-
-    expect(electron.on).toHaveBeenCalledWith('agent:event', expect.any(Function))
-    const [, agentListener] = electron.on.mock.calls[0] as unknown as [
-      string,
-      (event: unknown, payload: unknown) => void
-    ]
-    const payload = {
-      sessionId: 'session-1',
-      event: { type: 'chunk' as const, delta: '你' }
-    }
-    agentListener({}, payload)
-    expect(onEvent).toHaveBeenCalledWith(payload)
-
-    offEvent()
-    expect(electron.removeListener).toHaveBeenCalledWith('agent:event', agentListener)
+    expect(electron.removeListener).toHaveBeenCalledWith('translation:chunk', chunkListener)
   })
 
   it('subscribes and removes the plugin runtime listener', () => {

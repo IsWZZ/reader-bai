@@ -16,10 +16,11 @@
 src/renderer/src/
   App.vue / main.ts / router/
   views/Home.vue               # 外壳：布局、面板编排
-  components/                  # ActivityBar、LibraryPanel、PdfViewer、AssistantPanel、
+  components/                  # ActivityBar、LibraryPanel、PdfViewer、
                                # SettingsDialog、PluginSettings、PluginViewFrame、Toolbar
   components/ui/               # shadcn-vue 生成代码
-  store/                       # assistant、settings、plugins
+  modules/translation/         # B 层翻译模块的渲染侧：TranslationPanel + translation store
+  store/                       # settings、plugins、reading
   lib/                         # ai、pdf、i18n
   lib/locales/                 # zh.ts 消息源与 en.ts 译文
   types.ts
@@ -28,8 +29,8 @@ src/renderer/src/
 
 - `Home.vue` 只做外壳和面板编排；`PdfViewer.vue` 只负责阅读/选词/标注。
 - 阅读区多标签：`PaperTabs.vue` + [store/reading.ts](src/store/reading.ts) 保留最近打开的论文（上限 `MAX_OPEN_PAPERS`）。阅读区（`<main>`）只在打开论文或 main 插件视图后渲染；未打开时论文库面板用 `expanded` 撑满主区域，不额外做空状态占位。每个 `PdfViewer` 必须放在 `TabsContent` 的 `force-mount` 面板里，切换标签时保持挂载；不要改成 `v-if` 条件渲染，否则滚动位置和缩放会丢失。
-- 右侧栏统一由 `RightSidebar.vue` 提供外壳（aside、标题/图标、关闭按钮、尺寸），AI 辅助和论文信息只提供内容，不要在内容组件里再写 `<aside>` 或头部。`Home.vue` 用 `rightView`（`assistant` / `paper-info`）决定当前视图，同一时间只展示一个；以后插件视图也挂进这个窗口，不要另起右侧面板。阅读区优先：`Home.vue` 通过 `maxWidth`（`calc((100% - 保留宽度) / 2)`）限制右侧栏，窗口变窄时右侧栏会收窄，保证 PDF 阅读区比右侧栏宽。
-- 论文信息：打开论文后右侧自动展示当前论文元数据（只读，与详情弹窗共用 `PaperMetadataView.vue`），点叉号关闭；论文库菜单「论文信息」重新唤起并切到该论文。辅助面板已打开时，点开论文不会自动抢占右侧。面板头部的「编辑」由 `Home.vue` 通过 `LibraryPanel` 的 `defineExpose(openMetadata)` 复用详情弹窗。书目信息更新后 `LibraryPanel` 的 `updatePaper` 事件经 `readingStore.syncPaper` 同步到已打开论文，面板和标签才不会显示旧数据。
+- 右侧栏统一由 `RightSidebar.vue` 提供外壳（aside、标题/图标、关闭按钮、尺寸），翻译和论文信息只提供内容，不要在内容组件里再写 `<aside>` 或头部。`Home.vue` 用 `rightView`（`translation` / `paper-info`）决定当前视图，同一时间只展示一个；翻译视图的标题、图标和组件来自 `@modules/translation/renderer` 的视图描述。以后插件视图也挂进这个窗口，不要另起右侧面板。阅读区优先：`Home.vue` 通过 `maxWidth`（`calc((100% - 保留宽度) / 2)`）限制右侧栏，窗口变窄时右侧栏会收窄，保证 PDF 阅读区比右侧栏宽。
+- 论文信息：打开论文后右侧自动展示当前论文元数据（只读，与详情弹窗共用 `PaperMetadataView.vue`），点叉号关闭；论文库菜单「论文信息」重新唤起并切到该论文。翻译面板已打开时，点开论文不会自动抢占右侧。面板头部的「编辑」由 `Home.vue` 通过 `LibraryPanel` 的 `defineExpose(openMetadata)` 复用详情弹窗。书目信息更新后 `LibraryPanel` 的 `updatePaper` 事件经 `readingStore.syncPaper` 同步到已打开论文，面板和标签才不会显示旧数据。
 - 书库检索：输入框在 `Toolbar.vue`，`Home.vue` 持有查询词并传给 `LibraryPanel.vue`，只按已加载的标题/文件名和 `paper.metadata`（作者、期刊、DOI、关键词等）过滤；不要为此新增 IPC 或解析 PDF 全文（全文索引属于 B 层知识库）。
 - 收藏：每行有星标按钮，调 `window.api.setPaperFavorite(id, favorite)`；收藏的论文在所属空间（含未分类）内置顶，排序稳定、其余论文保持原顺序。收藏状态保存在 `library.json` 的 `paper.favorite`，不要放进设置或渲染进程本地状态。
 - 论文元数据：导入后由 `LibraryPanel.vue` 调 `window.api.analyzePaper(paperId)`，主进程负责读 PDF、调 AI 和 Crossref；渲染进程不解析全文、不发外部请求。`settings.library.autoAnalyze` 和 AI 配置共同决定是否自动解析，未配置 AI 时静默跳过。解析结果写入 `paper.metadata`，详情由 `PaperMetadataDialog.vue` 展示。AI 没解析出的字段可以在同一弹窗里手动编辑，保存走 `window.api.updatePaperMetadata(paperId, input)`，校验仍在主进程；用户手动改过的字段在重新解析时不会被覆盖。
@@ -40,24 +41,20 @@ src/renderer/src/
 ## 平台 API
 
 - 使用 `window.api` 上的窄方法，不要拼通用 IPC；新增能力先补主进程和 preload，再改这里。
-- 流式 AI：通过 `onAiChunk` 订阅增量并保存返回的取消函数；切换对话或卸载时调用取消函数，避免串流。
-- 对话与工具：调 `startAgent({ messages, profileId, mode })` 启动会话，通过 `onAgentEvent` 订阅 `chunk` / `tool-call` / `tool-result` / `tool-error` / `done` / `error`；停止调 `cancelAgent(sessionId)`。
-  - 渲染进程不执行 agent loop，也不决定步数、超时和工具白名单，这些都在主进程。
-  - 写操作确认由主进程负责，渲染进程不要自己弹确认框。
+- 翻译：`activateTranslation()` 在活动栏点击时启动独立进程；`translate({ requestId, source, profileId })` 返回完整译文，`onTranslationChunk` 订阅增量并返回取消函数；`abortTranslation(requestId)` 中止旧请求。
+  - 渲染进程只传选区原文和配置 id；系统提示词、进程生命周期、模型请求和 Key 都在模块主进程 / 翻译宿主一侧。
+  - 关闭面板不会停止翻译进程；应用退出由主进程 `deactivate()` 停止。
 - 设置：AI 配置只拿到 `hasApiKey`；编辑时 Key 留空表示保留原 Key，不要尝试读取或回填 Key。
 - 插件：只使用 `listPlugins` / `getPluginRuntime` / `setPluginEnabled` / `onPluginRuntime`；插件代码不在渲染进程执行。
 
-## AI 面板与 agent loop
+## 翻译面板
 
-- `AssistantPanel.vue` + [store/assistant.ts](src/store/assistant.ts) 负责翻译和对话；翻译和对话是两条独立请求，不要混用状态。
+- `src/modules/translation/renderer/` 提供 `TranslationPanel.vue`、`useTranslationStore` 和视图描述；`Home.vue` 只负责把它挂进右侧栏，不要重新塞回外壳组件。
 - 选词翻译只在面板打开时发起：`Home.vue` 用 `setAutoTranslate` 同步面板状态，关闭时 `handleSelection` 只记住最新选区，打开后再翻译；切换论文要清空待翻译选区。
-- 第一方 agent loop 在独立的 `agent-host` utilityProcess（[src/main/agent/](../../src/main/agent/)），渲染进程只发会话事件：
-  - 只传消息、`profileId` 和 `mode`；步数、超时、工具白名单和 Key 都由主进程决定。
-  - `chat` 模式只有 1 步，`agent` 模式最多 6 步，且只开放 `risk === 'read'` 且 `exposeToAi` 的工具。
-  - 工具错误作为 `tool` 消息回给模型，不中断整个对话。
-  - 记录 `tool-call` / `tool-error` 供面板展示，不要伪造工具结果。
-- 用户停止对话时调 `cancelAgent(sessionId)`；会话 id 返回前就停止时，要在拿到 id 后补一次取消。
+- 活动栏点击时 `Home.vue` 先调 `translationStore.activate()`，即使随后因为未配置跳转设置也符合“点击按钮启动进程”；成功结果缓存，失败时面板展示 `activationError` 并允许重试。
+- 防抖 250ms、选词上限 4000 字符、同文本去重、失败可重试、流式增量按 `requestId` 过滤，这些行为保持不变。
 - 模型、Base URL、Key 都来自设置；没有完整配置时提示用户，不要发起请求。
+- 订阅清理放在 store 的 `onScopeDispose`，关闭面板只关闭自动翻译，不取消订阅、不停止进程。
 
 ## UI 与样式
 
@@ -84,7 +81,7 @@ src/renderer/src/
 ## 设置与插件界面
 
 - `SettingsDialog.vue` + [store/settings.ts](src/store/settings.ts)：基础设置（外观、语言、导入解析开关）、存储、AI 配置、插件和卸载分区；默认打开「基础设置」，调用方可用 `initialSection` 指定分区。
-- `Home.vue` 持有设置弹窗的打开状态和分区；`ActivityBar.vue` 只发出 `openSettings`。没有可用 AI 配置时，点击活动栏的辅助面板按钮或论文库的「AI 解析」会让 Home 直接打开 AI 分区，不打开无法工作的面板，也不发起解析。
+- `Home.vue` 持有设置弹窗的打开状态和分区；`ActivityBar.vue` 只发出 `openSettings`。没有可用 AI 配置时，点击活动栏的翻译按钮或论文库的「AI 解析」会让 Home 直接打开 AI 分区，不打开无法工作的面板，也不发起解析。
 - 「存储」分区上方管理论文库目录，下方通过 `window.api.clearCache()` 清理 Electron 的 HTTP、代码和 DNS 缓存；只展示成功/失败状态，不要在渲染进程推断文件系统缓存。
 - 「卸载」是独立分区（不放在存储里）：分区内只保留标题和操作按钮，删除范围只在点击后的 AlertDialog 确认框里提示。确认框用 shadcn-vue 的 `AlertDialog`（取消在前、默认焦点在取消），文案必须明确说明本地论文副本、标注、设置、API Key 和插件会被删除，导入前的原始 PDF 保留。只有用户确认后才调用 `window.api.uninstallApp()`；成功后主进程退出，取消则关闭弹窗、按钮恢复可用。
 - AI 配置表单先选接口类型（`openai` / `anthropic`），再填 Base URL、模型和 Key；保存时必须把 `provider` 一起回传，否则主进程沿用该 id 原有的协议。
@@ -110,11 +107,11 @@ src/renderer/src/
 - 当前语言状态的 ref 挂在 `globalThis` 的 symbol 键下，而不是模块作用域：Vite HMR 重新实例化模块时，设置 store 的旧闭包和热更新后的组件必须读写同一个 ref，否则会出现「活动栏已切换、设置弹窗仍是旧语言」的不一致。新增语言相关状态时沿用这一共享方式。
 - 增加新语言：新增 `locales/<code>.ts`（实现全部 `MessageKey`）→ 在 `LOCALES` 追加 `{ code, label, messages }`。主进程不需要改，`language` 只做 BCP 47 格式校验。
 - 插值使用 `{name}` 占位符，参数放第二个对象；缺失参数会保留占位符，便于发现漏传。
-- 系统提示词、日志和主进程返回的错误信息不属于界面文案，保持现状；AI 系统提示不要跟随界面语言，避免改变翻译/工具行为。
+- 系统提示词、日志和主进程返回的错误信息不属于界面文案，保持现状；翻译系统提示不要跟随界面语言，避免改变翻译行为。
 
 ## 测试
 
 - 组件测试用 Vitest + Vue Test Utils，在 `beforeEach` 里 mock `window.api`，不要启动 Electron。
 - 测试优先按用户可见行为断言：role、`aria-label`、文本、输入值和禁用状态。
-- agent loop 的纯逻辑在 `tests/unit/agent-loop.test.ts` 覆盖，协议校验在 `tests/unit/agent-protocol.test.ts`，组件测试只验证面板接线。
+- 翻译模块的测试放在 `src/modules/translation/tests/`：协议校验在 `tests/unit/translation-protocol.test.ts`，宿主生命周期在 `tests/unit/translation-runtime.test.ts`，store 和组件测试只验证接线与可见行为。E2E 在 `src/modules/translation/tests/e2e/translation.spec.ts`。
 - 用户流程用 Playwright E2E，复用 `tests/e2e/helpers.ts` 的临时 `--user-data-dir` 和对话框打桩；见 [docs/testing.md](../../docs/testing.md)。

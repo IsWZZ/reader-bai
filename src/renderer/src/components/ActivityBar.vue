@@ -27,18 +27,18 @@
           <Button
             variant="ghost"
             size="icon-sm"
-            :aria-label="t('activity.assistant')"
-            :aria-pressed="$props.isAssistantOpen"
+            :aria-label="t(translationView.activityLabelKey)"
+            :aria-pressed="$props.isTranslationOpen"
             :class="[
               'rounded-lg transition-colors',
-              $props.isAssistantOpen ? 'bg-accent text-accent-foreground' : ''
+              $props.isTranslationOpen ? 'bg-accent text-accent-foreground' : ''
             ]"
-            @click="toggleAssistant"
+            @click="toggleTranslation"
           >
-            <Sparkles class="size-5" />
+            <component :is="translationView.icon" class="size-5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="right">{{ t('assistant.title') }}</TooltipContent>
+        <TooltipContent side="right">{{ t(translationView.titleKey) }}</TooltipContent>
       </Tooltip>
 
       <Tooltip v-for="view in pluginViews" :key="view.key">
@@ -85,6 +85,7 @@
 </template>
 
 <script setup lang="ts">
+import type { Component } from 'vue'
 import { Button } from '@renderer/components/ui/button'
 import {
   Tooltip,
@@ -92,8 +93,8 @@ import {
   TooltipContent,
   TooltipProvider
 } from '@renderer/components/ui/tooltip'
-import { t } from '@renderer/lib/i18n'
-import { LibraryBig, Puzzle, Settings, Sparkles } from 'lucide-vue-next'
+import { t, type MessageKey } from '@renderer/lib/i18n'
+import { LibraryBig, Puzzle, Settings } from 'lucide-vue-next'
 import type { PluginViewLocation } from '@renderer/types'
 
 interface ActivityPluginView {
@@ -102,10 +103,18 @@ interface ActivityPluginView {
   location: PluginViewLocation
 }
 
+/** 外壳只需要模块视图的展示信息，不需要模块内部实现 */
+interface ShellView {
+  activityLabelKey: MessageKey
+  titleKey: MessageKey
+  icon: Component
+}
+
 withDefaults(
   defineProps<{
     isLibraryOpen: boolean
-    isAssistantOpen: boolean
+    isTranslationOpen: boolean
+    translationView: ShellView
     settingsOpen?: boolean
     pluginViews?: ActivityPluginView[]
     activePluginViewKey?: string | null
@@ -115,7 +124,7 @@ withDefaults(
 
 const emit = defineEmits<{
   toggleLibrary: []
-  toggleAssistant: []
+  toggleTranslation: []
   openSettings: []
   togglePluginView: [key: string]
 }>()
@@ -124,7 +133,7 @@ const toggleLibrary = (): void => {
   emit('toggleLibrary')
 }
 
-const toggleAssistant = (): void => {
-  emit('toggleAssistant')
+const toggleTranslation = (): void => {
+  emit('toggleTranslation')
 }
 </script>

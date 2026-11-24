@@ -79,10 +79,7 @@ const createAnnotations = (initial: AnnotationMap = {}): FakeAnnotations => {
   }
 }
 
-const context = (): ToolContext => ({
-  source: 'ai',
-  signal: new AbortController().signal
-})
+const context = (): ToolContext => ({ signal: new AbortController().signal })
 
 interface SetupResult {
   registry: ToolRegistry
@@ -504,7 +501,7 @@ describe('platform tools', () => {
     controller.abort()
 
     await expect(
-      registry.execute('library.list', {}, { source: 'ai', signal: controller.signal })
+      registry.execute('library.list', {}, { signal: controller.signal })
     ).rejects.toThrow('操作已取消')
     expect(confirm).not.toHaveBeenCalled()
   })

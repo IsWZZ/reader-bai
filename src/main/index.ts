@@ -3,7 +3,7 @@ import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import packageJson from '../../package.json'
-import { createAgentRuntime } from './agent/runtime'
+import { createTranslationModule } from '../modules/translation/main'
 import { createAiRequester } from './ai-request'
 import { createAnnotationStore } from './annotations'
 import { createLibraryStore } from './library'
@@ -18,15 +18,13 @@ import { createPlatformToolRegistry } from './platform-tools'
 import { createSettingsStore } from './settings-store'
 import { createUserDataPaths } from './user-data'
 import { createWindow } from './window'
-import { registerAgentIpc } from './ipc/agent'
-import { registerAiIpc } from './ipc/ai'
 import { registerAnnotationsIpc } from './ipc/annotations'
 import { registerAppIpc } from './ipc/app'
 import { registerCacheIpc } from './ipc/cache'
 import { registerLibraryIpc } from './ipc/library'
 import { registerPluginsIpc } from './ipc/plugins'
 import { registerSettingsIpc } from './ipc/settings'
-import { confirmToolInvocation, registerToolsIpc } from './ipc/tools'
+import { confirmToolInvocation } from './ipc/tools'
 
 // 自定义协议必须在 app ready 之前声明
 registerPluginViewScheme()
@@ -77,8 +75,8 @@ app.whenReady().then(async () => {
     readPageText: (paper, page) => readPdfPageText(paper.path, page),
     confirm: confirmToolInvocation
   })
-  // 单次 AI 请求：渲染进程（翻译）和 agent 宿主共用，Key 只在这里解密
-  const requester = createAiRequester(settings, tools)
+  // 单次 AI 请求：翻译宿主和论文解析共用，Key 只在这里解密
+  const requester = createAiRequester(settings)
   // 导入后的元数据解析：读取前几页交给 AI，再用 Crossref 校验补全
   const paperAnalyzer = createPaperAnalyzer({
     settings,
@@ -86,12 +84,11 @@ app.whenReady().then(async () => {
     readIntroText: async (filePath) => (await readPdfIntroText(filePath)).text,
     lookup: (input) => lookupCrossref(input)
   })
-  // agent loop 跑在独立的 utilityProcess 里；主进程只提供能力、预算和取消
-  const agentRuntime = createAgentRuntime({
-    hostScript: join(__dirname, 'agent-host.js'),
+  // 翻译逻辑跑在独立的 utilityProcess 里；IPC 先注册，进程在活动栏点击时才启动
+  const translationModule = createTranslationModule({
+    hostScript: join(__dirname, 'translation-host.js'),
     requester,
-    tools,
-    onLog: (message) => console.warn(`[agent] ${message}`)
+    onLog: (message) => console.warn(`[translation] ${message}`)
   })
   const viewBridge = createPluginViewBridge({ host: plugins, tools })
   registerPluginViewProtocol(plugins)
@@ -113,15 +110,13 @@ app.whenReady().then(async () => {
   registerCacheIpc()
   registerSettingsIpc(settings)
   registerPluginsIpc(plugins, runtime, viewBridge)
-  registerAgentIpc(agentRuntime)
-  registerAiIpc(requester)
-  registerToolsIpc(tools)
+  translationModule.registerIpc()
 
   createWindow()
   void runtime.refresh()
 
   app.on('before-quit', () => {
-    void agentRuntime.stop()
+    void translationModule.deactivate()
     void runtime.stop()
   })
 

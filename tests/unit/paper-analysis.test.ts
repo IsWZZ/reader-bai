@@ -71,7 +71,6 @@ const createDeps = (overrides: Overrides = {}): PaperAnalyzerDeps => ({
       overrides.chat ??
       (async () => ({
         text: aiJson(),
-        toolCalls: [],
         finishReason: 'stop' as const
       }))
   },
@@ -106,7 +105,6 @@ describe('createPaperAnalyzer', () => {
   it('uses a DOI found in the text when the model omits it', async () => {
     const chat = vi.fn(async () => ({
       text: aiJson({ doi: null }),
-      toolCalls: [],
       finishReason: 'stop' as const
     }))
     const lookup = vi.fn(async () => crossrefMetadata())
@@ -161,7 +159,6 @@ describe('createPaperAnalyzer', () => {
     settings.ai.activeId = 'a'
     const chat = vi.fn(async () => ({
       text: aiJson(),
-      toolCalls: [],
       finishReason: 'stop' as const
     }))
     const analyzer = createPaperAnalyzer(createDeps({ settings, chat }))
@@ -214,7 +211,6 @@ describe('createPaperAnalyzer', () => {
   it('deduplicates concurrent analysis of the same paper', async () => {
     const chat = vi.fn(async () => ({
       text: aiJson(),
-      toolCalls: [],
       finishReason: 'stop' as const
     }))
     const analyzer = createPaperAnalyzer(createDeps({ chat }))

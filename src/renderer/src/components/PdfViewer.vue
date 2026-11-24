@@ -859,7 +859,7 @@ const getSelectionOnPage = (): {
   return { pageNumber, rects, text }
 }
 
-// 更新待标注选区，并在选到文本时通知外部（右侧辅助面板据此翻译）。
+// 更新待标注选区，并在选到文本时通知外部（右侧翻译面板据此翻译）。
 // 空选区不触发事件，避免点击空白处清空已有译文。
 const syncPendingSelection = (): void => {
   const selection = getSelectionOnPage()

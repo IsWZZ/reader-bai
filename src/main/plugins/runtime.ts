@@ -122,7 +122,6 @@ export const createPluginRuntime = (options: PluginRuntimeOptions): PluginRuntim
     if (missing.length > 0) throw new Error(`插件缺少权限：${missing.join(', ')}`)
 
     return options.tools.execute(name.trim(), record.input, {
-      source: 'plugin',
       pluginId: descriptor.id,
       signal
     })

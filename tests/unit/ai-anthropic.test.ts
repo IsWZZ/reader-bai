@@ -3,10 +3,9 @@ import {
   ANTHROPIC_VERSION,
   anthropicMessagesUrl,
   streamAnthropic,
-  toAnthropicMessages,
-  toAnthropicTools
+  toAnthropicMessages
 } from '../../src/main/ai-anthropic'
-import type { ChatMessage, ChatToolDefinition, StreamChatOptions } from '../../src/main/ai'
+import type { ChatMessage, StreamChatOptions } from '../../src/main/ai'
 
 interface FakeResponseInit {
   status?: number
@@ -51,21 +50,6 @@ const sse = (payload: unknown): string => `data: ${JSON.stringify(payload)}\n\n`
 
 const MESSAGE_STOP = sse({ type: 'message_stop' })
 
-const TOOLS: ChatToolDefinition[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'library.search',
-      description: '搜索论文',
-      parameters: {
-        type: 'object',
-        properties: { query: { type: 'string' } },
-        required: ['query']
-      }
-    }
-  }
-]
-
 const baseOptions = (): StreamChatOptions => ({
   baseUrl: 'https://api.anthropic.com',
   apiKey: 'sk-ant-secret',
@@ -103,139 +87,48 @@ describe('anthropicMessagesUrl', () => {
 })
 
 describe('toAnthropicMessages', () => {
-  it('lifts system messages and converts tool calls and results', () => {
-    const messages: ChatMessage[] = [
+  it('lifts system messages and converts user/assistant text', () => {
+    const result = toAnthropicMessages([
       { role: 'system', content: 'rules' },
       { role: 'system', content: 'more rules' },
-      { role: 'user', content: '找到 attention 相关论文' },
-      {
-        role: 'assistant',
-        content: null,
-        tool_calls: [
-          {
-            id: 'toolu_1',
-            type: 'function',
-            function: { name: 'library.search', arguments: '{"query":"attention"}' }
-          }
-        ]
-      },
-      { role: 'tool', content: '["Attention Is All You Need"]', tool_call_id: 'toolu_1' },
-      { role: 'tool', content: '["BERT"]', tool_call_id: 'toolu_2' }
-    ]
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' }
+    ])
 
-    expect(toAnthropicMessages(messages)).toEqual({
+    expect(result).toEqual({
       system: 'rules\n\nmore rules',
       messages: [
-        {
-          role: 'user',
-          content: [{ type: 'text', text: '找到 attention 相关论文' }]
-        },
-        {
-          role: 'assistant',
-          content: [
-            {
-              type: 'tool_use',
-              id: 'toolu_1',
-              name: 'library.search',
-              input: { query: 'attention' }
-            }
-          ]
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: 'toolu_1',
-              content: '["Attention Is All You Need"]'
-            },
-            { type: 'tool_result', tool_use_id: 'toolu_2', content: '["BERT"]' }
-          ]
-        }
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'hello' }
       ]
     })
   })
 
-  it('skips empty messages and handles tool results without content', () => {
-    const converted = toAnthropicMessages([
-      { role: 'assistant', content: '' },
-      { role: 'user', content: '' },
-      { role: 'tool', content: null, tool_call_id: 'toolu_1' },
-      { role: 'tool', content: 'orphan result' }
-    ])
-
-    expect(converted).toEqual({
-      messages: [
-        {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '' }]
-        }
-      ]
-    })
-  })
-
-  it('merges adjacent same-role messages and keeps assistant text', () => {
-    const converted = toAnthropicMessages([
+  it('merges adjacent messages with the same role', () => {
+    const result = toAnthropicMessages([
       { role: 'user', content: 'first' },
       { role: 'user', content: 'second' },
-      { role: 'assistant', content: 'answer' },
-      {
-        role: 'assistant',
-        content: null,
-        tool_calls: [
-          {
-            id: 'toolu_1',
-            type: 'function',
-            function: { name: 'paper.readPage', arguments: 'not json' }
-          }
-        ]
-      }
+      { role: 'assistant', content: 'answer' }
     ])
 
-    expect(converted.system).toBeUndefined()
-    expect(converted.messages).toEqual([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'first' },
-          { type: 'text', text: 'second' }
-        ]
-      },
-      {
-        role: 'assistant',
-        content: [
-          { type: 'text', text: 'answer' },
-          { type: 'tool_use', id: 'toolu_1', name: 'paper.readPage', input: {} }
-        ]
-      }
-    ])
-  })
-})
-
-describe('toAnthropicTools', () => {
-  it('converts OpenAI function definitions to input_schema', () => {
-    expect(toAnthropicTools(TOOLS)).toEqual([
-      {
-        name: 'library.search',
-        description: '搜索论文',
-        input_schema: {
-          type: 'object',
-          properties: { query: { type: 'string' } },
-          required: ['query']
-        }
-      }
-    ])
+    expect(result).toEqual({
+      messages: [
+        { role: 'user', content: 'first\n\nsecond' },
+        { role: 'assistant', content: 'answer' }
+      ]
+    })
   })
 
-  it('omits an empty description', () => {
+  it('skips empty messages', () => {
     expect(
-      toAnthropicTools([
-        {
-          type: 'function',
-          function: { name: 'paper.readPage', parameters: { type: 'object' } }
-        }
+      toAnthropicMessages([
+        { role: 'system', content: '  ' },
+        { role: 'user', content: '' },
+        { role: 'assistant', content: 'answer' }
       ])
-    ).toEqual([{ name: 'paper.readPage', input_schema: { type: 'object' } }])
+    ).toEqual({
+      messages: [{ role: 'assistant', content: 'answer' }]
+    })
   })
 })
 
@@ -257,7 +150,6 @@ describe('streamAnthropic', () => {
     await streamAnthropic({
       ...baseOptions(),
       messages,
-      tools: TOOLS,
       temperature: 0.3,
       maxOutputTokens: 1024
     })
@@ -272,20 +164,9 @@ describe('streamAnthropic', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       model: 'claude-test',
       max_tokens: 1024,
-      messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      messages: [{ role: 'user', content: 'hi' }],
       stream: true,
       system: 'rules',
-      tools: [
-        {
-          name: 'library.search',
-          description: '搜索论文',
-          input_schema: {
-            type: 'object',
-            properties: { query: { type: 'string' } },
-            required: ['query']
-          }
-        }
-      ],
       temperature: 0.3
     })
   })
@@ -378,10 +259,6 @@ describe('streamAnthropic', () => {
             }),
             sse({
               type: 'content_block_delta',
-              delta: { type: 'input_json_delta', partial_json: '{}' }
-            }),
-            sse({
-              type: 'content_block_delta',
               index: 0,
               delta: { type: 'text_delta', text: 'ok' }
             }),
@@ -449,116 +326,11 @@ describe('streamAnthropic', () => {
       onDelta: (delta) => deltas.push(delta)
     })
 
-    expect(result).toEqual({ text: '你好', toolCalls: [], finishReason: 'stop' })
+    expect(result).toEqual({ text: '你好', finishReason: 'stop' })
     expect(deltas).toEqual(['你', '好'])
   })
 
-  it('assembles tool_use input from content_block_delta fragments', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        fakeResponse({
-          chunks: [
-            sse({
-              type: 'content_block_start',
-              index: 0,
-              content_block: { type: 'tool_use', id: 'toolu_1', name: 'library.search', input: {} }
-            }),
-            sse({
-              type: 'content_block_delta',
-              index: 0,
-              delta: { type: 'input_json_delta', partial_json: '{"query":' }
-            }),
-            sse({
-              type: 'content_block_delta',
-              index: 0,
-              delta: { type: 'input_json_delta', partial_json: '"attention"}' }
-            }),
-            sse({ type: 'content_block_stop', index: 0 }),
-            sse({ type: 'message_delta', delta: { stop_reason: 'tool_use' } }),
-            MESSAGE_STOP
-          ]
-        })
-      )
-    )
-
-    const result = await streamAnthropic({ ...baseOptions(), tools: TOOLS })
-
-    expect(result.finishReason).toBe('tool_calls')
-    expect(result.toolCalls).toEqual([
-      { id: 'toolu_1', name: 'library.search', arguments: '{"query":"attention"}' }
-    ])
-  })
-
-  it('keeps multiple tool calls ordered by content block index', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        fakeResponse({
-          chunks: [
-            sse({
-              type: 'content_block_start',
-              index: 1,
-              content_block: { type: 'tool_use', id: 'toolu_b', name: 'paper.readPage', input: {} }
-            }),
-            sse({
-              type: 'content_block_start',
-              index: 0,
-              content_block: { type: 'tool_use', id: 'toolu_a', name: 'library.search', input: {} }
-            }),
-            sse({
-              type: 'content_block_delta',
-              index: 1,
-              delta: { type: 'input_json_delta', partial_json: '{"page":2}' }
-            }),
-            sse({
-              type: 'content_block_delta',
-              index: 0,
-              delta: { type: 'input_json_delta', partial_json: '{"query":"x"}' }
-            }),
-            sse({ type: 'message_delta', delta: { stop_reason: 'tool_use' } }),
-            MESSAGE_STOP
-          ]
-        })
-      )
-    )
-
-    const result = await streamAnthropic({ ...baseOptions(), tools: TOOLS })
-
-    expect(result.toolCalls.map((call) => call.id)).toEqual(['toolu_a', 'toolu_b'])
-  })
-
-  it('generates an id when content_block_start omits one', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        fakeResponse({
-          chunks: [
-            sse({
-              type: 'content_block_start',
-              index: 0,
-              content_block: { type: 'tool_use', name: 'library.search' }
-            }),
-            sse({
-              type: 'content_block_delta',
-              index: 0,
-              delta: { type: 'input_json_delta', partial_json: '{"query":"x"}' }
-            }),
-            sse({ type: 'message_delta', delta: { stop_reason: 'tool_use' } }),
-            MESSAGE_STOP
-          ]
-        })
-      )
-    )
-
-    const result = await streamAnthropic(baseOptions())
-
-    expect(result.toolCalls).toEqual([
-      { id: 'toolu_0', name: 'library.search', arguments: '{"query":"x"}' }
-    ])
-  })
-
-  it('falls back to a non-streaming JSON response', async () => {
+  it('reads a non-streaming JSON response', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -566,77 +338,21 @@ describe('streamAnthropic', () => {
           contentType: 'application/json',
           json: {
             type: 'message',
-            content: [
-              { type: 'text', text: '完整回复' },
-              { type: 'tool_use', id: 'toolu_2', name: 'paper.readPage', input: { page: 3 } }
-            ],
-            stop_reason: 'tool_use'
+            content: [{ type: 'text', text: '完整回复' }],
+            stop_reason: 'end_turn'
           }
         })
       )
     )
-    const deltas: string[] = []
 
+    const deltas: string[] = []
     const result = await streamAnthropic({
       ...baseOptions(),
       onDelta: (delta) => deltas.push(delta)
     })
 
-    expect(result.text).toBe('完整回复')
-    expect(result.finishReason).toBe('tool_calls')
-    expect(result.toolCalls).toEqual([
-      { id: 'toolu_2', name: 'paper.readPage', arguments: '{"page":3}' }
-    ])
+    expect(result).toEqual({ text: '完整回复', finishReason: 'stop' })
     expect(deltas).toEqual(['完整回复'])
-  })
-
-  it('finalizes non-stream tool calls without ids or arguments', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        fakeResponse({
-          contentType: 'application/json',
-          json: {
-            type: 'message',
-            content: [
-              { type: 'tool_use', name: 'paper.readPage', input: { page: 3 } },
-              { type: 'tool_use', name: 'library.search' },
-              { type: 'tool_use', input: { query: 'x' } }
-            ],
-            stop_reason: 'tool_use'
-          }
-        })
-      )
-    )
-
-    const result = await streamAnthropic(baseOptions())
-
-    expect(result.toolCalls).toEqual([
-      { id: 'toolu_0', name: 'paper.readPage', arguments: '{"page":3}' },
-      { id: 'toolu_1', name: 'library.search', arguments: '{}' }
-    ])
-    expect(result.finishReason).toBe('tool_calls')
-  })
-
-  it('downgrades tool_use when no valid tool call remains', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        fakeResponse({
-          contentType: 'application/json',
-          json: {
-            type: 'message',
-            content: [{ type: 'tool_use', input: {} }],
-            stop_reason: 'tool_use'
-          }
-        })
-      )
-    )
-
-    const result = await streamAnthropic(baseOptions())
-
-    expect(result.toolCalls).toEqual([])
-    expect(result.finishReason).toBe('stop')
   })
 
   it('maps max_tokens to a length finish reason', async () => {
@@ -725,7 +441,10 @@ describe('streamAnthropic', () => {
     )
 
     await expect(streamAnthropic({ ...baseOptions(), signal: controller.signal })).resolves.toEqual(
-      { text: '', toolCalls: [], finishReason: 'aborted' }
+      {
+        text: '',
+        finishReason: 'aborted'
+      }
     )
   })
 
@@ -748,7 +467,6 @@ describe('streamAnthropic', () => {
 
     await expect(promise).resolves.toEqual({
       text: '',
-      toolCalls: [],
       finishReason: 'aborted'
     })
   })

@@ -1,5 +1,7 @@
 # plugin 分支新增能力总结
 
+> **历史文档**：本文记录 `plugin` 分支当时的 agent / C 层实现。AI 对话 / agent 已在后续重构中移除，翻译已迁入 `src/modules/translation/` 并运行在独立的 `translation-host` 进程；当前架构以 [architecture.md](architecture.md) 为准。文中 `agent/*`、`agent-host`、`ai:chat`、`agent:*` 等路径和通道已不存在。
+
 本文总结 `plugin` 分支相对 `main` 新增的能力，覆盖 AI 工具网关、agent run 边界、C 层插件宿主、设置界面与配套安全加固。
 
 ## 总体定位

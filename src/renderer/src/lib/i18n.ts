@@ -3,6 +3,8 @@ import { en } from './locales/en'
 import { zh } from './locales/zh'
 import type { LocaleDefinition, MessageKey } from './locales/types'
 
+export type { MessageKey } from './locales/types'
+
 /**
  * 语言注册表：增加语言时只需要新增一个 locale 文件并在这里追加一项。
  * 语言标签使用 BCP 47 风格（en、zh-Hans、pt-BR 等），设置文件只保存这个字符串。

@@ -51,9 +51,15 @@ jobs:
       - name: Build
         run: npx electron-vite build
 
-      - name: Unit tests
-        run: npm run test:unit
+      - name: Core unit tests
+        run: npm run test:unit:core
+
+      - name: Module unit tests
+        run: npm run test:unit:module
 
       # Electron 需要虚拟显示；xvfb 在 ubuntu-latest 上已预装
-      - name: E2E tests
-        run: xvfb-run -a npx playwright test
+      - name: Core E2E tests
+        run: xvfb-run -a npm run test:e2e:core
+
+      - name: Module E2E tests
+        run: xvfb-run -a npm run test:e2e:module

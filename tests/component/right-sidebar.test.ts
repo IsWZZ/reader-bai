@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import { Sparkles } from 'lucide-vue-next'
+import { Languages } from 'lucide-vue-next'
 import RightSidebar from '@renderer/components/RightSidebar.vue'
 
 describe('RightSidebar', () => {
@@ -24,7 +24,7 @@ describe('RightSidebar', () => {
 
   it('renders the icon and header actions', () => {
     const wrapper = mount(RightSidebar, {
-      props: { width: 320, label: '辅助面板', title: '翻译与 AI', icon: Sparkles },
+      props: { width: 320, label: '翻译面板', title: '翻译', icon: Languages },
       slots: { actions: '<button aria-label="编辑">edit</button>' }
     })
 
@@ -34,10 +34,10 @@ describe('RightSidebar', () => {
 
   it('emits close and uses the view-specific close label', async () => {
     const wrapper = mount(RightSidebar, {
-      props: { width: 320, label: '辅助面板', title: '翻译与 AI', closeLabel: '关闭辅助面板' }
+      props: { width: 320, label: '翻译面板', title: '翻译', closeLabel: '关闭翻译面板' }
     })
 
-    await wrapper.get('button[aria-label="关闭辅助面板"]').trigger('click')
+    await wrapper.get('button[aria-label="关闭翻译面板"]').trigger('click')
 
     expect(wrapper.emitted('close')).toHaveLength(1)
   })

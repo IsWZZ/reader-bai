@@ -289,7 +289,9 @@ test('adds missing metadata manually and rejects invalid values', async () => {
 
   await expect(dialog.getByText('10.1000/MANUAL')).toBeVisible()
   await expect(dialog.getByText('手动填写')).toBeVisible()
-  // 保存后右侧面板同步刷新
+  // 弹窗打开时其余区域会被标记为 aria-hidden，先关闭再验证右侧面板同步刷新
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(dialog).toBeHidden()
   await expect(panel.getByText('10.1000/MANUAL')).toBeVisible()
 
   await expect

@@ -4,12 +4,13 @@
     <div class="flex flex-1 overflow-hidden gap-0.5">
       <ActivityBar
         :is-library-open="isLibraryOpen"
-        :is-assistant-open="isAssistantOpen"
+        :is-translation-open="isTranslationOpen"
+        :translation-view="translationView"
         :settings-open="settingsOpen"
         :plugin-views="activityPluginViews"
         :active-plugin-view-key="activePluginViewKey"
         @toggle-library="toggleLibrary"
-        @toggle-assistant="toggleAssistant"
+        @toggle-translation="toggleTranslation"
         @open-settings="openSettingsAt('basic')"
         @toggle-plugin-view="togglePluginView"
       />
@@ -74,15 +75,15 @@
         </PaperTabs>
       </main>
 
-      <!-- 右侧栏是开放的窗口：AI 辅助、论文信息（以及后续插件视图）共用这个容器 -->
+      <!-- 右侧栏是开放的窗口：翻译、论文信息（以及后续插件视图）共用这个容器 -->
       <template v-if="rightView">
         <!-- 拖拽分隔符 -->
         <div
           class="w-0.5 cursor-col-resize hover:bg-primary/50 transition-colors rounded-full"
-          @mousedown="startAssistantResize"
+          @mousedown="startTranslationResize"
         />
         <RightSidebar
-          :width="assistantWidth"
+          :width="translationWidth"
           :max-width="rightSidebarMaxWidth"
           :label="rightViewLabel"
           :title="rightViewTitle"
@@ -102,7 +103,7 @@
             </Button>
           </template>
 
-          <AssistantPanel v-if="rightView === 'assistant'" />
+          <component :is="translationView.component" v-if="rightView === translationView.id" />
           <PaperInfoPanel v-else :paper="currentPaper" />
         </RightSidebar>
       </template>
@@ -121,17 +122,16 @@ import PdfViewer from '@renderer/components/PdfViewer.vue'
 import PaperInfoPanel from '@renderer/components/PaperInfoPanel.vue'
 import PaperTabs from '@renderer/components/PaperTabs.vue'
 import RightSidebar from '@renderer/components/RightSidebar.vue'
-import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import { TabsContent } from '@renderer/components/ui/tabs'
-import { useAssistantStore } from '@renderer/store/assistant'
+import { translationView, useTranslationStore } from '@modules/translation/renderer'
 import { usePluginsStore } from '@renderer/store/plugins'
 import { useReadingStore } from '@renderer/store/reading'
 import { useSettingsStore } from '@renderer/store/settings'
 import { t } from '@renderer/lib/i18n'
 import { Button } from '@renderer/components/ui/button'
-import { FileText, Pencil, Sparkles } from 'lucide-vue-next'
+import { FileText, Pencil } from 'lucide-vue-next'
 import type { Paper, PluginViewInfo, PluginViewLocation } from '@renderer/types'
 
 const isLibraryOpen = ref(true)
@@ -143,20 +143,20 @@ const currentPaper = computed(() => readingStore.activePaper)
 // 顶部搜索框控制书库面板的过滤
 const searchQuery = ref('')
 
-const assistantStore = useAssistantStore()
+const translationStore = useTranslationStore()
 const settingsStore = useSettingsStore()
 const pluginsStore = usePluginsStore()
 // 右侧栏同一时间只展示一个视图；后续插件视图也可以接入这个窗口
-type RightView = 'assistant' | 'paper-info'
+type RightView = typeof translationView.id | 'paper-info'
 const rightView = ref<RightView | null>(null)
-const isAssistantOpen = computed(() => rightView.value === 'assistant')
+const isTranslationOpen = computed(() => rightView.value === translationView.id)
 const libraryPanelRef = ref<InstanceType<typeof LibraryPanel> | null>(null)
 type SettingsSection = 'basic' | 'ai' | 'library' | 'plugins' | 'uninstall'
 const settingsOpen = ref(false)
 const settingsSection = ref<SettingsSection>('basic')
-const assistantWidth = ref(340)
-const minAssistantWidth = 280
-const maxAssistantWidth = 560
+const translationWidth = ref(340)
+const minTranslationWidth = 280
+const maxTranslationWidth = 560
 
 interface ActivePluginView extends PluginViewInfo {
   key: string
@@ -206,17 +206,19 @@ const hasReadingArea = computed(
   () => activeMainView.value !== null || readingStore.papers.length > 0
 )
 
-// 右侧窗口的标题、无障碍名称和图标跟随当前视图
+// 右侧窗口的标题、无障碍名称和图标跟随当前视图；翻译视图由模块描述提供
 const rightViewLabel = computed(() =>
-  rightView.value === 'assistant' ? t('assistant.panel') : t('paperInfo.title')
+  rightView.value === translationView.id ? t(translationView.panelLabelKey) : t('paperInfo.title')
 )
 const rightViewTitle = computed(() =>
-  rightView.value === 'assistant' ? t('assistant.title') : t('paperInfo.title')
+  rightView.value === translationView.id ? t(translationView.titleKey) : t('paperInfo.title')
 )
 const rightViewCloseLabel = computed(() =>
-  rightView.value === 'assistant' ? t('assistant.close') : t('common.close')
+  rightView.value === translationView.id ? t(translationView.closeLabelKey) : t('common.close')
 )
-const rightViewIcon = computed(() => (rightView.value === 'assistant' ? Sparkles : FileText))
+const rightViewIcon = computed(() =>
+  rightView.value === translationView.id ? translationView.icon : FileText
+)
 
 // 阅读区优先：右侧栏最多占剩余空间的一半再少一点，避免窗口较窄时
 // 信息面板比 PDF 正文还宽。宽度由 CSS max-width 响应式限制。
@@ -245,22 +247,22 @@ const togglePluginView = (key: string): void => {
 }
 
 onMounted(() => {
-  assistantStore.initialize()
+  translationStore.initialize()
   void pluginsStore.load()
 })
 
 // 面板关闭时只记录选区；打开后再翻译最近一次选区
-watch(isAssistantOpen, (open) => assistantStore.setAutoTranslate(open), { immediate: true })
+watch(isTranslationOpen, (open) => translationStore.setAutoTranslate(open), { immediate: true })
 
 // 检索时确保书库可见，否则结果无处展示
 watch(searchQuery, (query) => {
   if (query.trim()) isLibraryOpen.value = true
 })
 
-// 切换论文时清空译文，聊天记录保留
+// 切换论文时清空译文
 watch(
   () => currentPaper.value?.id,
-  () => assistantStore.resetTranslation()
+  () => translationStore.resetTranslation()
 )
 
 const toggleLibrary = (): void => {
@@ -280,23 +282,25 @@ const openSettingsAt = (section: SettingsSection): void => {
 
 const openAiSettings = (): void => openSettingsAt('ai')
 
-const toggleAssistant = (): void => {
-  if (isAssistantOpen.value) {
+const toggleTranslation = (): void => {
+  if (isTranslationOpen.value) {
     rightView.value = null
     return
   }
+  // 点击活动栏即启动翻译进程；即使随后因为未配置跳转到设置，进程也保持常驻
+  void translationStore.activate().catch(() => undefined)
   // 没有可用的 AI 配置时，先把用户带到设置页，而不是打开一个无法工作的面板
   if (!settingsStore.isAiConfigured) {
     openAiSettings()
     return
   }
-  rightView.value = 'assistant'
+  rightView.value = translationView.id
 }
 
 const handleSelectPaper = (paper: Paper): void => {
   readingStore.openPaper(paper)
-  // 阅读时默认在右侧展示论文信息；辅助面板已经占用右侧时不抢位置
-  if (rightView.value !== 'assistant') rightView.value = 'paper-info'
+  // 阅读时默认在右侧展示论文信息；翻译面板已经占用右侧时不抢位置
+  if (rightView.value !== translationView.id) rightView.value = 'paper-info'
 }
 
 // 论文库的「论文信息」：打开论文并唤起右侧信息面板
@@ -311,7 +315,7 @@ const editPaperMetadata = (paper: Paper): void => {
 }
 
 const handleSelection = (payload: { text: string; page: number }): void => {
-  assistantStore.handleSelection(payload.text)
+  translationStore.handleSelection(payload.text)
 }
 
 const startResize = (e: MouseEvent): void => {
@@ -334,14 +338,17 @@ const startResize = (e: MouseEvent): void => {
 }
 
 // 右侧面板向左拖才变宽，所以取反 delta
-const startAssistantResize = (e: MouseEvent): void => {
+const startTranslationResize = (e: MouseEvent): void => {
   const startX = e.clientX
-  const startWidth = assistantWidth.value
+  const startWidth = translationWidth.value
 
   const onMouseMove = (moveEvent: MouseEvent): void => {
     const deltaX = moveEvent.clientX - startX
-    const newWidth = Math.min(Math.max(startWidth - deltaX, minAssistantWidth), maxAssistantWidth)
-    assistantWidth.value = newWidth
+    const newWidth = Math.min(
+      Math.max(startWidth - deltaX, minTranslationWidth),
+      maxTranslationWidth
+    )
+    translationWidth.value = newWidth
   }
 
   const onMouseUp = (): void => {

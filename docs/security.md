@@ -35,7 +35,7 @@
 - `paper:read` 校验路径属于论文库；`dialog:importPaper` 只接受文件对话框的结果，不接受渲染进程指定任意路径。
 - 导入时把文件复制到论文库目录（默认 `userData/Userdata/papers`），目录只能通过 `dialog:chooseDirectory` 的原生对话框选择；`library.directory` 在主进程校验为绝对路径，非法值拒绝写入。
 - 标注的新增和删除同样校验论文库归属。
-- AI 请求只在主进程发起（[ai.ts](../src/main/ai.ts)、[ipc/ai.ts](../src/main/ipc/ai.ts)），Key 不经过 `ai:chat` 参数；消息在进入主进程时校验角色、条数和总长度。
+- AI 请求只在主进程发起（[ai.ts](../src/main/ai.ts)、[ai-request.ts](../src/main/ai-request.ts)）；翻译宿主只收到待翻译文本和请求标识，拿不到 Key、设置、文件系统或窗口。`translation:translate` 和宿主协议都会校验 source 长度、消息体积和错误长度。
 - AI Base URL 只允许 HTTPS；仅 `localhost` / `127.0.0.1` / `[::1]` 可使用 HTTP，保存和发起请求时都会校验。
 - 论文元数据解析只在主进程发起：没有 AI 配置时不读取 PDF、不发外部请求；Crossref 请求固定访问 `https://api.crossref.org`，DOI 先做格式校验，标题检索有相似度阈值、超时和响应体积上限，失败时只保留 AI 结果。
 - Key 优先用 Electron `safeStorage` 加密后落盘，见 [settings-store.ts](../src/main/settings-store.ts)；系统安全存储不可用时 `settings:get` 返回 `keyStorage: 'plaintext'`，设置页会明确提示 Key 将以明文保存。

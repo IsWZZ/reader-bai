@@ -101,7 +101,7 @@ test('switches the interface language and restores it after relaunch', async () 
   await englishDialog.getByRole('button', { name: 'Close' }).click()
   await expect(reader.page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible()
   await expect(reader.page.getByRole('button', { name: 'Library', exact: true })).toBeVisible()
-  await expect(reader.page.getByRole('button', { name: 'Assistant', exact: true })).toBeVisible()
+  await expect(reader.page.getByRole('button', { name: 'Translation', exact: true })).toBeVisible()
 
   await reader.app.close()
 
@@ -268,16 +268,16 @@ test('disabled AI profiles are persisted and rejected by the main process', asyn
     const api = (
       globalThis as unknown as {
         api: {
-          chat: (
-            requestId: string,
-            messages: { role: string; content: string }[],
+          translate: (request: {
+            requestId: string
+            source: string
             profileId: string
-          ) => Promise<string>
+          }) => Promise<string>
         }
       }
     ).api
     try {
-      await api.chat('req-1', [{ role: 'user', content: 'hi' }], 'p1')
+      await api.translate({ requestId: 'req-1', source: 'hi', profileId: 'p1' })
       return ''
     } catch (e) {
       return e instanceof Error ? e.message : String(e)
@@ -285,12 +285,12 @@ test('disabled AI profiles are persisted and rejected by the main process', asyn
   })
   expect(error).toContain('所选 AI 配置已禁用')
 
-  // 没有可用的启用配置时，点击辅助面板直接打开 AI 设置，而不是打开面板
-  await reader.page.getByRole('button', { name: '辅助面板', exact: true }).click()
+  // 没有可用的启用配置时，点击翻译按钮直接打开 AI 设置，而不是打开面板
+  await reader.page.getByRole('button', { name: '翻译', exact: true }).click()
   const dialog = reader.page.getByRole('dialog', { name: '设置' })
   await expect(dialog).toBeVisible()
   await expect(dialog).toContainText('已禁用')
-  expect(await reader.page.locator('aside[aria-label="辅助面板"]').count()).toBe(0)
+  expect(await reader.page.locator('aside[aria-label="翻译面板"]').count()).toBe(0)
 
   await reader.app.close()
 })

@@ -1,7 +1,6 @@
 // 论文元数据解析：PDF 开头几页 → AI 结构化抽取 → Crossref 校验补全。
 // 依赖通过参数注入，方便单元测试；Key 仍只在主进程解密。
 
-import { startRun } from './ai-run'
 import type { AiRequester } from './ai-request'
 import type { PaperMetadata } from './paper-metadata'
 import {
@@ -95,13 +94,14 @@ export const createPaperAnalyzer = (deps: PaperAnalyzerDeps): PaperAnalyzer => {
     let aiMetadata: PaperMetadata | null = null
     let aiError: unknown = null
 
-    const agentRun = startRun({ timeoutMs: REQUEST_TIMEOUT_MS, maxSteps: 1 })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
       const result = await deps.requester.chat({
         requestId: nextRequestId(paper.id),
         profileId: profile.id,
         messages: buildMetadataMessages(introText),
-        run: agentRun,
+        signal: controller.signal,
         onDelta: () => undefined
       })
       aiMetadata = parseMetadataResponse(result.text, now())
@@ -109,7 +109,7 @@ export const createPaperAnalyzer = (deps: PaperAnalyzerDeps): PaperAnalyzer => {
     } catch (error) {
       aiError = error
     } finally {
-      agentRun.dispose()
+      clearTimeout(timer)
     }
 
     let crossref: PaperMetadata | null = null

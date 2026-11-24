@@ -126,81 +126,20 @@ declare global {
 
   interface AiSettings {
     profiles: AiProfile[]
-    /** 当前选中的配置 id，翻译和对话共用 */
+    /** 当前选中的配置 id，翻译使用 */
     activeId: string
   }
 
-  type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
-
-  interface ChatToolCall {
-    id: string
-    type: 'function'
-    function: {
-      name: string
-      arguments: string
-    }
+  interface TranslationRequest {
+    requestId: string
+    source: string
+    profileId: string
   }
 
-  interface ChatMessage {
-    role: ChatRole
-    content: string | null
-    /** assistant 发起的工具调用 */
-    tool_calls?: ChatToolCall[]
-    /** tool 消息对应的调用 id */
-    tool_call_id?: string
-  }
-
-  /** 主进程流式返回的增量片段 */
-  interface AiChunk {
+  /** 主进程流式返回的翻译增量 */
+  interface TranslationChunk {
     requestId: string
     delta: string
-  }
-
-  type AgentMode = 'chat' | 'agent'
-
-  interface AgentStartRequest {
-    messages: ChatMessage[]
-    profileId: string
-    mode: AgentMode
-  }
-
-  interface AgentSessionInfo {
-    id: string
-  }
-
-  type AgentFinishReason = 'stop' | 'max-steps' | 'aborted'
-
-  type AgentEvent =
-    | { type: 'chunk'; delta: string }
-    | { type: 'tool-call'; callId: string; name: string }
-    | { type: 'tool-result'; callId: string; name: string; content: string }
-    | { type: 'tool-error'; callId: string; name: string; error: string }
-    | { type: 'done'; text: string; steps: number; finishReason: AgentFinishReason }
-    | { type: 'error'; message: string }
-
-  interface AgentEventPayload {
-    sessionId: string
-    event: AgentEvent
-  }
-
-  type ToolRisk = 'read' | 'write' | 'destructive'
-
-  interface ToolInfo {
-    name: string
-    title: string
-    description: string
-    /** 供模型/UI 展示的 JSON Schema */
-    inputSchema: Record<string, unknown>
-    risk: ToolRisk
-    /** 是否允许 agent 调用 */
-    exposeToAi: boolean
-    /** 插件调用该工具所需的 manifest 权限 */
-    requiredPermissions?: string[]
-  }
-
-  interface ToolResult {
-    content: string
-    isError?: boolean
   }
 
   type PluginPermission = 'documents:read' | 'annotations:write' | 'network' | 'storage'
@@ -316,22 +255,14 @@ declare global {
     clearCache: () => Promise<void>
     /** 卸载应用：删除本地论文、标注、设置、API Key 和插件并退出；调用方负责先确认 */
     uninstallApp: () => Promise<void>
-    /** 单次流式对话（翻译），返回完整文本；增量通过 onAiChunk 推送 */
-    chat: (requestId: string, messages: ChatMessage[], profileId: string) => Promise<string>
-    /** 中止指定请求 */
-    abortChat: (requestId: string) => void
-    /** 订阅流式增量，返回取消订阅函数 */
-    onAiChunk: (callback: (payload: AiChunk) => void) => () => void
-    /** 启动一次 agent 会话；循环运行在独立进程中，这里只返回会话 id */
-    startAgent: (request: AgentStartRequest) => Promise<AgentSessionInfo>
-    /** 取消 agent 会话 */
-    cancelAgent: (sessionId: string) => Promise<void>
-    /** 订阅 agent 会话事件（增量、工具调用、结束和错误） */
-    onAgentEvent: (callback: (payload: AgentEventPayload) => void) => () => void
-    /** 列出平台注册的工具 */
-    listTools: () => Promise<ToolInfo[]>
-    /** 执行一个已注册工具；写操作由主进程弹出确认 */
-    executeTool: (name: string, input: unknown) => Promise<ToolResult>
+    /** 启动翻译进程；活动栏点击时调用，启动后常驻到应用退出 */
+    activateTranslation: () => Promise<void>
+    /** 翻译一段选区文本，返回完整译文；增量通过 onTranslationChunk 推送 */
+    translate: (request: TranslationRequest) => Promise<string>
+    /** 中止指定翻译请求 */
+    abortTranslation: (requestId: string) => void
+    /** 订阅翻译增量，返回取消订阅函数 */
+    onTranslationChunk: (callback: (payload: TranslationChunk) => void) => () => void
     /** 列出已发现插件和 manifest 问题 */
     listPlugins: () => Promise<PluginListResult>
     /** 启用或关闭插件；不兼容的插件会被主进程拒绝 */

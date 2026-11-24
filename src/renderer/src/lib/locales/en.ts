@@ -61,7 +61,7 @@ export const en = {
   'settings.uninstall.confirm.action': 'Uninstall and delete',
   'settings.ai.title': 'AI Services',
   'settings.ai.description':
-    'Save multiple AI service configurations and pick one from the assistant panel. OpenAI-compatible and Anthropic Messages APIs are supported.',
+    'Save multiple AI service configurations and pick one from the translation panel. OpenAI-compatible and Anthropic Messages APIs are supported.',
   'settings.ai.plaintextWarning':
     'System secure storage is unavailable. API keys will be saved as plaintext in the local settings file.',
   'settings.ai.noBaseUrl': 'Base URL not set',
@@ -78,8 +78,7 @@ export const en = {
     'OpenAI-compatible uses /chat/completions; Anthropic uses /v1/messages.',
   'settings.ai.form.baseUrl': 'Base URL',
   'settings.ai.form.model': 'Model',
-  'settings.ai.form.modelHint':
-    'Enter the model name from your provider. Translation and chat both use it.',
+  'settings.ai.form.modelHint': 'Enter the model name from your provider. Translation uses it.',
   'settings.ai.form.apiKey': 'API Key',
   'settings.ai.form.keepKey': 'Leave blank to keep the existing key',
   'settings.ai.form.showKey': 'Show API key',
@@ -98,7 +97,7 @@ export const en = {
   'settings.error.save': 'Could not save settings',
 
   'activity.library': 'Library',
-  'activity.assistant': 'Assistant',
+  'activity.translation': 'Translation',
   'activity.settings': 'Settings',
 
   'paperInfo.title': 'Paper details',
@@ -179,35 +178,24 @@ export const en = {
   'pdf.readFailed': 'Could not read the paper file',
   'pdf.loadFailed': 'Could not load the paper',
 
-  'assistant.panel': 'Assistant panel',
-  'assistant.title': 'Translation & AI',
-  'assistant.close': 'Close assistant panel',
-  'assistant.selectModel': 'Select model',
-  'assistant.toolsTitle': 'Allow the AI to call read-only tools such as the library',
-  'assistant.useTools': 'Use tools',
-  'assistant.tools': 'Tools',
-  'assistant.setupHint': 'Add and complete a configuration in Settings → AI Services first.',
-  'assistant.noEnabledHint': 'All AI profiles are disabled. Enable one in Settings → AI Services.',
-  'assistant.incompleteHint':
+  'translation.panel': 'Translation panel',
+  'translation.title': 'Translation',
+  'translation.close': 'Close translation panel',
+  'translation.selectModel': 'Select model',
+  'translation.setupHint': 'Add and complete a configuration in Settings → AI Services first.',
+  'translation.noEnabledHint':
+    'All AI profiles are disabled. Enable one in Settings → AI Services.',
+  'translation.incompleteHint':
     'The selected AI service is missing a Base URL, API key or model. Complete it in Settings.',
-  'assistant.translation': 'Translation',
-  'assistant.translating': 'Translating…',
-  'assistant.selectionHint': 'Select text in the reader to see its translation.',
-  'assistant.chatHint': 'You can also ask the AI directly; replies stream in here.',
-  'assistant.toolLog': 'Tool activity',
-  'assistant.ask': 'Ask the AI',
-  'assistant.placeholder': 'Ask the AI. Enter to send, Shift+Enter for a new line',
-  'assistant.stop': 'Stop',
-  'assistant.send': 'Send',
-  'assistant.configHint': 'Configure a Base URL, API key and model in Settings → AI Services first',
-  'assistant.error.environment': 'The AI service is not available in this environment',
-  'assistant.error.translate': 'Translation failed. Please try again.',
-  'assistant.error.tooLong': 'The selected text is too long (maximum {max} characters)',
-  'assistant.error.reply': 'The AI reply failed. Please try again.',
-  'assistant.tool.call': 'Calling tool: {name}',
-  'assistant.tool.error': 'Tool {name} failed: {error}',
-  'assistant.tool.argsInvalid': 'Tool arguments are not valid JSON',
-  'assistant.tool.failed': 'Tool execution failed: {message}',
+  'translation.result': 'Translation',
+  'translation.translating': 'Translating…',
+  'translation.selectionHint': 'Select text in the reader to see its translation.',
+  'translation.configHint':
+    'Configure a Base URL, API key and model in Settings → AI Services first',
+  'translation.error.environment': 'The AI service is not available in this environment',
+  'translation.error.translate': 'Translation failed. Please try again.',
+  'translation.error.tooLong': 'The selected text is too long (maximum {max} characters)',
+  'translation.error.activate': 'Could not start the translation process. Please try again.',
 
   'plugins.title': 'Plugins',
   'plugins.description':

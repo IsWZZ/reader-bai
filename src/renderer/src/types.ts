@@ -102,73 +102,20 @@ export interface AiProfilePatch {
 
 export interface AiSettings {
   profiles: AiProfile[]
-  /** 当前选中的配置 id，翻译和对话共用 */
+  /** 当前选中的配置 id，翻译使用 */
   activeId: string
 }
 
-export type ChatRole = 'system' | 'user' | 'assistant' | 'tool'
-
-export interface ChatToolCall {
-  id: string
-  type: 'function'
-  function: {
-    name: string
-    arguments: string
-  }
-}
-
-export interface ChatMessage {
-  role: ChatRole
-  content: string | null
-  /** assistant 发起的工具调用 */
-  tool_calls?: ChatToolCall[]
-  /** tool 消息对应的调用 id */
-  tool_call_id?: string
-}
-
-export type AgentMode = 'chat' | 'agent'
-
-export interface AgentStartRequest {
-  messages: ChatMessage[]
+export interface TranslationRequest {
+  requestId: string
+  source: string
   profileId: string
-  mode: AgentMode
 }
 
-export interface AgentSessionInfo {
-  id: string
-}
-
-export type AgentFinishReason = 'stop' | 'max-steps' | 'aborted'
-
-export type AgentEvent =
-  | { type: 'chunk'; delta: string }
-  | { type: 'tool-call'; callId: string; name: string }
-  | { type: 'tool-result'; callId: string; name: string; content: string }
-  | { type: 'tool-error'; callId: string; name: string; error: string }
-  | { type: 'done'; text: string; steps: number; finishReason: AgentFinishReason }
-  | { type: 'error'; message: string }
-
-export interface AgentEventPayload {
-  sessionId: string
-  event: AgentEvent
-}
-
-export type ToolRisk = 'read' | 'write' | 'destructive'
-
-export interface ToolInfo {
-  name: string
-  title: string
-  description: string
-  inputSchema: Record<string, unknown>
-  risk: ToolRisk
-  exposeToAi: boolean
-  /** 插件调用该工具所需的 manifest 权限；渲染进程不直接使用 */
-  requiredPermissions?: string[]
-}
-
-export interface ToolResult {
-  content: string
-  isError?: boolean
+/** 主进程流式返回的翻译增量 */
+export interface TranslationChunk {
+  requestId: string
+  delta: string
 }
 
 export type PluginPermission = 'documents:read' | 'annotations:write' | 'network' | 'storage'
@@ -220,12 +167,6 @@ export interface PluginRuntimeState {
   status: PluginRuntimeStatus
   /** 启动失败时的错误摘要 */
   message?: string
-}
-
-/** 主进程流式返回的增量片段 */
-export interface AiChunk {
-  requestId: string
-  delta: string
 }
 
 export interface LibrarySettings {

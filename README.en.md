@@ -11,7 +11,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
 Import PDFs, organize them spatially, read and save highlights and underlines; select a passage to
-translate, and summon streaming AI chat at any time.
+translate selected text.
 
 Offline-first — reading, library management, and annotations need no network; all cloud features are optional.
 
@@ -28,8 +28,8 @@ Offline-first — reading, library management, and annotations need no network; 
 | 📚 Local library       | Import PDFs, organize by spaces, search, and manage metadata                                |
 | 📖 PDF reading         | Lazy rendering, zoom, and cross-page text selection powered by pdf.js                       |
 | 🖍 Annotations          | Highlights and underlines, persisted per paper                                              |
-| 🌐 Selection translate | Click a word or double-click a sentence to send it to the side assistant panel              |
-| 🤖 AI assistant        | Multiple model configs, streaming chat, metadata extraction on import (AI + Crossref)       |
+| 🌐 Selection translate | Click a word or double-click a sentence to translate it in the side panel; runs in its own process |
+| 🤖 Metadata extraction | Multiple model configs, metadata extraction on import (AI + Crossref)                       |
 | 🧩 Plugin system       | Manifest validation, permission declarations, separate-process host, sandboxed plugin views |
 
 > Currently at the stage where layer A (platform core) and layer C (third-party plugin host) have
@@ -82,8 +82,9 @@ so the first install takes a while.
 reader-bai/
 ├─ src/
 │  ├─ main/            # Electron main process: IPC, persistence, AI gateway, plugin host
+│  ├─ modules/         # Built-in B-layer modules (translation: own process, plugin-like)
 │  ├─ preload/         # Minimal window.api bridge and type declarations
-│  └─ renderer/        # Vue 3 renderer: library, reader, AI panel, settings
+│  └─ renderer/        # Vue 3 renderer: library, reader, translation panel, settings
 ├─ tests/              # unit / component / e2e
 ├─ docs/               # Architecture, security, PDF, plugin views, testing
 ├─ build/ resources/   # Packaging resources
@@ -99,8 +100,8 @@ The long-term goal of `reader-bai` is an academic paper workbench, organized in 
 
 | Layer                      | Contents                                                                              | Status         |
 | -------------------------- | ------------------------------------------------------------------------------------- | -------------- |
-| **A. Platform core**       | Library, reading, annotations, basic translation / AI chat                            | Basic support  |
-| **B. Built-in modules**    | Knowledge base, cloud lookup entry points, writing, recommendations, community client | Planned        |
+| **A. Platform core**       | Library, reading, annotations, settings                                               | Basic support  |
+| **B. Built-in modules**    | Translation, knowledge base, cloud lookup entry points, writing, recommendations, community client | Translation available |
 | **C. Third-party plugins** | Replaceable implementations such as search sources, model providers, export formats   | Host available |
 | **D. Cloud services**      | Account, sync, recommendations, community and search proxy backend                    | Planned        |
 

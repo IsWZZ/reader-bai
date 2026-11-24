@@ -1,15 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   createToolRegistry,
-  toChatToolDefinition,
   type ToolContext,
   type ToolDefinition
 } from '../../src/main/tool-registry'
 
-const context = (source: ToolContext['source'] = 'ai'): ToolContext => ({
-  source,
-  signal: new AbortController().signal
-})
+const context = (): ToolContext => ({ signal: new AbortController().signal })
 
 const searchTool = (): ToolDefinition<{ query: string }> => ({
   name: 'library.search',
@@ -83,7 +79,7 @@ describe('tool registry', () => {
     ).resolves.toEqual({ content: 'found:attention' })
     expect(execute).toHaveBeenCalledWith(
       { query: 'attention' },
-      expect.objectContaining({ source: 'ai' })
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
     expect(onInvoke).toHaveBeenCalledWith(
       expect.objectContaining({ tool: expect.objectContaining({ name: 'library.search' }) }),
@@ -102,21 +98,13 @@ describe('tool registry', () => {
     expect(onInvoke).toHaveBeenCalledTimes(1)
   })
 
-  it('does not expose private tools to AI or plugins', async () => {
+  it('does not expose private tools to plugins', async () => {
     const registry = createToolRegistry()
     registry.register({ ...searchTool(), exposeToAi: false })
 
-    await expect(registry.execute('library.search', { query: 'x' }, context('ai'))).rejects.toThrow(
-      '工具未对 AI 开放'
+    await expect(registry.execute('library.search', { query: 'x' }, context())).rejects.toThrow(
+      '工具未对插件开放'
     )
-    await expect(
-      registry.execute('library.search', { query: 'x' }, context('plugin'))
-    ).rejects.toThrow('工具未对插件开放')
-    await expect(
-      registry.execute('library.search', { query: 'x' }, context('ui'))
-    ).resolves.toEqual({
-      content: 'found:x'
-    })
   })
 
   it('keeps required permissions in the tool info', () => {
@@ -139,19 +127,5 @@ describe('tool registry', () => {
       undefined,
       expect.any(Error)
     )
-  })
-
-  it('converts a tool to the chat tool definition', () => {
-    const registry = createToolRegistry()
-    registry.register(searchTool())
-
-    expect(toChatToolDefinition(registry.list()[0])).toEqual({
-      type: 'function',
-      function: {
-        name: 'library.search',
-        description: '按标题搜索论文',
-        parameters: searchTool().inputSchema
-      }
-    })
   })
 })

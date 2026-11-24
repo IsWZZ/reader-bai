@@ -1,12 +1,16 @@
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
+import { translationView } from '@modules/translation/renderer'
 
 const mountBar = (
   isLibraryOpen = false,
-  isAssistantOpen = false,
+  isTranslationOpen = false,
   settingsOpen = false
-): VueWrapper => mount(ActivityBar, { props: { isLibraryOpen, isAssistantOpen, settingsOpen } })
+): VueWrapper =>
+  mount(ActivityBar, {
+    props: { isLibraryOpen, isTranslationOpen, translationView, settingsOpen }
+  })
 
 describe('ActivityBar', () => {
   it('emits toggleLibrary when the library button is clicked', async () => {
@@ -18,15 +22,15 @@ describe('ActivityBar', () => {
     expect(wrapper.get('button[aria-label="论文库"]').attributes('aria-pressed')).toBe('true')
   })
 
-  it('emits toggleAssistant and reflects the open state', async () => {
+  it('emits toggleTranslation and reflects the open state', async () => {
     const wrapper = mountBar(false, true)
 
-    const button = wrapper.get('button[aria-label="辅助面板"]')
+    const button = wrapper.get('button[aria-label="翻译"]')
     expect(button.attributes('aria-pressed')).toBe('true')
 
     await button.trigger('click')
 
-    expect(wrapper.emitted('toggleAssistant')).toHaveLength(1)
+    expect(wrapper.emitted('toggleTranslation')).toHaveLength(1)
   })
 
   it('asks the shell to open settings and reflects the open state', async () => {
