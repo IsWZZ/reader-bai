@@ -27,8 +27,11 @@ src/renderer/src/
 ```
 
 - `Home.vue` 只做外壳和面板编排；`PdfViewer.vue` 只负责阅读/选词/标注。
-- 阅读区多标签：`PaperTabs.vue` + [store/reading.ts](src/store/reading.ts) 保留最近打开的论文（上限 `MAX_OPEN_PAPERS`）。每个 `PdfViewer` 必须放在 `TabsContent` 的 `force-mount` 面板里，切换标签时保持挂载；不要改成 `v-if` 条件渲染，否则滚动位置和缩放会丢失。
+- 阅读区多标签：`PaperTabs.vue` + [store/reading.ts](src/store/reading.ts) 保留最近打开的论文（上限 `MAX_OPEN_PAPERS`）。阅读区（`<main>`）只在打开论文或 main 插件视图后渲染；未打开时论文库面板用 `expanded` 撑满主区域，不额外做空状态占位。每个 `PdfViewer` 必须放在 `TabsContent` 的 `force-mount` 面板里，切换标签时保持挂载；不要改成 `v-if` 条件渲染，否则滚动位置和缩放会丢失。
+- 右侧栏统一由 `RightSidebar.vue` 提供外壳（aside、标题/图标、关闭按钮、尺寸），AI 辅助和论文信息只提供内容，不要在内容组件里再写 `<aside>` 或头部。`Home.vue` 用 `rightView`（`assistant` / `paper-info`）决定当前视图，同一时间只展示一个；以后插件视图也挂进这个窗口，不要另起右侧面板。阅读区优先：`Home.vue` 通过 `maxWidth`（`calc((100% - 保留宽度) / 2)`）限制右侧栏，窗口变窄时右侧栏会收窄，保证 PDF 阅读区比右侧栏宽。
+- 论文信息：打开论文后右侧自动展示当前论文元数据（只读，与详情弹窗共用 `PaperMetadataView.vue`），点叉号关闭；论文库菜单「论文信息」重新唤起并切到该论文。辅助面板已打开时，点开论文不会自动抢占右侧。面板头部的「编辑」由 `Home.vue` 通过 `LibraryPanel` 的 `defineExpose(openMetadata)` 复用详情弹窗。书目信息更新后 `LibraryPanel` 的 `updatePaper` 事件经 `readingStore.syncPaper` 同步到已打开论文，面板和标签才不会显示旧数据。
 - 书库检索：输入框在 `Toolbar.vue`，`Home.vue` 持有查询词并传给 `LibraryPanel.vue`，只按已加载的标题/文件名和 `paper.metadata`（作者、期刊、DOI、关键词等）过滤；不要为此新增 IPC 或解析 PDF 全文（全文索引属于 B 层知识库）。
+- 收藏：每行有星标按钮，调 `window.api.setPaperFavorite(id, favorite)`；收藏的论文在所属空间（含未分类）内置顶，排序稳定、其余论文保持原顺序。收藏状态保存在 `library.json` 的 `paper.favorite`，不要放进设置或渲染进程本地状态。
 - 论文元数据：导入后由 `LibraryPanel.vue` 调 `window.api.analyzePaper(paperId)`，主进程负责读 PDF、调 AI 和 Crossref；渲染进程不解析全文、不发外部请求。`settings.library.autoAnalyze` 和 AI 配置共同决定是否自动解析，未配置 AI 时静默跳过。解析结果写入 `paper.metadata`，详情由 `PaperMetadataDialog.vue` 展示。AI 没解析出的字段可以在同一弹窗里手动编辑，保存走 `window.api.updatePaperMetadata(paperId, input)`，校验仍在主进程；用户手动改过的字段在重新解析时不会被覆盖。
 - 新功能做成独立组件 + store，通过 props/事件与外壳通信；不要塞进 `Home.vue` 或 `PdfViewer.vue`。
 - 功能之间不互相 import store；需要共享时用平台 API、事件或独立 lib。

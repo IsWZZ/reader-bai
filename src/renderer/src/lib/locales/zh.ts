@@ -93,11 +93,18 @@ export const zh = {
   'activity.assistant': '辅助面板',
   'activity.settings': '设置',
 
-  'home.empty': '选择论文开始阅读',
+  'paperInfo.title': '论文信息',
+  'paperInfo.empty': '打开论文后在这里查看论文信息',
+  'paperInfo.noMetadata': '还没有论文信息，可在论文库的「论文信息」中解析或编辑。',
+
   'reading.tabs': '已打开的论文',
   'reading.closeTab': '关闭 {title}',
 
   'library.title': '论文库',
+  'library.favorite': '收藏 {title}',
+  'library.unfavorite': '取消收藏 {title}',
+  'library.favoriteAction': '收藏',
+  'library.unfavoriteAction': '取消收藏',
   'library.search.empty': '没有匹配“{query}”的论文',
   'library.search.emptyHint': '试试标题、作者、期刊或 DOI 中的其他关键词',
   'library.metadata.view': '论文信息',

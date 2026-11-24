@@ -1,6 +1,6 @@
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import { readPdfTitle } from '@renderer/lib/pdf'
 import { useSettingsStore } from '@renderer/store/settings'
@@ -18,6 +18,7 @@ const deleteSpace = vi.fn<(id: string) => Promise<LibraryData>>()
 const renamePaper =
   vi.fn<(id: string, title: string, source: 'metadata' | 'user') => Promise<LibraryData>>()
 const movePaper = vi.fn<(id: string, spaceId: string | null) => Promise<LibraryData>>()
+const setPaperFavorite = vi.fn<(id: string, favorite: boolean) => Promise<LibraryData>>()
 const removePaper = vi.fn<(id: string) => Promise<LibraryData>>()
 const importPaper = vi.fn<(spaceId?: string | null) => Promise<Paper | null>>()
 const analyzePaper = vi.fn<(id: string) => Promise<Paper>>()
@@ -81,6 +82,7 @@ const installApi = (): void => {
     deleteSpace,
     renamePaper,
     movePaper,
+    setPaperFavorite,
     removePaper,
     importPaper,
     analyzePaper,
@@ -91,9 +93,9 @@ const installApi = (): void => {
 
 let pinia: ReturnType<typeof createPinia>
 
-const mountPanel = (searchQuery?: string): VueWrapper =>
+const mountPanel = (searchQuery?: string, expanded = false): VueWrapper =>
   mount(LibraryPanel, {
-    props: { width: 280, searchQuery },
+    props: { width: 280, expanded, searchQuery },
     global: { plugins: [pinia] }
   })
 
@@ -116,6 +118,7 @@ describe('LibraryPanel', () => {
     deleteSpace.mockReset()
     renamePaper.mockReset()
     movePaper.mockReset()
+    setPaperFavorite.mockReset()
     removePaper.mockReset()
     importPaper.mockReset()
     analyzePaper.mockReset()
@@ -127,6 +130,60 @@ describe('LibraryPanel', () => {
     readPdfTitleMock.mockResolvedValue(null)
     readPaper.mockRejectedValue(new Error('not needed'))
     installApi()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('fills the available width when expanded', async () => {
+    const wrapper = mountPanel(undefined, true)
+    await flushPromises()
+
+    expect(wrapper.classes()).toContain('flex-1')
+    expect(wrapper.attributes('style')).toBeUndefined()
+  })
+
+  it('uses the configured width when not expanded', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    expect(wrapper.classes()).not.toContain('flex-1')
+    expect(wrapper.attributes('style')).toContain('width: 280px')
+  })
+
+  it('opens a paper only after the double-click window in expanded mode', async () => {
+    const target = paper({ id: 'paper-1', title: 'Paper A' })
+    listPapers.mockResolvedValue({ spaces: [], papers: [target] })
+
+    const wrapper = mountPanel(undefined, true)
+    await flushPromises()
+
+    vi.useFakeTimers()
+    await clickButton(wrapper, 'Paper A')
+    // 展开态单击会收起论文库；先等过双击窗口，避免双击改名的第二下丢失
+    expect(wrapper.emitted('selectPaper')).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(wrapper.emitted('selectPaper')?.[0]).toEqual([target])
+  })
+
+  it('keeps double-click rename working in expanded mode', async () => {
+    const target = paper({ id: 'paper-1', title: 'Paper A' })
+    listPapers.mockResolvedValue({ spaces: [], papers: [target] })
+
+    const wrapper = mountPanel(undefined, true)
+    await flushPromises()
+
+    vi.useFakeTimers()
+    const button = buttonByText(wrapper, 'Paper A')
+    if (!button) throw new Error('button "Paper A" not found')
+    await button.trigger('click')
+    await button.trigger('dblclick')
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(wrapper.emitted('selectPaper')).toBeUndefined()
+    const input = wrapper.get('input[data-inline-input]').element as HTMLInputElement
+    expect(input.value).toBe('Paper A')
   })
 
   it('groups papers by space and keeps unassigned papers under 未分类', async () => {
@@ -146,6 +203,89 @@ describe('LibraryPanel', () => {
     expect(wrapper.text()).toContain('Paper A')
     expect(wrapper.text()).toContain('Paper B')
     expect(wrapper.find('button[aria-label="机器学习 操作"]').exists()).toBe(true)
+  })
+
+  it('puts favorite papers on top of their space', async () => {
+    listPapers.mockResolvedValue({
+      spaces: [SPACE],
+      papers: [
+        paper({ id: 'space-normal', title: 'Space Normal', spaceId: SPACE.id }),
+        paper({ id: 'space-favorite', title: 'Space Favorite', spaceId: SPACE.id, favorite: true }),
+        paper({ id: 'normal', title: 'Normal Paper' }),
+        paper({ id: 'favorite', title: 'Favorite Paper', favorite: true })
+      ]
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    const titles = wrapper
+      .findAll('[data-slot="sidebar-menu-button"]')
+      .map((button) => button.text().trim())
+    expect(titles).toEqual(['Space Favorite', 'Space Normal', 'Favorite Paper', 'Normal Paper'])
+  })
+
+  it('shows a tooltip on the favorite button', async () => {
+    listPapers.mockResolvedValue({
+      spaces: [],
+      papers: [paper({ id: 'paper-1', title: 'Paper A' })]
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await wrapper.get('button[aria-label="收藏 Paper A"]').trigger('focus')
+    await flushPromises()
+
+    // reka-ui 的 tooltip 内容会 Teleport 到 body；只显示操作名，不带论文名
+    const tooltip = document.body.querySelector('[role="tooltip"]')
+    expect(tooltip?.textContent?.trim()).toBe('收藏')
+  })
+
+  it('toggles a favorite from the row button and re-sorts the space', async () => {
+    const first = paper({ id: 'paper-1', title: 'Paper A' })
+    const second = paper({ id: 'paper-2', title: 'Paper B' })
+    listPapers.mockResolvedValue({ spaces: [], papers: [first, second] })
+    setPaperFavorite.mockResolvedValue({
+      spaces: [],
+      papers: [first, { ...second, favorite: true }]
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    const favoriteButton = wrapper.get('button[aria-label="收藏 Paper B"]')
+    expect(favoriteButton.attributes('aria-pressed')).toBe('false')
+    await favoriteButton.trigger('click')
+    await flushPromises()
+
+    expect(setPaperFavorite).toHaveBeenCalledWith('paper-2', true)
+    // 点收藏不应同时打开论文
+    expect(wrapper.emitted('selectPaper')).toBeUndefined()
+    const titles = wrapper
+      .findAll('[data-slot="sidebar-menu-button"]')
+      .map((button) => button.text().trim())
+    expect(titles).toEqual(['Paper B', 'Paper A'])
+    expect(wrapper.get('button[aria-label="取消收藏 Paper B"]').attributes('aria-pressed')).toBe(
+      'true'
+    )
+  })
+
+  it('keeps the order when toggling a favorite fails', async () => {
+    const first = paper({ id: 'paper-1', title: 'Paper A' })
+    const second = paper({ id: 'paper-2', title: 'Paper B' })
+    listPapers.mockResolvedValue({ spaces: [], papers: [first, second] })
+    setPaperFavorite.mockRejectedValue(new Error('写入失败'))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="收藏 Paper B"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('button[aria-label="收藏 Paper B"]').exists()).toBe(true)
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
   })
 
   it('emits selectPaper when a paper is clicked', async () => {
@@ -451,6 +591,27 @@ describe('LibraryPanel', () => {
     wrapper.unmount()
   })
 
+  it('asks the shell to show paper info from the context menu', async () => {
+    const target = paper({ id: 'paper-1', title: 'Attention', metadata: METADATA })
+    listPapers.mockResolvedValue({ spaces: [], papers: [target] })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[aria-label="Attention 操作"]').trigger('click')
+    await flushPromises()
+
+    const viewItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (element) => element.textContent?.includes('论文信息')
+    )
+    if (!viewItem) throw new Error('view metadata menu item not found')
+    viewItem.click()
+    await flushPromises()
+
+    expect(wrapper.emitted('showPaperInfo')?.[0]).toEqual([target])
+    // 菜单不再直接打开详情弹窗，信息由右侧面板展示
+    expect(document.body.querySelector('#metadata-title')).toBeNull()
+  })
+
   it('saves manually edited metadata from the details dialog', async () => {
     const original = paper({ id: 'paper-1', title: 'Attention', metadata: METADATA })
     listPapers.mockResolvedValue({ spaces: [], papers: [original] })
@@ -466,21 +627,11 @@ describe('LibraryPanel', () => {
 
     const wrapper = mountPanel()
     await flushPromises()
-    await wrapper.get('button[aria-label="Attention 操作"]').trigger('click')
-    await flushPromises()
-
-    const viewItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (element) => element.textContent?.includes('论文信息')
-    )
-    if (!viewItem) throw new Error('view metadata menu item not found')
-    viewItem.click()
-    await flushPromises()
-
-    const editButton = [...document.body.querySelectorAll('button')].find((button) =>
-      (button.textContent ?? '').includes('编辑')
-    )
-    if (!editButton) throw new Error('edit button not found')
-    editButton.click()
+    // 详情弹窗由信息面板的「编辑」按钮通过外壳打开
+    const api = wrapper.vm as unknown as {
+      openMetadata: (paper: Paper, editing?: boolean) => void
+    }
+    api.openMetadata(original, true)
     await flushPromises()
 
     const doi = document.body.querySelector<HTMLInputElement>('#metadata-doi')
@@ -511,21 +662,10 @@ describe('LibraryPanel', () => {
 
     const wrapper = mountPanel()
     await flushPromises()
-    await wrapper.get('button[aria-label="Attention 操作"]').trigger('click')
-    await flushPromises()
-
-    const viewItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (element) => element.textContent?.includes('论文信息')
-    )
-    if (!viewItem) throw new Error('view metadata menu item not found')
-    viewItem.click()
-    await flushPromises()
-
-    const editButton = [...document.body.querySelectorAll('button')].find((button) =>
-      (button.textContent ?? '').includes('编辑')
-    )
-    if (!editButton) throw new Error('edit button not found')
-    editButton.click()
+    const api = wrapper.vm as unknown as {
+      openMetadata: (paper: Paper, editing?: boolean) => void
+    }
+    api.openMetadata(original, true)
     await flushPromises()
 
     const form = document.body.querySelector<HTMLFormElement>('#paper-metadata-form')

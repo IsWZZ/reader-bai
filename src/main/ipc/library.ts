@@ -99,6 +99,18 @@ export const registerLibraryIpc = (
     })
   })
 
+  // 收藏 / 取消收藏；收藏状态用于在空间内置顶
+  ipcMain.handle('library:setFavorite', async (_event, id: unknown, favorite: unknown) => {
+    const paperId = readPaperId(id)
+    if (typeof favorite !== 'boolean') throw new Error('收藏状态无效')
+    return library.mutate((state) => {
+      const paper = state.papers.find((item) => item.id === paperId)
+      if (!paper) throw new Error('论文不存在')
+      paper.favorite = favorite
+      return state
+    })
+  })
+
   // 从论文库移除（不删除磁盘上的文件），并清空该论文的标注
   ipcMain.handle('library:removePaper', async (_event, id: string) => {
     const result = await library.mutate((state) => {

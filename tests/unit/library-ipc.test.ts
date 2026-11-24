@@ -121,6 +121,39 @@ describe('library:removePaper', () => {
   })
 })
 
+type SetFavoriteHandler = (event: unknown, id: unknown, favorite: unknown) => Promise<LibraryState>
+
+const setFavoriteHandler = (): SetFavoriteHandler =>
+  electron.handlers.get('library:setFavorite') as SetFavoriteHandler
+
+describe('library:setFavorite', () => {
+  const register = (papers: PaperInfo[]): FakeLibrary => {
+    const library = createLibrary(papers)
+    const annotations = createAnnotations({})
+    registerLibraryIpc(library.store, annotations.store, settings)
+    return library
+  }
+
+  it('sets and clears the favorite flag', async () => {
+    const library = register([paper])
+
+    const pinned = await setFavoriteHandler()({}, 'paper-1', true)
+    expect(pinned.papers[0].favorite).toBe(true)
+    expect(library.snapshot().papers[0].favorite).toBe(true)
+
+    const cleared = await setFavoriteHandler()({}, 'paper-1', false)
+    expect(cleared.papers[0].favorite).toBe(false)
+  })
+
+  it('rejects non-boolean values, invalid ids and missing papers', async () => {
+    register([paper])
+
+    await expect(setFavoriteHandler()({}, 'paper-1', 'yes')).rejects.toThrow('收藏状态无效')
+    await expect(setFavoriteHandler()({}, 42, true)).rejects.toThrow('论文不存在')
+    await expect(setFavoriteHandler()({}, 'missing', true)).rejects.toThrow('论文不存在')
+  })
+})
+
 const metadata: PaperMetadata = {
   title: 'Attention Is All You Need',
   authors: ['Ashish Vaswani'],

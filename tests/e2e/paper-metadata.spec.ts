@@ -217,12 +217,49 @@ test('analyzes an imported paper and stores its metadata', async () => {
   expect(stub.requests[0].messages[0].content).toContain('one JSON object')
   expect(stub.requests[0].messages[1].content).toContain('Hello reader-bai')
 
-  // 详情弹窗展示解析出的书目信息
+  // 论文信息面板展示解析出的书目信息
   await reader.page.getByRole('button', { name: 'Attention Is All You Need 操作' }).click()
   await reader.page.getByRole('menuitem', { name: '论文信息' }).click()
-  await expect(reader.page.getByText('10.1234/e2e.2024')).toBeVisible()
-  await expect(reader.page.getByText('An abstract parsed from the paper.')).toBeVisible()
-  await expect(reader.page.getByText('A short AI summary.')).toBeVisible()
+  const panel = reader.page.getByRole('complementary', { name: '论文信息' })
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText('10.1234/e2e.2024')).toBeVisible()
+  await expect(panel.getByText('An abstract parsed from the paper.')).toBeVisible()
+  await expect(panel.getByText('A short AI summary.')).toBeVisible()
+
+  await reader.app.close()
+})
+
+test('shows the active paper metadata in the right info panel', async () => {
+  const pdfPath = join(userDataDir, 'sample.pdf')
+  await writeSamplePdf(pdfPath)
+  await seedLibrary(userDataDir, {
+    papers: [
+      {
+        id: 'paper-1',
+        title: 'Sample Paper',
+        path: pdfPath,
+        titleSource: 'user',
+        metadata: { ...METADATA, source: 'manual', analyzedAt: 1 }
+      }
+    ]
+  })
+
+  const reader = await launchReader(userDataDir)
+  // 带元数据的论文在侧栏里会附带副标题，用菜单唤起右侧面板
+  await reader.page.getByRole('button', { name: 'Sample Paper 操作' }).click()
+  await reader.page.getByRole('menuitem', { name: '论文信息' }).click()
+
+  // 右侧自动展示已保存的元数据，不依赖 AI 配置
+  const panel = reader.page.getByRole('complementary', { name: '论文信息' })
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText('Sample Paper', { exact: true })).toBeVisible()
+  await expect(panel.getByText('Ashish Vaswani, Noam Shazeer')).toBeVisible()
+  await expect(panel.getByText('NeurIPS · 2017')).toBeVisible()
+  await expect(panel.getByText('10.1234/e2e.2024')).toBeVisible()
+  await expect(panel.getByText('A short AI summary.')).toBeVisible()
+
+  await panel.getByRole('button', { name: '关闭' }).click()
+  await expect(panel).toBeHidden()
 
   await reader.app.close()
 })
@@ -236,19 +273,24 @@ test('adds missing metadata manually and rejects invalid values', async () => {
 
   const reader = await launchReader(userDataDir)
 
-  // 没有 AI 配置时也可以从菜单打开详情并手动填写
+  // 没有 AI 配置时也可以从菜单唤起右侧面板，再从面板进入编辑
   await reader.page.getByRole('button', { name: 'Sample Paper 操作' }).click()
   await reader.page.getByRole('menuitem', { name: '论文信息' }).click()
-  await expect(reader.page.getByText('还没有论文信息')).toBeVisible()
+  const panel = reader.page.getByRole('complementary', { name: '论文信息' })
+  await expect(panel.getByText('还没有论文信息')).toBeVisible()
 
-  await reader.page.getByRole('button', { name: '编辑', exact: true }).click()
-  await reader.page.getByLabel('标题').fill('Manual Title')
-  await reader.page.getByLabel('作者').fill('Ada Lovelace\nAlan Turing')
-  await reader.page.getByLabel('DOI').fill('https://doi.org/10.1000/MANUAL')
-  await reader.page.getByRole('button', { name: '保存', exact: true }).click()
+  await panel.getByRole('button', { name: '编辑' }).click()
+  const dialog = reader.page.getByRole('dialog', { name: '论文信息' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('标题').fill('Manual Title')
+  await dialog.getByLabel('作者').fill('Ada Lovelace\nAlan Turing')
+  await dialog.getByLabel('DOI').fill('https://doi.org/10.1000/MANUAL')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
 
-  await expect(reader.page.getByText('10.1000/MANUAL')).toBeVisible()
-  await expect(reader.page.getByText('手动填写')).toBeVisible()
+  await expect(dialog.getByText('10.1000/MANUAL')).toBeVisible()
+  await expect(dialog.getByText('手动填写')).toBeVisible()
+  // 保存后右侧面板同步刷新
+  await expect(panel.getByText('10.1000/MANUAL')).toBeVisible()
 
   await expect
     .poll(async () => (await readJsonFile<StoredLibrary>(libraryFile()))?.papers[0]?.metadata)

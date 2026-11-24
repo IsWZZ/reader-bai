@@ -57,6 +57,8 @@ export interface Paper {
   /** 标题来源：file=文件名，metadata=PDF 元数据或 AI 解析，user=用户重命名 */
   titleSource: 'file' | 'metadata' | 'user'
   createdAt: number
+  /** 是否收藏；收藏的论文在所属空间内置顶 */
+  favorite?: boolean
   /** AI / Crossref 解析出的书目信息 */
   metadata?: PaperMetadata
 }

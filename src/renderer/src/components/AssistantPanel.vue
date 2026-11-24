@@ -1,24 +1,5 @@
 <template>
-  <aside
-    :aria-label="t('assistant.panel')"
-    class="bg-card flex h-full shrink-0 flex-col overflow-hidden rounded-lg border"
-    :style="{ width: width + 'px' }"
-  >
-    <header class="flex items-center justify-between border-b px-3 py-2">
-      <div class="flex items-center gap-2">
-        <Sparkles class="text-muted-foreground size-4" />
-        <h2 class="text-sm font-medium">{{ t('assistant.title') }}</h2>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        :aria-label="t('assistant.close')"
-        @click="emit('close')"
-      >
-        <X class="size-4" />
-      </Button>
-    </header>
-
+  <div class="flex min-h-0 flex-1 flex-col">
     <div
       v-if="settingsStore.enabledAiProfiles.length > 0"
       class="flex items-center gap-2 border-b px-3 py-2"
@@ -175,7 +156,7 @@
         </Button>
       </div>
     </div>
-  </aside>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -195,11 +176,7 @@ import { Textarea } from '@renderer/components/ui/textarea'
 import { useAssistantStore, type ChatEntry } from '@renderer/store/assistant'
 import { useSettingsStore } from '@renderer/store/settings'
 import { t } from '@renderer/lib/i18n'
-import { Send, Sparkles, Square, X } from 'lucide-vue-next'
-
-defineProps<{ width: number }>()
-
-const emit = defineEmits<{ close: [] }>()
+import { Send, Square } from 'lucide-vue-next'
 
 const store = useAssistantStore()
 const settingsStore = useSettingsStore()

@@ -27,19 +27,24 @@
       </div>
       <LibraryPanel
         v-else-if="isLibraryOpen"
+        ref="libraryPanelRef"
         v-model:width="libraryWidth"
+        :expanded="!hasReadingArea"
         :current-paper-id="currentPaper?.id"
         :search-query="searchQuery"
         @select-paper="handleSelectPaper"
+        @update-paper="readingStore.syncPaper"
+        @show-paper-info="showPaperInfo"
         @request-ai-settings="openAiSettings"
       />
       <!-- 拖拽分隔符 -->
       <div
-        v-if="isLibraryOpen"
+        v-if="isLibraryOpen && hasReadingArea"
         class="w-0.5 cursor-col-resize hover:bg-primary/50 transition-colors rounded-full"
         @mousedown="startResize"
       />
-      <main class="min-w-0 flex-1 overflow-hidden rounded-lg border bg-card">
+      <!-- 没有打开的论文或 main 插件视图时，论文库撑满主区域 -->
+      <main v-if="hasReadingArea" class="min-w-0 flex-1 overflow-hidden rounded-lg border bg-card">
         <div v-if="activeMainView" class="h-full p-4">
           <PluginViewFrame
             :plugin-id="activeMainView.pluginId"
@@ -67,18 +72,39 @@
             <PdfViewer :src="paper.path" class="h-full" @selection-change="handleSelection" />
           </TabsContent>
         </PaperTabs>
-        <div v-else class="flex h-full items-center justify-center p-4">
-          <p class="text-muted-foreground">{{ t('home.empty') }}</p>
-        </div>
       </main>
 
-      <template v-if="isAssistantOpen">
+      <!-- 右侧栏是开放的窗口：AI 辅助、论文信息（以及后续插件视图）共用这个容器 -->
+      <template v-if="rightView">
         <!-- 拖拽分隔符 -->
         <div
           class="w-0.5 cursor-col-resize hover:bg-primary/50 transition-colors rounded-full"
           @mousedown="startAssistantResize"
         />
-        <AssistantPanel :width="assistantWidth" @close="isAssistantOpen = false" />
+        <RightSidebar
+          :width="assistantWidth"
+          :max-width="rightSidebarMaxWidth"
+          :label="rightViewLabel"
+          :title="rightViewTitle"
+          :icon="rightViewIcon"
+          :close-label="rightViewCloseLabel"
+          @close="rightView = null"
+        >
+          <template #actions>
+            <Button
+              v-if="rightView === 'paper-info' && currentPaper"
+              variant="ghost"
+              size="icon-sm"
+              :aria-label="t('common.edit')"
+              @click="editPaperMetadata(currentPaper)"
+            >
+              <Pencil class="size-4" />
+            </Button>
+          </template>
+
+          <AssistantPanel v-if="rightView === 'assistant'" />
+          <PaperInfoPanel v-else :paper="currentPaper" />
+        </RightSidebar>
       </template>
     </div>
 
@@ -92,7 +118,9 @@ import Toolbar from '@renderer/components/Toolbar.vue'
 import ActivityBar from '@renderer/components/ActivityBar.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
+import PaperInfoPanel from '@renderer/components/PaperInfoPanel.vue'
 import PaperTabs from '@renderer/components/PaperTabs.vue'
+import RightSidebar from '@renderer/components/RightSidebar.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
@@ -102,6 +130,8 @@ import { usePluginsStore } from '@renderer/store/plugins'
 import { useReadingStore } from '@renderer/store/reading'
 import { useSettingsStore } from '@renderer/store/settings'
 import { t } from '@renderer/lib/i18n'
+import { Button } from '@renderer/components/ui/button'
+import { FileText, Pencil, Sparkles } from 'lucide-vue-next'
 import type { Paper, PluginViewInfo, PluginViewLocation } from '@renderer/types'
 
 const isLibraryOpen = ref(true)
@@ -116,7 +146,11 @@ const searchQuery = ref('')
 const assistantStore = useAssistantStore()
 const settingsStore = useSettingsStore()
 const pluginsStore = usePluginsStore()
-const isAssistantOpen = ref(false)
+// 右侧栏同一时间只展示一个视图；后续插件视图也可以接入这个窗口
+type RightView = 'assistant' | 'paper-info'
+const rightView = ref<RightView | null>(null)
+const isAssistantOpen = computed(() => rightView.value === 'assistant')
+const libraryPanelRef = ref<InstanceType<typeof LibraryPanel> | null>(null)
 type SettingsSection = 'basic' | 'ai' | 'library' | 'plugins' | 'uninstall'
 const settingsOpen = ref(false)
 const settingsSection = ref<SettingsSection>('basic')
@@ -167,6 +201,33 @@ const activeSidebarView = computed(() =>
 const activeMainView = computed(() =>
   activePluginView.value?.location === 'main' ? activePluginView.value : null
 )
+// 阅读区（论文标签或 main 插件视图）打开时才有独立的主区域
+const hasReadingArea = computed(
+  () => activeMainView.value !== null || readingStore.papers.length > 0
+)
+
+// 右侧窗口的标题、无障碍名称和图标跟随当前视图
+const rightViewLabel = computed(() =>
+  rightView.value === 'assistant' ? t('assistant.panel') : t('paperInfo.title')
+)
+const rightViewTitle = computed(() =>
+  rightView.value === 'assistant' ? t('assistant.title') : t('paperInfo.title')
+)
+const rightViewCloseLabel = computed(() =>
+  rightView.value === 'assistant' ? t('assistant.close') : t('common.close')
+)
+const rightViewIcon = computed(() => (rightView.value === 'assistant' ? Sparkles : FileText))
+
+// 阅读区优先：右侧栏最多占剩余空间的一半再少一点，避免窗口较窄时
+// 信息面板比 PDF 正文还宽。宽度由 CSS max-width 响应式限制。
+const rightSidebarMaxWidth = computed(() => {
+  const activityBar = 48
+  const gaps = 8
+  const readingPriority = 48
+  const reserved =
+    activityBar + (isLibraryOpen.value ? libraryWidth.value : 0) + gaps + readingPriority
+  return `calc((100% - ${reserved}px) / 2)`
+})
 
 const closePluginView = (key: string): void => {
   if (activePluginViewKey.value === key) activePluginViewKey.value = null
@@ -220,16 +281,33 @@ const openSettingsAt = (section: SettingsSection): void => {
 const openAiSettings = (): void => openSettingsAt('ai')
 
 const toggleAssistant = (): void => {
+  if (isAssistantOpen.value) {
+    rightView.value = null
+    return
+  }
   // 没有可用的 AI 配置时，先把用户带到设置页，而不是打开一个无法工作的面板
-  if (!isAssistantOpen.value && !settingsStore.isAiConfigured) {
+  if (!settingsStore.isAiConfigured) {
     openAiSettings()
     return
   }
-  isAssistantOpen.value = !isAssistantOpen.value
+  rightView.value = 'assistant'
 }
 
 const handleSelectPaper = (paper: Paper): void => {
   readingStore.openPaper(paper)
+  // 阅读时默认在右侧展示论文信息；辅助面板已经占用右侧时不抢位置
+  if (rightView.value !== 'assistant') rightView.value = 'paper-info'
+}
+
+// 论文库的「论文信息」：打开论文并唤起右侧信息面板
+const showPaperInfo = (paper: Paper): void => {
+  readingStore.openPaper(paper)
+  rightView.value = 'paper-info'
+}
+
+const editPaperMetadata = (paper: Paper): void => {
+  // 复用论文库里的详情弹窗（编辑模式）
+  libraryPanelRef.value?.openMetadata?.(paper, true)
 }
 
 const handleSelection = (payload: { text: string; page: number }): void => {

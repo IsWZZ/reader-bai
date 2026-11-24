@@ -94,6 +94,13 @@ test('navigates the paper by page number and previous/next buttons', async () =>
   const previous = reader.page.getByRole('button', { name: '上一页' })
   const next = reader.page.getByRole('button', { name: '下一页' })
 
+  // 信息面板自动打开时阅读区较窄，仍应从第 1 页开始
+  await expect(pageInput).toHaveValue('1')
+
+  // 关掉信息面板，给多页 PDF 留出可滚动的阅读高度
+  await reader.page.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(reader.page.getByRole('complementary', { name: '论文信息' })).toBeHidden()
+
   await expect(pageInput).toHaveValue('1')
   await expect(previous).toBeDisabled()
   await expect(next).toBeEnabled()
@@ -185,7 +192,8 @@ test('keeps recently opened papers in tabs and preserves reader state', async ()
 
   await reader.page.getByRole('button', { name: '关闭 Second Paper' }).click()
   await expect(reader.page.getByRole('tab')).toHaveCount(0)
-  await expect(reader.page.getByText('选择论文开始阅读')).toBeVisible()
+  // 关闭最后一篇后阅读区整体收起
+  await expect(reader.page.locator('main')).toHaveCount(0)
 
   await reader.app.close()
 })

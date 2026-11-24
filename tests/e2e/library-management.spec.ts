@@ -17,6 +17,7 @@ interface StoredPaper {
   fileName: string
   spaceId: string | null
   titleSource: string
+  favorite?: boolean
 }
 
 interface StoredLibrary {
@@ -29,6 +30,7 @@ interface TestApi {
   renameSpace: (id: string, name: string) => Promise<unknown>
   renamePaper: (id: string, title: string, source?: 'metadata' | 'user') => Promise<unknown>
   movePaper: (id: string, spaceId: string | null) => Promise<unknown>
+  setPaperFavorite: (id: string, favorite: unknown) => Promise<unknown>
   removePaper: (id: string) => Promise<unknown>
   readPaper: (path: string) => Promise<unknown>
   listAnnotations: (path: string) => Promise<unknown>
@@ -65,6 +67,8 @@ const collectApiFailures = (page: Page): Promise<string[]> =>
       () => api.renameSpace('missing-space', '名称'),
       () => api.renamePaper('missing-paper', '名称'),
       () => api.movePaper('paper-1', 'missing-space'),
+      () => api.setPaperFavorite('paper-1', 'yes'),
+      () => api.setPaperFavorite('missing-paper', true),
       () => api.readPaper('/tmp/not-in-library.pdf'),
       () =>
         api.addAnnotation('/tmp/not-in-library.pdf', {
@@ -145,6 +149,46 @@ test('moves a paper into a space from the context menu', async () => {
   await expect(reader.page.getByRole('button', { name: 'Paper A', exact: true })).toBeVisible()
 
   await reader.app.close()
+})
+
+test('pins favorite papers to the top of their space and persists it', async () => {
+  const firstPath = await createPaperPdf('first.pdf')
+  const secondPath = await createPaperPdf('second.pdf')
+  await seedLibrary(userDataDir, {
+    spaces: [{ id: 'space-1', name: '机器学习' }],
+    papers: [
+      { id: 'paper-1', title: 'Paper A', path: firstPath, spaceId: 'space-1', titleSource: 'user' },
+      { id: 'paper-2', title: 'Paper B', path: secondPath, spaceId: 'space-1', titleSource: 'user' }
+    ]
+  })
+
+  const rowTitles = (page: Page): Promise<string[]> =>
+    page
+      .locator('[data-slot="sidebar-menu-button"]')
+      .evaluateAll((nodes) =>
+        nodes
+          .map((node) => node.textContent?.trim() ?? '')
+          .filter((text) => text === 'Paper A' || text === 'Paper B')
+      )
+
+  const reader = await launchReader(userDataDir)
+  await reader.page.getByRole('button', { name: '收藏 Paper B' }).click()
+
+  await expect(reader.page.getByRole('button', { name: '取消收藏 Paper B' })).toBeVisible()
+  await expect
+    .poll(
+      async () => (await readLibrary())?.papers.find((paper) => paper.id === 'paper-2')?.favorite
+    )
+    .toBe(true)
+  // 收藏后仍留在原空间，只在该空间内置顶
+  expect(await rowTitles(reader.page)).toEqual(['Paper B', 'Paper A'])
+
+  await reader.app.close()
+
+  // 重启后收藏状态和排序都要保留
+  const relaunched = await launchReader(userDataDir)
+  expect(await rowTitles(relaunched.page)).toEqual(['Paper B', 'Paper A'])
+  await relaunched.app.close()
 })
 
 test('renames a space from the context menu', async () => {
@@ -241,14 +285,26 @@ test('rejects invalid library operations', async () => {
   })
 
   const reader = await launchReader(userDataDir)
-  const [emptySpace, longSpace, missingSpace, missingPaper, missingMove, unreadable, add, remove] =
-    await collectApiFailures(reader.page)
+  const [
+    emptySpace,
+    longSpace,
+    missingSpace,
+    missingPaper,
+    missingMove,
+    invalidFavorite,
+    missingFavorite,
+    unreadable,
+    add,
+    remove
+  ] = await collectApiFailures(reader.page)
 
   expect(emptySpace).toContain('空间名称不能为空')
   expect(longSpace).toBe('')
   expect(missingSpace).toContain('空间不存在')
   expect(missingPaper).toContain('论文不存在')
   expect(missingMove).toContain('空间不存在')
+  expect(invalidFavorite).toContain('收藏状态无效')
+  expect(missingFavorite).toContain('论文不存在')
   expect(unreadable).toContain('Paper not found in library')
   expect(add).toContain('Paper not found in library')
   expect(remove).toContain('Paper not found in library')

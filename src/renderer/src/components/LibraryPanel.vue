@@ -1,5 +1,10 @@
 <template>
-  <div ref="rootRef" class="flex rounded-lg border" :style="{ width: width + 'px' }">
+  <div
+    ref="rootRef"
+    class="flex rounded-lg border"
+    :class="expanded ? 'min-w-0 flex-1' : ''"
+    :style="expanded ? undefined : { width: width + 'px' }"
+  >
     <SidebarProvider :default-open="true">
       <Sidebar collapsible="none" class="w-full h-full">
         <SidebarContent>
@@ -191,7 +196,7 @@
                       <SidebarMenuButton
                         :is-active="paper.id === currentPaperId"
                         draggable="true"
-                        class="h-auto min-h-8 items-start py-1.5"
+                        class="h-auto min-h-8 items-start py-1.5 pr-14!"
                         :class="draggingPaperId === paper.id ? 'opacity-50' : ''"
                         @click="selectPaper(paper)"
                         @dblclick="startRenamePaper(paper)"
@@ -220,10 +225,30 @@
                           :aria-label="t('library.metadata.failed')"
                         />
                       </SidebarMenuButton>
+                      <Tooltip>
+                        <TooltipTrigger as-child>
+                          <SidebarMenuAction
+                            :show-on-hover="!paper.favorite"
+                            :aria-pressed="paper.favorite === true"
+                            :aria-label="favoriteLabel(paper)"
+                            @click.stop="toggleFavorite(paper)"
+                          >
+                            <Star :class="paper.favorite ? 'fill-current text-amber-500' : ''" />
+                          </SidebarMenuAction>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          {{
+                            paper.favorite
+                              ? t('library.unfavoriteAction')
+                              : t('library.favoriteAction')
+                          }}
+                        </TooltipContent>
+                      </Tooltip>
                       <DropdownMenu>
                         <DropdownMenuTrigger as-child>
                           <SidebarMenuAction
                             show-on-hover
+                            class="right-8"
                             :aria-label="t('library.paperActions', { title: paper.title })"
                             @click.stop
                             @mousedown.stop
@@ -237,7 +262,7 @@
                             <Pencil class="size-4" />
                             {{ t('library.rename') }}
                           </DropdownMenuItem>
-                          <DropdownMenuItem @select="openMetadata(paper)">
+                          <DropdownMenuItem @select="emit('showPaperInfo', paper)">
                             <Info class="size-4" />
                             {{ t('library.metadata.view') }}
                           </DropdownMenuItem>
@@ -298,7 +323,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import {
   Sidebar,
   SidebarContent,
@@ -337,6 +362,7 @@ import {
   Plus,
   SearchX,
   Sparkles,
+  Star,
   Trash2
 } from 'lucide-vue-next'
 import PaperMetadataDialog from '@renderer/components/PaperMetadataDialog.vue'
@@ -348,6 +374,8 @@ import type { LibraryData, Paper, PaperMetadataInput, Space } from '@renderer/ty
 
 const emit = defineEmits<{
   selectPaper: [paper: Paper]
+  updatePaper: [paper: Paper]
+  showPaperInfo: [paper: Paper]
   requestAiSettings: []
 }>()
 
@@ -367,6 +395,8 @@ const collapsedGroups = ref(new Set<string>())
 // 检索词来自顶部搜索栏；这里只过滤已加载的标题/文件名，不请求主进程
 const props = defineProps<{
   width: number
+  /** 阅读区未打开时占满主区域，不再使用固定宽度 */
+  expanded?: boolean
   currentPaperId?: string | null
   searchQuery?: string
 }>()
@@ -424,10 +454,14 @@ const metadataEditing = ref(false)
 const metadataSaving = ref(false)
 const metadataSaveError = ref<string | null>(null)
 
-const openMetadata = (paper: Paper): void => {
+const openMetadata = (paper: Paper, editing = false): void => {
   metadataPaper.value = paper
+  metadataEditing.value = editing
   metadataOpen.value = true
 }
+
+// 论文信息面板的「编辑」按钮通过外壳调用，复用同一个详情弹窗
+defineExpose({ openMetadata })
 
 const onMetadataOpenChange = (open: boolean): void => {
   metadataOpen.value = open
@@ -468,15 +502,21 @@ const paperTitleDraft = ref('')
 
 const hasAnyItem = computed(() => spaces.value.length > 0 || papers.value.length > 0)
 
+// 收藏的论文置顶；sort 是稳定的，其余论文保持原顺序
+const favoritesFirst = (items: Paper[]): Paper[] =>
+  [...items].sort((a, b) => Number(b.favorite === true) - Number(a.favorite === true))
+
 const groups = computed<PaperGroup[]>(() => {
   const result: PaperGroup[] = spaces.value.map((space) => ({
     key: space.id,
     space,
     name: space.name,
-    papers: visiblePapers.value.filter((paper) => paper.spaceId === space.id)
+    papers: favoritesFirst(visiblePapers.value.filter((paper) => paper.spaceId === space.id))
   }))
-  const unassigned = visiblePapers.value.filter(
-    (paper) => !paper.spaceId || !spaces.value.some((space) => space.id === paper.spaceId)
+  const unassigned = favoritesFirst(
+    visiblePapers.value.filter(
+      (paper) => !paper.spaceId || !spaces.value.some((space) => space.id === paper.spaceId)
+    )
   )
   if (unassigned.length > 0) {
     result.push({
@@ -557,6 +597,7 @@ const applyPaper = (updated: Paper): void => {
   const index = papers.value.findIndex((item) => item.id === updated.id)
   if (index !== -1) papers.value[index] = updated
   if (metadataPaper.value?.id === updated.id) metadataPaper.value = updated
+  emit('updatePaper', updated)
 }
 
 const analyzePaper = async (paper: Paper): Promise<void> => {
@@ -634,9 +675,31 @@ const importPaper = async (spaceId: string | null = null): Promise<void> => {
   }
 }
 
+// 展开态单击会收起论文库，第二次点击落点会变，双击改名因此收不到 dblclick；
+// 先等过双击窗口再打开论文，双击时由 startRenamePaper 取消。
+const selectDelay = 300
+let selectTimer: ReturnType<typeof setTimeout> | null = null
+
+const cancelPendingSelect = (): void => {
+  if (selectTimer) {
+    clearTimeout(selectTimer)
+    selectTimer = null
+  }
+}
+
+onUnmounted(cancelPendingSelect)
+
 // 选择论文
 const selectPaper = (paper: Paper): void => {
-  emit('selectPaper', paper)
+  if (!props.expanded) {
+    emit('selectPaper', paper)
+    return
+  }
+  cancelPendingSelect()
+  selectTimer = setTimeout(() => {
+    selectTimer = null
+    emit('selectPaper', paper)
+  }, selectDelay)
 }
 
 // ---------- 空间管理 ----------
@@ -703,7 +766,23 @@ const deleteSpace = async (space: Space): Promise<void> => {
 
 // ---------- 论文管理 ----------
 
+const favoriteLabel = (paper: Paper): string =>
+  paper.favorite
+    ? t('library.unfavorite', { title: paper.title })
+    : t('library.favorite', { title: paper.title })
+
+const toggleFavorite = async (paper: Paper): Promise<void> => {
+  const api = window.api
+  if (!api?.setPaperFavorite) return
+  try {
+    applyState(await api.setPaperFavorite(paper.id, paper.favorite !== true))
+  } catch (error) {
+    console.error('更新收藏状态失败:', error)
+  }
+}
+
 const startRenamePaper = (paper: Paper): void => {
+  cancelPendingSelect()
   renamingPaperId.value = paper.id
   paperTitleDraft.value = paper.title
   void focusInlineInput()

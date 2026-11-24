@@ -722,6 +722,12 @@ const setupPagePositionObserver = (): void => {
           centeredPages.delete(pageNumber)
         }
       }
+      // 文档顶部始终是第 1 页。阅读区较窄时页面高度可能不足半屏，
+      // 中线会落到第 2 页或页间空隙，不能用它覆盖顶部的页码。
+      if (container.scrollTop <= 0) {
+        currentPage.value = 1
+        return
+      }
       if (centeredPages.size > 0) {
         currentPage.value = Math.min(...centeredPages)
       }

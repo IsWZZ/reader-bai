@@ -16,7 +16,8 @@ test('starts with the library open and no papers', async () => {
 
   await expect(page.getByRole('heading', { name: '论文库' })).toBeVisible()
   await expect(page.getByText('暂无论文')).toBeVisible()
-  await expect(page.getByText('选择论文开始阅读')).toBeVisible()
+  // 没有打开论文时不显示阅读区
+  await expect(page.locator('main')).toHaveCount(0)
 
   await app.close()
 })

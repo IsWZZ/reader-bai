@@ -128,6 +128,7 @@ export interface SeedPaper {
   spaceId?: string | null
   titleSource?: 'file' | 'metadata' | 'user'
   createdAt?: number
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -150,7 +151,8 @@ export async function seedLibrary(
     fileName: paper.fileName ?? paper.path.replace(/\\/g, '/').split('/').pop() ?? '',
     spaceId: paper.spaceId ?? null,
     titleSource: paper.titleSource ?? 'user',
-    createdAt: paper.createdAt ?? Date.now()
+    createdAt: paper.createdAt ?? Date.now(),
+    metadata: paper.metadata
   }))
   await writeFile(
     join(userDataDir, 'Userdata', 'library.json'),

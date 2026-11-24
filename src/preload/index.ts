@@ -193,6 +193,8 @@ const api = {
     ipcRenderer.invoke('library:renamePaper', id, title, source),
   movePaper: (id: string, spaceId: string | null) =>
     ipcRenderer.invoke('library:movePaper', id, spaceId),
+  setPaperFavorite: (id: string, favorite: boolean) =>
+    ipcRenderer.invoke('library:setFavorite', id, favorite),
   removePaper: (id: string) => ipcRenderer.invoke('library:removePaper', id),
   analyzePaper: (id: string, options?: { useWeb?: boolean }) =>
     ipcRenderer.invoke('library:analyzePaper', id, options),

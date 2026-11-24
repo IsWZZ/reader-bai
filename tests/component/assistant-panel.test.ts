@@ -92,7 +92,7 @@ const installSettings = (settings: AppSettings): void => {
 const mountPanel = (): VueWrapper => {
   // 订阅 agent 事件通常由 Home 外壳发起；这里直接挂载面板时手动初始化
   useAssistantStore().initialize()
-  return mount(AssistantPanel, { props: { width: 340 } })
+  return mount(AssistantPanel)
 }
 
 const modelSelect = (wrapper: VueWrapper): ReturnType<VueWrapper['get']> =>
@@ -390,15 +390,6 @@ describe('AssistantPanel', () => {
 
     expect(cancelAgent).toHaveBeenCalledWith('session-1')
     expect(wrapper.find('button[aria-label="发送"]').exists()).toBe(true)
-    wrapper.unmount()
-  })
-
-  it('emits close from the header button', async () => {
-    const wrapper = mountPanel()
-
-    await wrapper.get('button[aria-label="关闭辅助面板"]').trigger('click')
-
-    expect(wrapper.emitted('close')).toHaveLength(1)
     wrapper.unmount()
   })
 })

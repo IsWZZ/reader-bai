@@ -63,6 +63,18 @@ describe('normalizeLibrary', () => {
     })
   })
 
+  it('keeps favorite flags and drops non-boolean values', () => {
+    const state = normalizeLibrary({
+      papers: [
+        { path: '/papers/pinned.pdf', favorite: true },
+        { path: '/papers/invalid.pdf', favorite: 'yes' },
+        { path: '/papers/normal.pdf', favorite: false }
+      ]
+    })
+
+    expect(state.papers.map((paper) => paper.favorite)).toEqual([true, undefined, undefined])
+  })
+
   it('keeps spaces and moves papers of unknown spaces to uncategorized', () => {
     const state = normalizeLibrary({
       spaces: [

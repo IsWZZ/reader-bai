@@ -54,6 +54,26 @@ describe('reading store', () => {
     expect(store.activeId).toBe('newest')
   })
 
+  it('syncs updated metadata into an open tab without changing the active paper', () => {
+    const store = useReadingStore()
+    store.openPaper(paper('a'))
+    store.openPaper(paper('b'))
+
+    const updated: Paper = {
+      ...paper('a'),
+      title: 'Updated',
+      metadata: { authors: ['Author'], keywords: [], source: 'manual', analyzedAt: 1 }
+    }
+    store.syncPaper(updated)
+
+    expect(store.activeId).toBe('b')
+    expect(store.papers[0]).toEqual(updated)
+
+    // 未打开的论文不会凭空加入标签
+    store.syncPaper(paper('missing'))
+    expect(store.papers.map((item) => item.id)).toEqual(['a', 'b'])
+  })
+
   it('activates a known tab and ignores unknown ids', () => {
     const store = useReadingStore()
     store.openPaper(paper('a'))

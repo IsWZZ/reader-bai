@@ -101,11 +101,19 @@ export const en = {
   'activity.assistant': 'Assistant',
   'activity.settings': 'Settings',
 
-  'home.empty': 'Select a paper to start reading',
+  'paperInfo.title': 'Paper details',
+  'paperInfo.empty': 'Open a paper to see its details here',
+  'paperInfo.noMetadata':
+    'No details yet. Analyze or edit them from the library’s “Paper details” menu.',
+
   'reading.tabs': 'Open papers',
   'reading.closeTab': 'Close {title}',
 
   'library.title': 'Library',
+  'library.favorite': 'Favorite {title}',
+  'library.unfavorite': 'Remove {title} from favorites',
+  'library.favoriteAction': 'Favorite',
+  'library.unfavoriteAction': 'Unfavorite',
   'library.search.empty': 'No papers match “{query}”',
   'library.search.emptyHint': 'Try another title, author, venue, or DOI keyword',
   'library.metadata.view': 'Paper details',

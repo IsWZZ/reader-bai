@@ -66,6 +66,7 @@ describe('preload bridge', () => {
         'removePaper',
         'renamePaper',
         'renameSpace',
+        'setPaperFavorite',
         'setPluginEnabled',
         'startAgent',
         'uninstallApp',
@@ -114,6 +115,9 @@ describe('preload bridge', () => {
 
     await api.movePaper('p1', null)
     expect(electron.invoke).toHaveBeenLastCalledWith('library:movePaper', 'p1', null)
+
+    await api.setPaperFavorite('p1', true)
+    expect(electron.invoke).toHaveBeenLastCalledWith('library:setFavorite', 'p1', true)
 
     await api.analyzePaper('p1', { useWeb: false })
     expect(electron.invoke).toHaveBeenLastCalledWith('library:analyzePaper', 'p1', {

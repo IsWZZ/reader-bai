@@ -12,7 +12,9 @@ import ActivityBar from '@renderer/components/ActivityBar.vue'
 import AssistantPanel from '@renderer/components/AssistantPanel.vue'
 import LibraryPanel from '@renderer/components/LibraryPanel.vue'
 import PdfViewer from '@renderer/components/PdfViewer.vue'
+import PaperInfoPanel from '@renderer/components/PaperInfoPanel.vue'
 import PaperTabs from '@renderer/components/PaperTabs.vue'
+import RightSidebar from '@renderer/components/RightSidebar.vue'
 import PluginViewFrame from '@renderer/components/PluginViewFrame.vue'
 import SettingsDialog from '@renderer/components/SettingsDialog.vue'
 import Toolbar from '@renderer/components/Toolbar.vue'
@@ -79,6 +81,7 @@ describe('Home search wiring', () => {
     window.api = {
       getSettings: vi.fn(async () => structuredClone(SETTINGS)),
       updateSettings: vi.fn(),
+      listPapers: vi.fn(async () => ({ spaces: [], papers: [] })),
       onAiChunk: vi.fn(() => vi.fn()),
       onAgentEvent: vi.fn(() => vi.fn())
     } as unknown as Api
@@ -161,6 +164,7 @@ describe('Home search wiring', () => {
     window.api = {
       getSettings: vi.fn(async () => structuredClone(SETTINGS)),
       updateSettings: vi.fn(),
+      listPapers: vi.fn(async () => ({ spaces: [], papers: [] })),
       onAiChunk: vi.fn(() => vi.fn()),
       onAgentEvent: vi.fn(() => vi.fn()),
       listPlugins: vi.fn(async () => ({ plugins: [plugin], issues: [] }))
@@ -168,6 +172,10 @@ describe('Home search wiring', () => {
 
     const wrapper = mountHome()
     await flushPromises()
+
+    // 没有论文也没有 main 插件视图时，论文库撑满主区域
+    expect(wrapper.find('main').exists()).toBe(false)
+    expect(wrapper.findComponent(LibraryPanel).props('expanded')).toBe(true)
 
     const bar = wrapper.findComponent(ActivityBar)
     expect(bar.props('pluginViews')).toEqual([
@@ -185,10 +193,115 @@ describe('Home search wiring', () => {
     expect(frame.props('pluginId')).toBe('reader-bai.arxiv')
     expect(frame.props('pluginName')).toBe('arXiv')
     expect(frame.props('view')).toMatchObject({ id: 'search.arxiv.panel' })
+    expect(wrapper.findComponent(LibraryPanel).props('expanded')).toBe(false)
 
     frame.vm.$emit('close')
     await wrapper.vm.$nextTick()
     expect(wrapper.findComponent(PluginViewFrame).exists()).toBe(false)
+    expect(wrapper.findComponent(LibraryPanel).props('expanded')).toBe(true)
+  })
+
+  it('shows paper info automatically after opening a paper, even without AI', async () => {
+    useSettingsStore().$patch({ settings: { ...SETTINGS, ai: { profiles: [], activeId: '' } } })
+    const wrapper = mountHome()
+    await selectPaper(wrapper)
+
+    const panel = wrapper.findComponent(PaperInfoPanel)
+    expect(panel.exists()).toBe(true)
+    expect(panel.props('paper')).toMatchObject({ id: PAPER.id })
+    // 右侧栏宽度受限，窗口较窄时也要给阅读区留出更大空间
+    expect(wrapper.findComponent(RightSidebar).props('maxWidth')).toBe('calc((100% - 360px) / 2)')
+    // 没有 AI 配置也不会被带去设置页
+    expect(wrapper.findComponent(SettingsDialog).props('open')).toBe(false)
+  })
+
+  it('reopens the paper info panel from the library', async () => {
+    const wrapper = mountHome()
+    await selectPaper(wrapper)
+
+    wrapper.findComponent(RightSidebar).vm.$emit('close')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent(RightSidebar).exists()).toBe(false)
+
+    const second: Paper = { ...PAPER, id: 'paper-2', path: '/papers/paper-2.pdf' }
+    wrapper.findComponent(LibraryPanel).vm.$emit('show-paper-info', second)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(PaperInfoPanel).props('paper')).toMatchObject({ id: 'paper-2' })
+    expect(wrapper.findComponent(PaperTabs).props('activeId')).toBe('paper-2')
+  })
+
+  it('keeps the assistant open instead of opening paper info automatically', async () => {
+    const wrapper = mountHome()
+    await selectPaper(wrapper)
+    await openAssistant(wrapper)
+    expect(wrapper.findComponent(PaperInfoPanel).exists()).toBe(false)
+
+    await selectPaper(wrapper, { ...PAPER, id: 'paper-2', path: '/papers/paper-2.pdf' })
+
+    expect(wrapper.findComponent(AssistantPanel).exists()).toBe(true)
+    expect(wrapper.findComponent(PaperInfoPanel).exists()).toBe(false)
+  })
+
+  it('syncs metadata updates into the open paper shown in the info panel', async () => {
+    const wrapper = mountHome()
+    await selectPaper(wrapper)
+
+    const updated: Paper = {
+      ...PAPER,
+      metadata: { authors: ['Ada Lovelace'], keywords: [], source: 'manual', analyzedAt: 1 }
+    }
+    wrapper.findComponent(LibraryPanel).vm.$emit('update-paper', updated)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(PaperInfoPanel).props('paper')?.metadata?.authors).toEqual([
+      'Ada Lovelace'
+    ])
+    expect(wrapper.findComponent(PaperTabs).props('papers')[0]).toMatchObject({
+      id: PAPER.id,
+      metadata: updated.metadata
+    })
+  })
+})
+
+describe('Home reading area', () => {
+  beforeEach(async () => {
+    setActivePinia(createPinia())
+    window.api = {
+      getSettings: vi.fn(async () => structuredClone(SETTINGS)),
+      updateSettings: vi.fn(),
+      listPapers: vi.fn(async () => ({ spaces: [], papers: [] })),
+      onAiChunk: vi.fn(() => vi.fn()),
+      onAgentEvent: vi.fn(() => vi.fn())
+    } as unknown as Api
+    await useSettingsStore().initialize()
+  })
+
+  it('keeps the library expanded until a paper is opened', async () => {
+    const wrapper = mountHome()
+    await flushPromises()
+
+    expect(wrapper.find('main').exists()).toBe(false)
+    expect(wrapper.findComponent(PaperTabs).exists()).toBe(false)
+    expect(wrapper.findComponent(LibraryPanel).props('expanded')).toBe(true)
+
+    await selectPaper(wrapper)
+
+    expect(wrapper.find('main').exists()).toBe(true)
+    expect(wrapper.findComponent(PaperTabs).exists()).toBe(true)
+    expect(wrapper.findComponent(LibraryPanel).props('expanded')).toBe(false)
+  })
+
+  it('expands the library again when the last tab is closed', async () => {
+    const wrapper = mountHome()
+    await selectPaper(wrapper)
+
+    wrapper.findComponent(PaperTabs).vm.$emit('close', PAPER.id)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(PaperTabs).exists()).toBe(false)
+    expect(wrapper.find('main').exists()).toBe(false)
+    expect(wrapper.findComponent(LibraryPanel).props('expanded')).toBe(true)
   })
 })
 

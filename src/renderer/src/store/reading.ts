@@ -39,6 +39,12 @@ export const useReadingStore = defineStore('reading', () => {
     if (papers.value.some((paper) => paper.id === id)) activeId.value = id
   }
 
+  // 书目信息在侧栏更新后同步到已打开的论文，标签和右侧信息面板才能保持最新
+  const syncPaper = (paper: Paper): void => {
+    const index = papers.value.findIndex((item) => item.id === paper.id)
+    if (index !== -1) papers.value[index] = paper
+  }
+
   const closePaper = (id: string): void => {
     const index = papers.value.findIndex((paper) => paper.id === id)
     if (index === -1) return
@@ -55,5 +61,14 @@ export const useReadingStore = defineStore('reading', () => {
     activeId.value = null
   }
 
-  return { papers, activeId, activePaper, openPaper, activatePaper, closePaper, reset }
+  return {
+    papers,
+    activeId,
+    activePaper,
+    openPaper,
+    activatePaper,
+    syncPaper,
+    closePaper,
+    reset
+  }
 })

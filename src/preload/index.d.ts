@@ -64,6 +64,8 @@ declare global {
     /** 标题来源：file=文件名，metadata=PDF 元数据或 AI 解析，user=用户重命名 */
     titleSource: 'file' | 'metadata' | 'user'
     createdAt: number
+    /** 是否收藏；收藏的论文在所属空间内置顶 */
+    favorite?: boolean
     /** AI / Crossref 解析出的书目信息 */
     metadata?: PaperMetadata
   }
@@ -297,6 +299,8 @@ declare global {
     deleteSpace: (id: string) => Promise<LibraryState>
     renamePaper: (id: string, title: string, source: 'metadata' | 'user') => Promise<LibraryState>
     movePaper: (id: string, spaceId: string | null) => Promise<LibraryState>
+    /** 收藏 / 取消收藏论文 */
+    setPaperFavorite: (id: string, favorite: boolean) => Promise<LibraryState>
     removePaper: (id: string) => Promise<LibraryState>
     /** 用 AI 解析论文信息，并用 Crossref 校验补全；返回更新后的论文 */
     analyzePaper: (id: string, options?: { useWeb?: boolean }) => Promise<PaperInfo>
